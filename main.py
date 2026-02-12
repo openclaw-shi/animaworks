@@ -5,11 +5,9 @@ import asyncio
 import logging
 import os
 import sys
-from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
-PERSONS_DIR = BASE_DIR / "persons"
-SHARED_DIR = BASE_DIR / "shared"
+from core.init import ensure_runtime_dir
+from core.paths import get_data_dir, get_persons_dir, get_shared_dir
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,6 +15,20 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("animaworks")
+
+
+# ── Init ──────────────────────────────────────────────────
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    """Initialize the runtime data directory from templates."""
+    data_dir = get_data_dir()
+    if data_dir.exists() and not getattr(args, "force", False):
+        print(f"Runtime directory already exists: {data_dir}")
+        print("Use --force to re-initialize from templates.")
+        return
+    ensure_runtime_dir()
+    print(f"Runtime directory initialized: {data_dir}")
 
 
 # ── Legacy standalone mode ─────────────────────────────────
@@ -28,7 +40,8 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     from server.app import create_app
 
-    app = create_app(PERSONS_DIR, SHARED_DIR)
+    ensure_runtime_dir()
+    app = create_app(get_persons_dir(), get_shared_dir())
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
@@ -54,6 +67,10 @@ def cmd_worker(args: argparse.Namespace) -> None:
     """Start a worker process."""
     from worker.app import WorkerConfig, run_worker
 
+    ensure_runtime_dir()
+    persons_dir = get_persons_dir()
+    shared_dir = get_shared_dir()
+
     worker_id = args.worker_id or os.environ.get(
         "ANIMAWORKS_WORKER_ID", "worker-default"
     )
@@ -61,7 +78,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
         "ANIMAWORKS_PERSON_NAMES", ""
     ).split(",")
     person_dirs = [
-        PERSONS_DIR / name.strip() for name in person_names if name.strip()
+        persons_dir / name.strip() for name in person_names if name.strip()
     ]
     gateway_url = args.gateway_url or os.environ.get(
         "ANIMAWORKS_GATEWAY_URL", "http://localhost:18500"
@@ -74,7 +91,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
     config = WorkerConfig(
         worker_id=worker_id,
         person_dirs=person_dirs,
-        shared_dir=SHARED_DIR,
+        shared_dir=shared_dir,
         gateway_url=gateway_url,
         redis_url=redis_url,
         listen_port=listen_port,
@@ -90,12 +107,13 @@ def cmd_chat(args: argparse.Namespace) -> None:
     if args.local:
         from core.person import DigitalPerson
 
-        person_dir = PERSONS_DIR / args.person
+        ensure_runtime_dir()
+        person_dir = get_persons_dir() / args.person
         if not person_dir.exists():
             print(f"Person not found: {args.person}")
             sys.exit(1)
 
-        person = DigitalPerson(person_dir, SHARED_DIR)
+        person = DigitalPerson(person_dir, get_shared_dir())
         response = asyncio.run(person.process_message(args.message))
         print(response)
     else:
@@ -125,12 +143,13 @@ def cmd_heartbeat(args: argparse.Namespace) -> None:
     if args.local:
         from core.person import DigitalPerson
 
-        person_dir = PERSONS_DIR / args.person
+        ensure_runtime_dir()
+        person_dir = get_persons_dir() / args.person
         if not person_dir.exists():
             print(f"Person not found: {args.person}")
             sys.exit(1)
 
-        person = DigitalPerson(person_dir, SHARED_DIR)
+        person = DigitalPerson(person_dir, get_shared_dir())
         result = asyncio.run(person.run_heartbeat())
         print(f"[{result.action}] {result.summary[:500]}")
     else:
@@ -157,7 +176,8 @@ def cmd_send(args: argparse.Namespace) -> None:
     """Send a message from one person to another (filesystem based)."""
     from core.messenger import Messenger
 
-    messenger = Messenger(SHARED_DIR, args.from_person)
+    ensure_runtime_dir()
+    messenger = Messenger(get_shared_dir(), args.from_person)
     msg = messenger.send(
         to=args.to_person,
         content=args.message,
@@ -192,10 +212,12 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 
 def _list_local() -> None:
-    if not PERSONS_DIR.exists():
+    ensure_runtime_dir()
+    persons_dir = get_persons_dir()
+    if not persons_dir.exists():
         print("No persons directory found.")
         return
-    for d in sorted(PERSONS_DIR.iterdir()):
+    for d in sorted(persons_dir.iterdir()):
         if d.is_dir() and (d / "identity.md").exists():
             print(f"  {d.name}")
 
@@ -231,7 +253,17 @@ def cli_main() -> None:
         description="AnimaWorks - Digital Person Framework"
     )
     parser.add_argument("--gateway-url", default=None, help="Gateway URL")
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="Override runtime data directory (default: ~/.animaworks or ANIMAWORKS_DATA_DIR)",
+    )
     sub = parser.add_subparsers(dest="command")
+
+    # Init
+    p_init = sub.add_parser("init", help="Initialize runtime directory from templates")
+    p_init.add_argument("--force", action="store_true", help="Re-initialize even if exists")
+    p_init.set_defaults(func=cmd_init)
 
     # Legacy standalone
     p_serve = sub.add_parser("serve", help="Standalone mode (legacy)")
@@ -295,6 +327,11 @@ def cli_main() -> None:
     p_status.set_defaults(func=cmd_status)
 
     args = parser.parse_args()
+
+    # Apply --data-dir override before any command
+    if args.data_dir:
+        os.environ["ANIMAWORKS_DATA_DIR"] = args.data_dir
+
     if hasattr(args, "func"):
         args.func(args)
     else:

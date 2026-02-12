@@ -5,6 +5,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+from core.paths import get_company_dir
 from core.schemas import ModelConfig
 
 
@@ -17,8 +18,7 @@ class MemoryManager:
 
     def __init__(self, person_dir: Path, base_dir: Path | None = None) -> None:
         self.person_dir = person_dir
-        self.base_dir = base_dir or person_dir.parent.parent
-        self.company_dir = self.base_dir / "company"
+        self.company_dir = get_company_dir()
         self.episodes_dir = person_dir / "episodes"
         self.knowledge_dir = person_dir / "knowledge"
         self.procedures_dir = person_dir / "procedures"

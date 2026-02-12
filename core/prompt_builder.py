@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.memory import MemoryManager
+from core.paths import PROJECT_DIR
 
 BEHAVIOR_RULES = """\
 ## 行動ルール
@@ -46,7 +47,7 @@ def _discover_other_persons(person_dir: Path) -> list[str]:
 def _build_messaging_section(person_dir: Path, other_persons: list[str]) -> str:
     """Build the messaging instructions with resolved paths."""
     self_name = person_dir.name
-    main_py = person_dir.parent.parent / "main.py"
+    main_py = PROJECT_DIR / "main.py"
 
     persons_line = ", ".join(other_persons) if other_persons else "(まだ他の社員はいません)"
 
