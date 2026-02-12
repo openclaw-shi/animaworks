@@ -38,10 +38,20 @@
    - `skills/`
    - `state/current_task.md`（内容: `status: idle`）
    - `state/pending.md`（空ファイル）
+   - `shortterm/`
+   - `shortterm/archive/`
 
-5. 作成したファイルの内容を依頼者に報告し、修正があれば対応する
+5. ブートストラップファイルを配置する:
+   プロジェクトの `templates/bootstrap.md` を新社員ディレクトリに `bootstrap.md` としてコピーする。
+   これにより、新社員が最初のメッセージを受け取った際にブートストラップ儀式（自己紹介・ユーザー情報確認）が実行される。
 
-6. サーバーに新社員を読み込ませる:
+   ```bash
+   cp {プロジェクトルート}/templates/bootstrap.md ../{英名}/bootstrap.md
+   ```
+
+6. 作成したファイルの内容を依頼者に報告し、修正があれば対応する
+
+7. サーバーに新社員を読み込ませる:
 
    ```bash
    curl -s -X POST http://localhost:18500/api/system/reload | python3 -m json.tool
@@ -49,7 +59,7 @@
 
    `added` リストに新社員名が含まれていれば成功。サーバー再起動は不要。
 
-7. 自分の `episodes/` に「新社員{名前}を作成した」とログを残す
+8. 自分の `episodes/` に「新社員{名前}を作成した」とログを残す
 
 ## テンプレート
 

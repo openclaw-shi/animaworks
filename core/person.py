@@ -42,6 +42,11 @@ class DigitalPerson:
         logger.info("DigitalPerson '%s' initialized from %s", self.name, person_dir)
 
     @property
+    def needs_bootstrap(self) -> bool:
+        """True if this person has not completed the first-run bootstrap."""
+        return (self.person_dir / "bootstrap.md").exists()
+
+    @property
     def status(self) -> PersonStatus:
         return PersonStatus(
             name=self.name,

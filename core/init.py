@@ -10,20 +10,34 @@ from core.paths import TEMPLATES_DIR, get_data_dir
 
 logger = logging.getLogger("animaworks.init")
 
+# Directories under templates/ that are infrastructure (always copied).
+# person_templates/ is NOT included — persons are created separately.
+_INFRASTRUCTURE_DIRS = {"prompts", "company", "common_skills"}
 
-def ensure_runtime_dir() -> Path:
+
+def ensure_runtime_dir(*, skip_persons: bool = False) -> Path:
     """Ensure the runtime data directory exists, seeding from templates if needed.
+
+    Args:
+        skip_persons: If True (used by interactive init), only copy
+            infrastructure templates.  If False (default for server startup),
+            fall back to legacy behaviour that creates sakura from template
+            when no persons exist yet.
 
     Returns the runtime data directory path.
     """
     data_dir = get_data_dir()
 
-    if data_dir.exists():
+    # Check for proper initialization (config.json is the marker).
+    # The data_dir itself may already exist (e.g. created by setup_logging)
+    # but not be fully initialized yet.
+    config_json = data_dir / "config.json"
+    if config_json.exists():
         _maybe_migrate_config(data_dir)
-        logger.debug("Runtime directory already exists: %s", data_dir)
+        logger.debug("Runtime directory already initialized: %s", data_dir)
         return data_dir
 
-    logger.info("First launch: initializing runtime directory at %s", data_dir)
+    logger.info("Initializing runtime directory at %s", data_dir)
 
     if not TEMPLATES_DIR.exists():
         raise FileNotFoundError(
@@ -31,17 +45,20 @@ def ensure_runtime_dir() -> Path:
             "Is the project installed correctly?"
         )
 
-    # Copy templates tree: templates/persons/ -> data_dir/persons/, etc.
     data_dir.mkdir(parents=True, exist_ok=True)
-    for item in TEMPLATES_DIR.iterdir():
-        target = data_dir / item.name
-        if item.is_dir():
-            shutil.copytree(item, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(item, target)
+
+    # Copy infrastructure templates only (prompts, company, common_skills)
+    _copy_infrastructure(data_dir)
 
     # Create runtime-only directories that have no template
     _ensure_runtime_only_dirs(data_dir)
+
+    # Legacy fallback: if not skipping persons and no persons exist,
+    # copy the sakura template so cmd_start() works out of the box.
+    if not skip_persons:
+        persons_dir = data_dir / "persons"
+        if not persons_dir.exists() or not any(persons_dir.iterdir()):
+            _legacy_copy_default_person(data_dir)
 
     # Generate default config.json
     _create_default_config(data_dir)
@@ -50,11 +67,41 @@ def ensure_runtime_dir() -> Path:
     return data_dir
 
 
-def merge_templates(data_dir: Path) -> list[str]:
-    """Copy template files that don't exist in the runtime directory.
+def _copy_infrastructure(data_dir: Path) -> None:
+    """Copy only infrastructure templates (prompts, company, etc.) to data_dir."""
+    for item in TEMPLATES_DIR.iterdir():
+        if item.name == "person_templates":
+            continue
+        target = data_dir / item.name
+        if item.is_dir():
+            if item.name in _INFRASTRUCTURE_DIRS:
+                shutil.copytree(item, target, dirs_exist_ok=True)
+        else:
+            # bootstrap.md is only placed per-person, not at data root
+            if item.name == "bootstrap.md":
+                continue
+            shutil.copy2(item, target)
 
-    Walks the templates tree and copies any file that is missing from the
-    runtime data directory.  Existing files are never overwritten.
+
+def _legacy_copy_default_person(data_dir: Path) -> None:
+    """Legacy fallback: copy sakura template when auto-initialising for server."""
+    from core.person_factory import create_from_template
+
+    persons_dir = data_dir / "persons"
+    persons_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        create_from_template(persons_dir, "sakura")
+        logger.info("Legacy fallback: created default person 'sakura'")
+    except Exception:
+        logger.warning("Could not create default person from template", exc_info=True)
+
+
+def merge_templates(data_dir: Path) -> list[str]:
+    """Copy infrastructure template files that don't exist in the runtime directory.
+
+    Walks the infrastructure templates tree and copies any file that is missing
+    from the runtime data directory.  Existing files are never overwritten.
+    person_templates/ is skipped (persons are managed separately).
 
     Returns a list of newly added file paths (relative to data_dir).
     """
@@ -69,6 +116,12 @@ def merge_templates(data_dir: Path) -> list[str]:
         if src.is_symlink() or src.is_dir():
             continue
         rel = src.relative_to(TEMPLATES_DIR)
+        # Skip person_templates/ and bootstrap.md (per-person only)
+        parts = rel.parts
+        if parts[0] == "person_templates":
+            continue
+        if rel.name == "bootstrap.md" and len(parts) == 1:
+            continue
         dest = data_dir / rel
         if not dest.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -82,7 +135,7 @@ def merge_templates(data_dir: Path) -> list[str]:
     return added
 
 
-def reset_runtime_dir(data_dir: Path) -> Path:
+def reset_runtime_dir(data_dir: Path, *, skip_persons: bool = False) -> Path:
     """Delete the runtime directory entirely and re-initialize from templates.
 
     This is a destructive operation — all user data (episodes, knowledge,
@@ -92,11 +145,12 @@ def reset_runtime_dir(data_dir: Path) -> Path:
     if data_dir.exists():
         shutil.rmtree(data_dir)
         logger.info("Removed runtime directory: %s", data_dir)
-    return ensure_runtime_dir()
+    return ensure_runtime_dir(skip_persons=skip_persons)
 
 
 def _ensure_runtime_only_dirs(data_dir: Path) -> None:
     """Create runtime-only directories that have no template counterpart."""
+    (data_dir / "persons").mkdir(parents=True, exist_ok=True)
     (data_dir / "shared" / "inbox").mkdir(parents=True, exist_ok=True)
     (data_dir / "shared" / "users").mkdir(parents=True, exist_ok=True)
     (data_dir / "tmp" / "attachments").mkdir(parents=True, exist_ok=True)

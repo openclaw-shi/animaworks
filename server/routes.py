@@ -238,6 +238,150 @@ def create_router() -> APIRouter:
             ],
         }
 
+    @api.get("/persons/{name}/conversation/full")
+    async def get_conversation_full(
+        name: str, request: Request, limit: int = 50, offset: int = 0
+    ):
+        """View full conversation history (not truncated)."""
+        person = request.app.state.persons.get(name)
+        if not person:
+            return {"error": "Person not found"}
+        from core.conversation_memory import ConversationMemory
+
+        conv = ConversationMemory(person.person_dir, person.model_config)
+        state = conv.load()
+
+        total = len(state.turns)
+        end = max(0, total - offset)
+        start = max(0, end - limit)
+        paginated = state.turns[start:end]
+
+        return {
+            "person": name,
+            "total_turn_count": state.total_turn_count,
+            "raw_turns": total,
+            "compressed_turn_count": state.compressed_turn_count,
+            "has_summary": bool(state.compressed_summary),
+            "compressed_summary": state.compressed_summary or "",
+            "total_token_estimate": state.total_token_estimate,
+            "turns": [
+                {
+                    "role": t.role,
+                    "content": t.content,
+                    "timestamp": t.timestamp,
+                    "token_estimate": t.token_estimate,
+                }
+                for t in paginated
+            ],
+        }
+
+    @api.get("/persons/{name}/sessions")
+    async def list_sessions(name: str, request: Request):
+        """List all available sessions: active conversation, archives, episodes."""
+        person = request.app.state.persons.get(name)
+        if not person:
+            return {"error": "Person not found"}
+        from core.conversation_memory import ConversationMemory
+        from core.shortterm_memory import ShortTermMemory
+
+        # Active conversation
+        conv = ConversationMemory(person.person_dir, person.model_config)
+        conv_state = conv.load()
+        active_conv = None
+        if conv_state.turns or conv_state.compressed_summary:
+            active_conv = {
+                "exists": True,
+                "turn_count": len(conv_state.turns),
+                "total_turn_count": conv_state.total_turn_count,
+                "last_timestamp": (
+                    conv_state.turns[-1].timestamp if conv_state.turns else ""
+                ),
+                "first_timestamp": (
+                    conv_state.turns[0].timestamp if conv_state.turns else ""
+                ),
+                "has_summary": bool(conv_state.compressed_summary),
+            }
+
+        # Archived sessions
+        stm = ShortTermMemory(person.person_dir)
+        archived = []
+        archive_dir = stm._archive_dir
+        if archive_dir.exists():
+            for json_file in sorted(archive_dir.glob("*.json"), reverse=True):
+                try:
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                    ts_str = json_file.stem
+                    archived.append(
+                        {
+                            "id": ts_str,
+                            "timestamp": data.get("timestamp", ts_str),
+                            "trigger": data.get("trigger", ""),
+                            "turn_count": data.get("turn_count", 0),
+                            "context_usage_ratio": data.get(
+                                "context_usage_ratio", 0
+                            ),
+                            "original_prompt_preview": data.get(
+                                "original_prompt", ""
+                            )[:200],
+                            "has_markdown": (
+                                archive_dir / f"{ts_str}.md"
+                            ).exists(),
+                        }
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        # Episodes
+        episodes = []
+        ep_dir = person.memory.episodes_dir
+        if ep_dir.exists():
+            for ep_file in sorted(ep_dir.glob("*.md"), reverse=True):
+                content = ep_file.read_text(encoding="utf-8")
+                episodes.append(
+                    {"date": ep_file.stem, "preview": content[:200]}
+                )
+
+        return {
+            "person": name,
+            "active_conversation": active_conv,
+            "archived_sessions": archived,
+            "episodes": episodes,
+        }
+
+    @api.get("/persons/{name}/sessions/{session_id}")
+    async def get_session_detail(
+        name: str, session_id: str, request: Request
+    ):
+        """Get archived session detail."""
+        person = request.app.state.persons.get(name)
+        if not person:
+            return {"error": "Person not found"}
+        from core.shortterm_memory import ShortTermMemory
+
+        stm = ShortTermMemory(person.person_dir)
+        archive_dir = stm._archive_dir
+        json_path = archive_dir / f"{session_id}.json"
+        md_path = archive_dir / f"{session_id}.md"
+
+        if not json_path.exists():
+            return {"error": "Session not found"}
+
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, TypeError):
+            return {"error": "Session data corrupted"}
+
+        markdown = ""
+        if md_path.exists():
+            markdown = md_path.read_text(encoding="utf-8")
+
+        return {
+            "person": name,
+            "session_id": session_id,
+            "data": data,
+            "markdown": markdown,
+        }
+
     @api.delete("/persons/{name}/conversation")
     async def clear_conversation(name: str, request: Request):
         """Clear conversation history for a fresh start."""

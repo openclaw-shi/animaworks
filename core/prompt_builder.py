@@ -61,6 +61,11 @@ def build_system_prompt(memory: MemoryManager) -> str:
         person_name=pd.name,
     ))
 
+    # Bootstrap instructions (highest priority after environment)
+    bootstrap = memory.read_bootstrap()
+    if bootstrap:
+        parts.append(bootstrap)
+
     company_vision = memory.read_company_vision()
     if company_vision:
         parts.append(company_vision)

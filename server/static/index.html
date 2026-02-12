@@ -45,6 +45,7 @@
       <nav class="right-tabs">
         <button class="right-tab active" data-tab="state">現在の状態</button>
         <button class="right-tab" data-tab="activity">アクティビティ</button>
+        <button class="right-tab" data-tab="history">会話履歴</button>
       </nav>
       <div class="right-tab-content" id="rightTabContent">
         <!-- State tab -->
@@ -55,6 +56,19 @@
         <div class="tab-pane" id="tabActivity" data-tab="activity">
           <div class="activity-feed" id="activityFeed">
             <div class="activity-empty">イベントを待機中...</div>
+          </div>
+        </div>
+        <!-- History tab -->
+        <div class="tab-pane" id="tabHistory" data-tab="history">
+          <div class="history-panel" id="historyPanel">
+            <div class="history-session-list" id="historySessionList">
+              <div class="loading-placeholder">パーソンを選択してください</div>
+            </div>
+            <div class="history-detail" id="historyDetail" style="display:none;">
+              <button class="memory-back-btn" id="historyBackBtn">&larr; 一覧に戻る</button>
+              <h3 class="history-detail-title" id="historyDetailTitle"></h3>
+              <div class="history-conversation" id="historyConversation"></div>
+            </div>
           </div>
         </div>
       </div>

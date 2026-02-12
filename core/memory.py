@@ -128,6 +128,9 @@ class MemoryManager:
             return cfg.api_key
         return os.environ.get(cfg.api_key_env)
 
+    def read_bootstrap(self) -> str:
+        return self._read(self.person_dir / "bootstrap.md")
+
     def read_today_episodes(self) -> str:
         path = self.episodes_dir / f"{date.today().isoformat()}.md"
         return self._read(path)
