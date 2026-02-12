@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core.memory import MemoryManager
 from core.paths import PROJECT_DIR, load_prompt
+from core.shortterm_memory import ShortTermMemory
 
 
 def _discover_other_persons(person_dir: Path) -> list[str]:
@@ -103,3 +104,18 @@ def build_system_prompt(memory: MemoryManager) -> str:
     parts.append(_build_messaging_section(pd, other_persons))
 
     return "\n\n---\n\n".join(parts)
+
+
+def inject_shortterm(
+    base_prompt: str,
+    shortterm: ShortTermMemory,
+) -> str:
+    """Append short-term memory content to the system prompt.
+
+    If the shortterm folder has a ``session_state.md``, its content is
+    appended after a separator so the agent can pick up where it left off.
+    """
+    md_content = shortterm.load_markdown()
+    if not md_content:
+        return base_prompt
+    return base_prompt + "\n\n---\n\n" + md_content

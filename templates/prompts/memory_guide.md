@@ -9,6 +9,7 @@
 | `{person_dir}/procedures/` | 手順書 | 作業の進め方 |
 | `{person_dir}/skills/` | スキル | 実行可能な能力・テンプレート付き手順 |
 | `{person_dir}/state/` | 現在の状態 | 今何をしているか |
+| `{person_dir}/shortterm/` | 短期記憶 | セッション引き継ぎ用の作業状態（一時的） |
 
 知識ファイル: {knowledge_list}
 エピソード: {episode_list}

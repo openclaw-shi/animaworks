@@ -21,6 +21,8 @@ class ModelConfig(BaseModel):
     max_turns: int = 20
     api_key_env: str = "ANTHROPIC_API_KEY"
     api_base_url: str | None = None  # e.g. http://localhost:11434/v1
+    context_threshold: float = 0.50  # short-term memory externalization threshold
+    max_chains: int = 2  # max auto-continuation sessions
 
 
 class PersonConfig(BaseModel):
@@ -55,6 +57,9 @@ class CycleResult(BaseModel):
     summary: str = ""
     duration_ms: int = 0
     timestamp: datetime = Field(default_factory=datetime.now)
+    context_usage_ratio: float = 0.0
+    session_chained: bool = False
+    total_turns: int = 0
 
 
 class PersonStatus(BaseModel):
