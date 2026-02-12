@@ -27,10 +27,44 @@ logger = logging.getLogger("animaworks")
 
 def cmd_init(args: argparse.Namespace) -> None:
     """Initialize the runtime data directory from templates."""
+    from core.init import merge_templates, reset_runtime_dir
+
     data_dir = get_data_dir()
-    if data_dir.exists() and not getattr(args, "force", False):
+
+    # --reset: complete deletion + re-initialization
+    if getattr(args, "reset", False):
+        if data_dir.exists():
+            answer = input(
+                f"WARNING: This will DELETE all data in {data_dir}\n"
+                f"  (episodes, knowledge, state, config — all will be lost)\n"
+                f"Continue? [yes/no]: "
+            )
+            if answer.strip().lower() != "yes":
+                print("Aborted.")
+                return
+        reset_runtime_dir(data_dir)
+        print(f"Runtime directory reset: {data_dir}")
+        return
+
+    # --force: safe merge (add missing files only)
+    if getattr(args, "force", False):
+        if not data_dir.exists():
+            ensure_runtime_dir()
+            print(f"Runtime directory initialized: {data_dir}")
+            return
+        added = merge_templates(data_dir)
+        if added:
+            print(f"Merged {len(added)} new file(s) from templates:")
+            for f in added:
+                print(f"  + {f}")
+        else:
+            print("Already up to date — no new template files to add.")
+        return
+
+    # Default: first-time only
+    if data_dir.exists():
         print(f"Runtime directory already exists: {data_dir}")
-        print("Use --force to re-initialize from templates.")
+        print("Use --force to merge new template files, or --reset to re-initialize.")
         return
     ensure_runtime_dir()
     print(f"Runtime directory initialized: {data_dir}")
@@ -307,7 +341,15 @@ def cli_main() -> None:
 
     # Init
     p_init = sub.add_parser("init", help="Initialize runtime directory from templates")
-    p_init.add_argument("--force", action="store_true", help="Re-initialize even if exists")
+    init_mode = p_init.add_mutually_exclusive_group()
+    init_mode.add_argument(
+        "--force", action="store_true",
+        help="Merge missing template files into existing runtime",
+    )
+    init_mode.add_argument(
+        "--reset", action="store_true",
+        help="DELETE runtime directory and re-initialize (dangerous)",
+    )
     p_init.set_defaults(func=cmd_init)
 
     # Start (integrated mode with supervisor)

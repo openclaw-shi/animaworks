@@ -41,15 +41,77 @@ def ensure_runtime_dir() -> Path:
             shutil.copy2(item, target)
 
     # Create runtime-only directories that have no template
-    (data_dir / "shared" / "inbox").mkdir(parents=True, exist_ok=True)
-    (data_dir / "tmp" / "attachments").mkdir(parents=True, exist_ok=True)
-    (data_dir / "common_skills").mkdir(parents=True, exist_ok=True)
+    _ensure_runtime_only_dirs(data_dir)
 
     # Generate default config.json
     _create_default_config(data_dir)
 
     logger.info("Runtime directory initialized: %s", data_dir)
     return data_dir
+
+
+def merge_templates(data_dir: Path) -> list[str]:
+    """Copy template files that don't exist in the runtime directory.
+
+    Walks the templates tree and copies any file that is missing from the
+    runtime data directory.  Existing files are never overwritten.
+
+    Returns a list of newly added file paths (relative to data_dir).
+    """
+    if not TEMPLATES_DIR.exists():
+        raise FileNotFoundError(
+            f"Templates directory not found: {TEMPLATES_DIR}. "
+            "Is the project installed correctly?"
+        )
+
+    added: list[str] = []
+    for src in TEMPLATES_DIR.rglob("*"):
+        if src.is_symlink() or src.is_dir():
+            continue
+        rel = src.relative_to(TEMPLATES_DIR)
+        dest = data_dir / rel
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            added.append(str(rel))
+            logger.info("Merged template file: %s", rel)
+
+    # Ensure runtime-only directories exist
+    _ensure_runtime_only_dirs(data_dir)
+
+    return added
+
+
+def reset_runtime_dir(data_dir: Path) -> Path:
+    """Delete the runtime directory entirely and re-initialize from templates.
+
+    This is a destructive operation — all user data (episodes, knowledge,
+    state, config) will be lost.
+    """
+    _validate_safe_path(data_dir)
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+        logger.info("Removed runtime directory: %s", data_dir)
+    return ensure_runtime_dir()
+
+
+def _ensure_runtime_only_dirs(data_dir: Path) -> None:
+    """Create runtime-only directories that have no template counterpart."""
+    (data_dir / "shared" / "inbox").mkdir(parents=True, exist_ok=True)
+    (data_dir / "tmp" / "attachments").mkdir(parents=True, exist_ok=True)
+    (data_dir / "common_skills").mkdir(parents=True, exist_ok=True)
+
+
+def _validate_safe_path(data_dir: Path) -> None:
+    """Guard against deleting dangerous paths (/, /home, symlinks, etc.)."""
+    resolved = data_dir.resolve()
+    if data_dir.is_symlink():
+        raise ValueError(f"Refusing to delete: {data_dir} is a symlink")
+    if resolved == Path.home() or resolved == Path("/") or resolved.parent == Path("/"):
+        raise ValueError(
+            f"Refusing to delete {resolved} — path looks too broad. "
+            "Check ANIMAWORKS_DATA_DIR."
+        )
 
 
 def _create_default_config(data_dir: Path) -> None:
