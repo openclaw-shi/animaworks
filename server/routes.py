@@ -543,6 +543,85 @@ def create_router() -> APIRouter:
             "total": len(persons),
         }
 
+    # ── Activity ───────────────────────────────────────────
+
+    @api.get("/activity/recent")
+    async def get_recent_activity(
+        request: Request, hours: int = 24, person: str | None = None,
+    ):
+        """Return recent activity events aggregated across persons."""
+        from datetime import date as date_type
+        from datetime import datetime, timedelta, timezone
+
+        from core.conversation_memory import ConversationMemory
+        from core.shortterm_memory import ShortTermMemory
+
+        persons = request.app.state.persons
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        events: list[dict] = []
+
+        target_persons = (
+            {person: persons[person]}
+            if person and person in persons
+            else persons
+        )
+
+        for name, p in target_persons.items():
+            # Short-term memory archives (session history)
+            stm = ShortTermMemory(p.person_dir)
+            archive_dir = stm._archive_dir
+            if archive_dir.exists():
+                for json_file in sorted(
+                    archive_dir.glob("*.json"), reverse=True,
+                ):
+                    try:
+                        data = json.loads(
+                            json_file.read_text(encoding="utf-8"),
+                        )
+                        ts_str = data.get("timestamp", "")
+                        ts = (
+                            datetime.fromisoformat(ts_str) if ts_str else None
+                        )
+                        if ts and ts.replace(tzinfo=timezone.utc) < cutoff:
+                            break  # Archive is descending; older entries follow
+                        events.append({
+                            "type": "session",
+                            "persons": [name],
+                            "timestamp": ts_str,
+                            "summary": (
+                                data.get("trigger", "")
+                                + ": "
+                                + data.get("original_prompt", "")[:80]
+                            ),
+                            "metadata": {
+                                "trigger": data.get("trigger", ""),
+                                "turn_count": data.get("turn_count", 0),
+                                "context_usage_ratio": data.get(
+                                    "context_usage_ratio", 0,
+                                ),
+                            },
+                        })
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        continue
+
+            # Conversation transcripts (today)
+            conv = ConversationMemory(p.person_dir, p.model_config)
+            today = date_type.today().isoformat()
+            messages = conv.load_transcript(today)
+            for msg in messages:
+                ts_str = msg.get("timestamp", "")
+                events.append({
+                    "type": "chat",
+                    "persons": [name],
+                    "timestamp": ts_str,
+                    "summary": (msg.get("content", ""))[:80],
+                    "metadata": {"role": msg.get("role", "")},
+                })
+
+        # Sort descending by timestamp, cap at 200 items
+        events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+        return {"events": events[:200]}
+
     # ── Assets ─────────────────────────────────────────────
 
     _ASSET_CONTENT_TYPES = {

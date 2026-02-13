@@ -9,9 +9,14 @@ import { initPerson, loadPersons, selectPerson, renderPersonSelector, renderStat
 import { initMemory, loadMemoryTab } from "./memory.js";
 import { initSession, loadSessions } from "./session.js";
 import { escapeHtml, renderSimpleMarkdown } from "./utils.js";
-import { initOffice, getDesks, highlightDesk, setCharacterClickHandler, getScene, registerClickTarget, setCharacterUpdateHook } from "./office3d.js";
-import { initCharacters, createCharacter, removeCharacter, updateCharacterState, updateAllCharacters } from "./character.js";
+import { initOffice, getDesks, highlightDesk, setCharacterClickHandler, getScene, registerClickTarget, setCharacterUpdateHook, getObstacles, getFloorDimensions } from "./office3d.js";
+import { initCharacters, createCharacter, removeCharacter, updateCharacterState, updateAllCharacters, getCharacterGroup, getCharacterHome } from "./character.js";
 import { initBustup, setCharacter, setExpression, setTalking, onClick as onBustupClick } from "./live2d.js";
+import { createNavGrid } from "./navigation.js";
+import { initMovement, registerCharacter, updateMovements, moveTo, moveToHome, stopMovement, isMoving } from "./movement.js";
+import { computePOIs, initIdleBehaviors, updateIdleBehaviors, cancelBehavior } from "./idle_behavior.js";
+import { initInteractions, showMessageEffect, showConversation, updateInteractions } from "./interactions.js";
+import { initTimeline, addTimelineEvent, loadHistory } from "./timeline.js";
 
 // ── DOM References ──────────────────────
 
@@ -114,7 +119,12 @@ async function initOfficeIfNeeded() {
     initCharacters(scene);
 
     // Register character animation update in the render loop
-    setCharacterUpdateHook(updateAllCharacters);
+    setCharacterUpdateHook((dt, elapsed) => {
+      updateAllCharacters(dt, elapsed);
+      updateMovements(dt);
+      updateIdleBehaviors(dt);
+      updateInteractions(dt);
+    });
 
     // Create characters at their dynamically assigned desk positions
     const desks = getDesks();
@@ -133,6 +143,32 @@ async function initOfficeIfNeeded() {
         updateCharacterState(p.name, animState);
       }
     }
+
+    // ── Navigation + Movement system init ──────────
+    const { width: floorW, depth: floorD } = getFloorDimensions();
+    const obstacles = getObstacles();
+    const navGrid = createNavGrid(floorW, floorD, obstacles);
+    initMovement(navGrid, floorW, floorD);
+
+    // Register all characters with the movement system
+    for (const p of persons) {
+      const group = getCharacterGroup(p.name);
+      const home = getCharacterHome(p.name);
+      if (group && home) {
+        registerCharacter(p.name, group, home);
+      }
+    }
+
+    // ── Interactions + Idle Behaviors + Timeline init ──────────
+    const movementSystem = { moveTo, moveToHome, stopMovement, isMoving };
+    const characterMap = Object.fromEntries(persons.map((p) => [p.name, true]));
+    initInteractions(scene, characterMap, movementSystem);
+
+    const pois = computePOIs(floorW, floorD);
+    initIdleBehaviors(characterMap, movementSystem, pois);
+
+    initTimeline(dom.officePanel, { showMessageEffect, showConversation });
+    loadHistory(24);
 
     // Handle character clicks → open conversation in right panel
     setCharacterClickHandler((personName) => {
@@ -475,16 +511,49 @@ function setupWebSocket() {
     addActivity("system", data.name, `Status: ${data.status}`);
   }));
 
+  // ── person.interaction — inter-person messaging visualization ──
+  wsUnsubscribers.push(onEvent("person.interaction", (data) => {
+    cancelBehavior(data.from_person);
+    cancelBehavior(data.to_person);
+
+    if (data.type === "message") {
+      showMessageEffect(data.from_person, data.to_person, data.summary || "");
+    }
+
+    addTimelineEvent({
+      id: Date.now().toString(),
+      type: "message",
+      persons: [data.from_person, data.to_person],
+      timestamp: new Date().toISOString(),
+      summary: `${data.from_person} → ${data.to_person}: ${data.summary || ""}`,
+      metadata: { text: data.summary || "" },
+    });
+  }));
+
   wsUnsubscribers.push(onEvent("person.heartbeat", (data) => {
     addActivity("heartbeat", data.name, data.summary || "heartbeat completed");
     const { selectedPerson } = getState();
     if (data.name === selectedPerson) {
       renderStatus(dom.paneState);
     }
+    addTimelineEvent({
+      id: Date.now().toString(),
+      type: "heartbeat",
+      persons: [data.name],
+      timestamp: new Date().toISOString(),
+      summary: data.summary || "heartbeat completed",
+    });
   }));
 
   wsUnsubscribers.push(onEvent("person.cron", (data) => {
     addActivity("cron", data.name, data.summary || `cron: ${data.job || ""}`);
+    addTimelineEvent({
+      id: Date.now().toString(),
+      type: "cron",
+      persons: [data.name],
+      timestamp: new Date().toISOString(),
+      summary: data.summary || `cron: ${data.job || ""}`,
+    });
   }));
 
   wsUnsubscribers.push(onEvent("chat.response", (data) => {
@@ -502,6 +571,13 @@ function setupWebSocket() {
       }
     }
     addActivity("chat", personName, msg.slice(0, 60));
+    addTimelineEvent({
+      id: Date.now().toString(),
+      type: "chat",
+      persons: [personName],
+      timestamp: new Date().toISOString(),
+      summary: msg.slice(0, 80),
+    });
   }));
 
   wsUnsubscribers.push(onEvent("person.assets_updated", async (data) => {

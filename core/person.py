@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -51,6 +51,12 @@ class DigitalPerson:
     def set_delegate_fn(self, fn: DelegateFn) -> None:
         """Inject a delegate callback so this person can delegate tasks."""
         self.agent.set_delegate_fn(fn)
+
+    def set_on_message_sent(
+        self, fn: Callable[[str, str, str], None],
+    ) -> None:
+        """Inject a callback fired after this person sends a message."""
+        self.agent.set_on_message_sent(fn)
 
     @property
     def needs_bootstrap(self) -> bool:

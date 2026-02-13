@@ -640,6 +640,67 @@ function buildPlant(scene, x, z, potMat, leafMat, potRadius, plantHeight) {
 }
 
 /**
+ * Build a bookshelf on the left wall.
+ * @param {THREE.Scene} scene
+ */
+function buildBookshelf(scene) {
+  const halfW = _floorWidth / 2;
+  const x = -halfW + 0.5;
+  const z = 0;
+
+  const shelfMat = lambert({ color: COLOR.shelf });
+
+  // Shelf frame
+  const frame = new THREE.Mesh(box(0.8, 1.8, 0.3), shelfMat);
+  frame.position.set(x, 0.9, z);
+  frame.castShadow = true;
+  scene.add(frame);
+
+  // Books (3 rows, different colours)
+  const bookColors = [COLOR.book1, COLOR.book2, COLOR.book3];
+  for (let row = 0; row < 3; row++) {
+    const book = new THREE.Mesh(
+      box(0.6, 0.15, 0.2),
+      lambert({ color: bookColors[row] }),
+    );
+    book.position.set(x, 0.4 + row * 0.5, z);
+    scene.add(book);
+  }
+}
+
+/**
+ * Build a kitchen corner with counter, coffee machine, and water server.
+ * @param {THREE.Scene} scene
+ */
+function buildKitchenCorner(scene) {
+  const halfW = _floorWidth / 2;
+  const halfD = _floorDepth / 2;
+  const x = halfW - 1.5;
+  const z = halfD - 1.5;
+
+  // Counter
+  const counterMat = lambert({ color: 0xcccccc });
+  const counter = new THREE.Mesh(box(0.8, 0.85, 0.4), counterMat);
+  counter.position.set(x, 0.425, z);
+  counter.castShadow = true;
+  scene.add(counter);
+
+  // Coffee machine
+  const machineMat = lambert({ color: 0x444444 });
+  const machine = new THREE.Mesh(box(0.2, 0.3, 0.2), machineMat);
+  machine.position.set(x - 0.15, 0.85 + 0.15, z);
+  machine.castShadow = true;
+  scene.add(machine);
+
+  // Water server
+  const waterMat = lambert({ color: 0x88aacc });
+  const water = new THREE.Mesh(cylinder(0.1, 0.1, 0.5, 12), waterMat);
+  water.position.set(x + 0.25, 0.85 + 0.25, z);
+  water.castShadow = true;
+  scene.add(water);
+}
+
+/**
  * Set up ambient and directional lighting.
  * @param {THREE.Scene} scene
  */
@@ -876,6 +937,8 @@ export function initOffice(container, persons = []) {
   buildDesks(_scene);
   buildConnectors(_scene, persons);
   buildDecorations(_scene);
+  buildBookshelf(_scene);
+  buildKitchenCorner(_scene);
   buildLighting(_scene);
 
   // Highlight mesh (shared, repositioned on highlight)
@@ -1060,4 +1123,45 @@ export function unregisterClickTarget(object) {
       _meshToName.delete(child.uuid);
     }
   });
+}
+
+/**
+ * Return obstacle data for navigation grid construction.
+ * Each obstacle is { cx, cz, hw, hd } (center, half-width, half-depth).
+ * @returns {{ cx: number, cz: number, hw: number, hd: number }[]}
+ */
+export function getObstacles() {
+  const obstacles = [];
+  const halfW = _floorWidth / 2;
+  const halfD = _floorDepth / 2;
+
+  // Desks
+  for (const pos of Object.values(_deskLayout)) {
+    obstacles.push({ cx: pos.x, cz: pos.z, hw: 0.8, hd: 0.5 });
+  }
+
+  // Corner plants
+  for (const [px, pz] of [[-halfW+1, -halfD+1],[halfW-1,-halfD+1],[-halfW+1,halfD-1],[halfW-1,halfD-1]]) {
+    obstacles.push({ cx: px, cz: pz, hw: 0.3, hd: 0.3 });
+  }
+  // Center plant
+  if (_floorWidth >= 14 && _floorDepth >= 10) {
+    obstacles.push({ cx: 0, cz: 0, hw: 0.4, hd: 0.4 });
+  }
+
+  // Bookshelf
+  obstacles.push({ cx: -halfW + 0.5, cz: 0, hw: 0.5, hd: 0.25 });
+
+  // Kitchen corner
+  obstacles.push({ cx: halfW - 1.5, cz: halfD - 1.5, hw: 0.5, hd: 0.35 });
+
+  return obstacles;
+}
+
+/**
+ * Return the floor dimensions.
+ * @returns {{ width: number, depth: number }}
+ */
+export function getFloorDimensions() {
+  return { width: _floorWidth, depth: _floorDepth };
 }

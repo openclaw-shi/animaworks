@@ -77,6 +77,28 @@ def create_app(persons_dir: Path, shared_dir: Path) -> FastAPI:
             lambda name, task, ctx=None, _p=persons: _delegate(_p, name, task, ctx)
         )
 
+    # Inject message-sent callback to broadcast person.interaction via WebSocket
+    def _on_message_sent(from_person: str, to_person: str, content: str) -> None:
+        import asyncio
+
+        event = {
+            "type": "person.interaction",
+            "data": {
+                "from_person": from_person,
+                "to_person": to_person,
+                "type": "message",
+                "summary": content[:200],
+            },
+        }
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(ws_manager.broadcast(event))
+        except RuntimeError:
+            logger.debug("No event loop for person.interaction broadcast")
+
+    for person in persons.values():
+        person.set_on_message_sent(_on_message_sent)
+
     app.state.persons = persons
     app.state.lifecycle = lifecycle
     app.state.ws_manager = ws_manager

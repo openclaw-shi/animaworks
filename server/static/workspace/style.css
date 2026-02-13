@@ -1253,3 +1253,98 @@ html, body {
     padding: 3px 6px;
   }
 }
+
+/* ── Timeline Panel ────────────────────────── */
+
+.ws-timeline {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: rgba(255,255,255,0.95);
+  border-top: 1px solid #ddd;
+  backdrop-filter: blur(8px);
+}
+
+.ws-timeline-bar {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.ws-timeline-bar .timeline-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.ws-timeline-bar .timeline-count {
+  font-size: 0.75rem;
+  color: #888;
+  background: #eee;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.ws-timeline-bar .timeline-toggle-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  color: #888;
+  cursor: pointer;
+}
+
+.ws-timeline-body {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ws-timeline-filters {
+  display: flex;
+  gap: 4px;
+  padding: 4px 16px 8px;
+}
+
+.tl-filter {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tl-filter:hover {
+  background: #f0f4ff;
+  color: #2563eb;
+}
+
+.tl-filter.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.ws-timeline-list .tl-event {
+  display: flex;
+  align-items: center;
+  padding: 4px 16px;
+  gap: 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 0.82rem;
+}
+
+.tl-event:hover {
+  background: #f8f4ee;
+}
+
+.tl-event.replaying {
+  background: #fff3cd;
+}

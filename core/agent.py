@@ -19,7 +19,7 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -86,6 +86,10 @@ class AgentCore:
     def set_delegate_fn(self, fn: DelegateFn) -> None:
         """Inject the delegate callback (called from server/app.py)."""
         self._tool_handler.delegate_fn = fn
+
+    def set_on_message_sent(self, fn: Callable[[str, str, str], None]) -> None:
+        """Inject a callback invoked after a send_message tool call."""
+        self._tool_handler.on_message_sent = fn
 
     # ── Model / mode helpers ───────────────────────────────
 

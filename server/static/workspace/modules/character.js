@@ -26,7 +26,7 @@ const CHARACTER_PROFILES = {
 /** All valid animation states. */
 const STATES = /** @type {const} */ ([
   "idle", "working", "thinking", "error",
-  "sleeping", "talking", "reporting", "success",
+  "sleeping", "talking", "reporting", "success", "walking",
 ]);
 
 /** Duration in seconds for lerp-based state transitions. */
@@ -48,6 +48,7 @@ const _STATE_ANIM_FILES = {
   success:   "anim_waving.glb",
   sleeping:  "anim_sitting.glb",
   error:     "anim_idle.glb",
+  walking:   "anim_walking.glb",
 };
 
 // ── Module State ──────────────────────
@@ -251,6 +252,11 @@ function _drawFace(ctx, expression, eyeColor) {
       ctx.beginPath();
       ctx.arc(cx, 37, 7, 0.1 * Math.PI, 0.9 * Math.PI);
       ctx.stroke();
+      break;
+    }
+    case "walking": {
+      // Same as idle (light smile)
+      _drawFace(ctx, "idle", eyeColor);
       break;
     }
     default: {
@@ -659,6 +665,32 @@ function _animSuccess(rec, dt, elapsed) {
   _updateSuccessParticles(rec, dt);
 }
 
+/**
+ * Walking: leg swing, arm swing, body bob and sway.
+ * @param {CharacterRecord} rec
+ * @param {number} _dt
+ * @param {number} elapsed
+ */
+function _animWalking(rec, _dt, elapsed) {
+  const { parts } = rec;
+
+  // Leg swing (alternating)
+  const legCycle = elapsed * 8;
+  parts.legL.rotation.x = Math.sin(legCycle) * 0.4;
+  parts.legR.rotation.x = Math.sin(legCycle + Math.PI) * 0.4;
+
+  // Arm counter-swing
+  parts.armL.rotation.x = Math.sin(legCycle + Math.PI) * 0.3;
+  parts.armR.rotation.x = Math.sin(legCycle) * 0.3;
+
+  // Subtle body bob
+  const baseY = rec.group.userData._baseY;
+  rec.group.position.y = baseY + Math.abs(Math.sin(legCycle * 2)) * 0.015;
+
+  // Subtle body sway
+  parts.body.rotation.z = Math.sin(legCycle) * 0.03;
+}
+
 // ── Animation Dispatch ──────────────────────
 
 /** @type {Record<string, (rec: CharacterRecord, dt: number, elapsed: number) => void>} */
@@ -671,6 +703,7 @@ const _animMap = {
   talking:   _animTalking,
   reporting: _animReporting,
   success:   _animSuccess,
+  walking:   _animWalking,
 };
 
 // ── Status Sprite Helpers ──────────────────────
@@ -1263,4 +1296,29 @@ export function disposeCharacters() {
   }
 
   _scene = null;
+}
+
+/**
+ * Get the character's Group directly (for movement control).
+ * @param {string} name
+ * @returns {THREE.Group | null}
+ */
+export function getCharacterGroup(name) {
+  const rec = _characters.get(name);
+  return rec ? rec.group : null;
+}
+
+/**
+ * Get the character's home position.
+ * @param {string} name
+ * @returns {THREE.Vector3 | null}
+ */
+export function getCharacterHome(name) {
+  const rec = _characters.get(name);
+  if (!rec) return null;
+  return new THREE.Vector3(
+    rec.group.userData._baseX,
+    rec.group.userData._baseY,
+    rec.group.userData._baseZ,
+  );
 }
