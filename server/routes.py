@@ -50,7 +50,7 @@ def create_router() -> APIRouter:
         result = []
         for p in persons.values():
             data = p.status.model_dump()
-            mc = p.config.model_config_data
+            mc = p.model_config
             data["role"] = mc.role
             data["supervisor"] = mc.supervisor
             result.append(data)
