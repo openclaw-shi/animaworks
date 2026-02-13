@@ -52,7 +52,7 @@ def migrate_to_config_json(data_dir: Path) -> None:
     Scans persons_dir for config.md files, parses them, collects credentials,
     and writes a unified config.json.
     """
-    from core.config import (
+    from core.config.models import (
         AnimaWorksConfig,
         CredentialConfig,
         PersonModelConfig,

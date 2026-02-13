@@ -12,7 +12,7 @@ from pathlib import Path
 
 from core.memory import MemoryManager
 from core.paths import PROJECT_DIR, get_data_dir, load_prompt
-from core.shortterm_memory import ShortTermMemory
+from core.memory.shortterm import ShortTermMemory
 
 logger = logging.getLogger("animaworks.prompt_builder")
 
@@ -150,7 +150,7 @@ def build_system_prompt(
 
     # Inject dynamically generated external tools guide (filtered by registry)
     if permissions and "外部ツール" in permissions and (tool_registry or personal_tools):
-        from core.tool_guide import build_tools_guide
+        from core.tooling.guide import build_tools_guide
         tools_guide = build_tools_guide(tool_registry or [], personal_tools)
         if tools_guide:
             parts.append(tools_guide)

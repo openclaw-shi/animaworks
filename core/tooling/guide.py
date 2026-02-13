@@ -100,7 +100,7 @@ def load_tool_schemas(
     Returns:
         List of canonical-format tool schemas.
     """
-    from core.tool_schemas import load_external_schemas
+    from core.tooling.schemas import load_external_schemas
 
     schemas = load_external_schemas(tool_registry)
 

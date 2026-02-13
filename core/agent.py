@@ -24,14 +24,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core.context_tracker import ContextTracker
+from core.prompt.context import ContextTracker
 from core.memory import MemoryManager
 from core.messenger import Messenger
 from core.paths import load_prompt
-from core.prompt_builder import build_system_prompt, inject_shortterm
+from core.prompt.builder import build_system_prompt, inject_shortterm
 from core.schemas import CycleResult, ModelConfig
-from core.shortterm_memory import SessionState, ShortTermMemory
-from core.tool_handler import DelegateFn, ToolHandler
+from core.memory.shortterm import SessionState, ShortTermMemory
+from core.tooling.handler import DelegateFn, ToolHandler
 
 logger = logging.getLogger("animaworks.agent")
 

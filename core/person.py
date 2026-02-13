@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.agent import AgentCore, DelegateFn
-from core.conversation_memory import ConversationMemory
+from core.memory.conversation import ConversationMemory
 from core.memory import MemoryManager
 from core.messenger import Messenger
 from core.paths import load_prompt

@@ -13,7 +13,7 @@ import argparse
 import sys
 from typing import Any
 
-from core.config import (
+from core.config.models import (
     AnimaWorksConfig,
     CredentialConfig,
     PersonModelConfig,

@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from core.conversation_memory import ConversationMemory, ConversationTurn
+from core.memory.conversation import ConversationMemory, ConversationTurn
 from core.schemas import ModelConfig
 from tests.helpers.mocks import (
     make_litellm_response,

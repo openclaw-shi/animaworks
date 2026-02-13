@@ -23,7 +23,7 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
-from core.external_tools import ExternalToolDispatcher
+from core.tooling.dispatch import ExternalToolDispatcher
 from core.memory import MemoryManager
 from core.messenger import Messenger
 

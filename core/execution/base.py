@@ -15,9 +15,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from core.context_tracker import ContextTracker
+from core.prompt.context import ContextTracker
 from core.schemas import ModelConfig
-from core.shortterm_memory import ShortTermMemory
+from core.memory.shortterm import ShortTermMemory
 
 
 @dataclass

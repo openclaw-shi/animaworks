@@ -276,7 +276,7 @@ class ConversationMemory:
         if len(state.turns) < 4:
             return False
 
-        from core.context_tracker import _resolve_context_window
+        from core.prompt.context import _resolve_context_window
 
         window = _resolve_context_window(self.model_config.model)
         threshold_tokens = int(

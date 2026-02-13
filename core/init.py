@@ -219,6 +219,6 @@ def _maybe_migrate_config(data_dir: Path) -> None:
         return
 
     logger.info("Migrating legacy config.md files to config.json")
-    from core.config_migrate import migrate_to_config_json
+    from core.config.migrate import migrate_to_config_json
 
     migrate_to_config_json(data_dir)
