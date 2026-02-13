@@ -898,6 +898,253 @@ html, body {
   padding: 20px 12px;
 }
 
+/* ── View Mode Tabs ────────────────────── */
+
+.ws-view-tabs {
+  display: flex;
+  gap: 2px;
+  background: #f0f0f0;
+  border-radius: 8px;
+  padding: 2px;
+  margin-left: 12px;
+}
+
+.view-tab {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #666;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-tab:hover {
+  color: #333;
+}
+
+.view-tab.active {
+  background: #fff;
+  color: #2563eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* ── 3D Office Panel ────────────────────── */
+
+.ws-office-panel {
+  position: relative;
+  background: #1a1a2e;
+}
+
+.ws-office-canvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.ws-office-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Conversation Overlay ────────────────── */
+
+.ws-conversation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ws-conv-container {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 1fr auto;
+  width: 90vw;
+  max-width: 960px;
+  height: 80vh;
+  max-height: 700px;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+.ws-conv-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.6rem;
+  cursor: pointer;
+  z-index: 10;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.ws-conv-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Status Panel (left) */
+.ws-conv-status {
+  grid-row: 1 / 3;
+  padding: 20px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ws-conv-person-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ws-conv-status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-conv-status-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+
+.ws-conv-status-value {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+}
+
+.ws-conv-actions {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+/* Character (center) */
+.ws-conv-character {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  position: relative;
+}
+
+.ws-conv-character canvas {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+}
+
+/* Dialogue (bottom) */
+.ws-conv-dialogue {
+  grid-column: 2;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-conv-speaker {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #93c5fd;
+}
+
+.ws-conv-text {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.6;
+  min-height: 2.4em;
+  max-height: 4.8em;
+  overflow-y: auto;
+}
+
+.ws-conv-input-area {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ws-conv-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.85rem;
+  resize: none;
+  outline: none;
+  min-height: 36px;
+  max-height: 100px;
+  transition: border-color 0.15s;
+}
+
+.ws-conv-input:focus {
+  border-color: rgba(147, 197, 253, 0.5);
+}
+
+.ws-conv-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.ws-conv-send {
+  padding: 8px 16px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  align-self: flex-end;
+}
+
+.ws-conv-send:hover {
+  background: #1d4ed8;
+}
+
+.ws-conv-send:disabled {
+  background: #3b5998;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* ── Responsive ────────────────────── */
 
 @media (max-width: 900px) {
@@ -938,6 +1185,39 @@ html, body {
 
   .chat-bubble {
     max-width: 90%;
+  }
+
+  .ws-view-tabs {
+    margin-left: 0;
+  }
+
+  .ws-conversation-overlay .ws-conv-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    width: 95vw;
+    height: 90vh;
+  }
+
+  .ws-conv-status {
+    grid-row: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  .ws-conv-person-name {
+    width: 100%;
+    padding-bottom: 8px;
+  }
+
+  .ws-conv-status-section {
+    flex: 1;
+    min-width: 100px;
   }
 }
 

@@ -6,6 +6,14 @@
   <title>AnimaWorks Workspace</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="/shared/favicon.ico">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://esm.sh/three@0.172.0",
+      "three/addons/": "https://esm.sh/three@0.172.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
 
@@ -21,6 +29,10 @@
         <span class="ws-title">AnimaWorks</span>
         <span class="ws-subtitle">Workspace</span>
       </div>
+      <div class="ws-view-tabs" id="wsViewTabs">
+        <button class="view-tab active" data-view="chat" id="wsViewChat">チャット</button>
+        <button class="view-tab" data-view="office" id="wsViewOffice">オフィス</button>
+      </div>
       <div class="ws-header-center" id="wsPersonSelector"></div>
       <div class="ws-header-right">
         <div class="ws-system-status" id="wsSystemStatus">
@@ -34,6 +46,11 @@
 
     <!-- Main Layout -->
     <div class="ws-layout">
+
+      <!-- Left: 3D Office (hidden initially) -->
+      <div class="ws-panel-main ws-office-panel hidden" id="wsOfficePanel">
+        <div class="ws-office-canvas" id="wsOfficeCanvas"></div>
+      </div>
 
       <!-- Left: Chat -->
       <main class="ws-panel-main" id="wsChatPanel"></main>
@@ -57,6 +74,50 @@
         <!-- Memory Browser -->
         <div class="ws-memory-panel" id="wsMemoryPanel"></div>
       </aside>
+    </div>
+
+    <!-- ── Conversation Overlay (Visual Novel) ──── -->
+    <div class="ws-conversation-overlay hidden" id="wsConversationOverlay">
+      <div class="ws-conv-container">
+        <!-- Close button -->
+        <button class="ws-conv-close" id="wsConvClose">&times;</button>
+
+        <!-- Left: Status Panel -->
+        <div class="ws-conv-status" id="wsConvStatus">
+          <div class="ws-conv-person-name" id="wsConvPersonName"></div>
+          <div class="ws-conv-status-section">
+            <div class="ws-conv-status-label">🧠 頭脳</div>
+            <div class="ws-conv-status-value" id="wsConvBrain">—</div>
+          </div>
+          <div class="ws-conv-status-section">
+            <div class="ws-conv-status-label">🏠 住処</div>
+            <div class="ws-conv-status-value" id="wsConvLocation">—</div>
+          </div>
+          <div class="ws-conv-status-section">
+            <div class="ws-conv-status-label">📋 現在のタスク</div>
+            <div class="ws-conv-status-value" id="wsConvTask">—</div>
+          </div>
+          <div class="ws-conv-status-section">
+            <div class="ws-conv-status-label">📜 最近の行動</div>
+            <div class="ws-conv-status-value ws-conv-actions" id="wsConvActions">—</div>
+          </div>
+        </div>
+
+        <!-- Center: Character Bust-up -->
+        <div class="ws-conv-character">
+          <canvas id="wsConvCanvas" width="400" height="500"></canvas>
+        </div>
+
+        <!-- Bottom: Dialogue -->
+        <div class="ws-conv-dialogue">
+          <div class="ws-conv-speaker" id="wsConvSpeaker"></div>
+          <div class="ws-conv-text" id="wsConvText"></div>
+          <div class="ws-conv-input-area">
+            <textarea class="ws-conv-input" id="wsConvInput" placeholder="メッセージを入力..." rows="1"></textarea>
+            <button class="ws-conv-send" id="wsConvSend">送信</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

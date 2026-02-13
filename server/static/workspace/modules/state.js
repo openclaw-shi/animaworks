@@ -11,6 +11,11 @@ let state = {
   activeRightTab: "state",
   activeMemoryTab: "episodes",
   sessionList: null,
+  viewMode: "chat",              // "chat" | "office"
+  officeInitialized: false,      // Whether 3D office has been initialized
+  conversationOverlay: false,    // Whether conversation overlay is open
+  conversationPerson: null,      // Person name shown in conversation overlay
+  characterStates: {},           // Map: personName → animationState (idle/working/thinking/error/sleeping)
 };
 
 const listeners = new Set();
