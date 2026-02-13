@@ -1,0 +1,66 @@
+/* ============================================
+   Digital Person — Activity Feed Styles
+   ============================================ */
+
+.activity-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+.activity-empty {
+  color: #aaa;
+  font-size: 0.85rem;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.activity-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.1s;
+  font-size: 0.82rem;
+}
+
+.activity-entry:hover {
+  background: #fafafa;
+}
+
+.activity-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.activity-time {
+  font-size: 0.72rem;
+  color: #999;
+  flex-shrink: 0;
+  width: 50px;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-person {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.activity-summary {
+  color: #555;
+  word-wrap: break-word;
+}
