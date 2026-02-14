@@ -186,8 +186,40 @@ def _init_state_files(person_dir: Path) -> None:
         pending.write_text("", encoding="utf-8")
 
 
+def _should_create_bootstrap(person_dir: Path) -> bool:
+    """Check if bootstrap.md should be created for this person.
+
+    Bootstrap is needed when:
+    - identity.md doesn't exist
+    - identity.md exists but is empty or contains "未定義"
+    - character_sheet.md exists (will be processed by bootstrap)
+
+    Bootstrap is NOT needed when:
+    - identity.md exists and is fully defined (e.g., from template)
+
+    Returns:
+        True if bootstrap.md should be created, False otherwise.
+    """
+    identity = person_dir / "identity.md"
+    if not identity.exists():
+        return True
+
+    content = identity.read_text(encoding="utf-8")
+    if not content.strip() or "未定義" in content:
+        return True
+
+    if (person_dir / "character_sheet.md").exists():
+        return True
+
+    return False
+
+
 def _place_bootstrap(person_dir: Path) -> None:
-    """Copy the bootstrap template into the person directory."""
+    """Copy the bootstrap template into the person directory if needed."""
+    if not _should_create_bootstrap(person_dir):
+        logger.debug("Skipping bootstrap for %s (identity already defined)", person_dir)
+        return
+
     if BOOTSTRAP_TEMPLATE.exists():
         shutil.copy2(BOOTSTRAP_TEMPLATE, person_dir / "bootstrap.md")
         logger.debug("Placed bootstrap.md in %s", person_dir)

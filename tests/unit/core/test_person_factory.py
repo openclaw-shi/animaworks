@@ -15,6 +15,7 @@ from core.person_factory import (
     _extract_name_from_md,
     _init_state_files,
     _place_bootstrap,
+    _should_create_bootstrap,
     create_blank,
     create_from_md,
     create_from_template,
@@ -108,11 +109,55 @@ class TestInitStateFiles:
         assert ct.read_text(encoding="utf-8") == "status: busy\n"
 
 
+# ── _should_create_bootstrap ──────────────────────────────
+
+
+class TestShouldCreateBootstrap:
+    def test_no_identity(self, tmp_path):
+        """Bootstrap needed when identity.md doesn't exist."""
+        person_dir = tmp_path / "person"
+        person_dir.mkdir()
+        assert _should_create_bootstrap(person_dir) is True
+
+    def test_empty_identity(self, tmp_path):
+        """Bootstrap needed when identity.md is empty."""
+        person_dir = tmp_path / "person"
+        person_dir.mkdir()
+        (person_dir / "identity.md").write_text("", encoding="utf-8")
+        assert _should_create_bootstrap(person_dir) is True
+
+    def test_identity_with_undefined(self, tmp_path):
+        """Bootstrap needed when identity.md contains '未定義'."""
+        person_dir = tmp_path / "person"
+        person_dir.mkdir()
+        (person_dir / "identity.md").write_text("名前: 未定義\n職業: 未定義", encoding="utf-8")
+        assert _should_create_bootstrap(person_dir) is True
+
+    def test_character_sheet_exists(self, tmp_path):
+        """Bootstrap needed when character_sheet.md exists."""
+        person_dir = tmp_path / "person"
+        person_dir.mkdir()
+        (person_dir / "identity.md").write_text("# Defined identity", encoding="utf-8")
+        (person_dir / "character_sheet.md").write_text("# Character details", encoding="utf-8")
+        assert _should_create_bootstrap(person_dir) is True
+
+    def test_defined_identity_no_bootstrap(self, tmp_path):
+        """Bootstrap NOT needed when identity.md is fully defined."""
+        person_dir = tmp_path / "person"
+        person_dir.mkdir()
+        (person_dir / "identity.md").write_text(
+            "# Person Identity\n\nName: Alice\nRole: Developer",
+            encoding="utf-8"
+        )
+        assert _should_create_bootstrap(person_dir) is False
+
+
 # ── _place_bootstrap ──────────────────────────────────────
 
 
 class TestPlaceBootstrap:
     def test_copies_bootstrap(self, tmp_path):
+        """Bootstrap is copied when needed (no identity.md)."""
         person_dir = tmp_path / "person"
         person_dir.mkdir()
         bootstrap = tmp_path / "bootstrap.md"
@@ -127,6 +172,20 @@ class TestPlaceBootstrap:
         person_dir.mkdir()
         fake = tmp_path / "nonexistent_bootstrap.md"
         with patch("core.person_factory.BOOTSTRAP_TEMPLATE", fake):
+            _place_bootstrap(person_dir)
+        assert not (person_dir / "bootstrap.md").exists()
+
+    def test_skips_bootstrap_when_not_needed(self, tmp_path):
+        """Bootstrap is NOT copied when identity.md is fully defined."""
+        person_dir = tmp_path / "person"
+        person_dir.mkdir()
+        (person_dir / "identity.md").write_text(
+            "# Fully Defined\n\nName: Alice\nRole: Dev",
+            encoding="utf-8"
+        )
+        bootstrap = tmp_path / "bootstrap.md"
+        bootstrap.write_text("Bootstrap content", encoding="utf-8")
+        with patch("core.person_factory.BOOTSTRAP_TEMPLATE", bootstrap):
             _place_bootstrap(person_dir)
         assert not (person_dir / "bootstrap.md").exists()
 
