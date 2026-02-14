@@ -88,6 +88,7 @@ class LiteLLMExecutor(BaseExecutor):
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run the LiteLLM tool-use loop.
 

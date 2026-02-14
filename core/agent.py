@@ -242,6 +242,7 @@ class AgentCore:
             model_config=self.model_config,
             person_dir=self.person_dir,
             memory=self.memory,
+            messenger=self.messenger,
         )
 
     def _resolve_api_key(self) -> str | None:
@@ -281,7 +282,7 @@ class AgentCore:
 
         # ── Mode B: assisted (1-shot, no tools) ──────────
         if mode == "b":
-            result = await self._executor.execute(prompt=prompt)
+            result = await self._executor.execute(prompt=prompt, trigger=trigger)
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 "run_cycle END (assisted) trigger=%s duration_ms=%d",

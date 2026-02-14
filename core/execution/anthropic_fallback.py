@@ -74,6 +74,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run Anthropic SDK with tool_use loop."""
         import anthropic

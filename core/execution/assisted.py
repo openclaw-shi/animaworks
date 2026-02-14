@@ -10,11 +10,13 @@ from __future__ import annotations
 """Mode B executor: assisted (1-shot, framework handles memory I/O).
 
 The framework reads memory, injects context, calls the LLM once without
-tools, then records the episode and extracts knowledge.
+tools, then records the episode, extracts knowledge, and optionally
+sends reply/report messages on behalf of the person.
 """
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -22,10 +24,49 @@ from typing import Any
 from core.prompt.context import ContextTracker
 from core.execution.base import BaseExecutor, ExecutionResult
 from core.memory import MemoryManager
+from core.messenger import Messenger
 from core.schemas import ModelConfig
 from core.memory.shortterm import ShortTermMemory
 
 logger = logging.getLogger("animaworks.execution.assisted")
+
+
+# ── Post-call prompts ──────────────────────────────────────
+
+POST_CALL_PROMPT_MESSAGE = """\
+以下のやりとりを振り返り、回答してください。
+
+## 知識抽出
+このやりとりから学ぶべきことはありますか？
+あれば簡潔に書いてください。なければ「なし」と書いてください。
+
+## 返信判定
+受信メッセージに対して返信が必要ですか？
+- 質問・指示・依頼・確認事項がある → 「返信: （内容）」
+- お礼・挨拶・了解など会話の終了 → 「返信不要」
+"""
+
+POST_CALL_PROMPT_HEARTBEAT = """\
+以下のやりとりを振り返り、回答してください。
+
+## 知識抽出
+このやりとりから学ぶべきことはありますか？
+あれば簡潔に書いてください。なければ「なし」と書いてください。
+
+## 報告判定
+この結果を上司（{supervisor}）に報告する必要がありますか？
+- 異常・問題・重要な変化があった場合 → 「報告: （内容）」
+- 特に報告すべきことがない場合 → 「報告不要」
+"""
+
+
+@dataclass
+class PostCallResult:
+    """Result of the post-call LLM judgement."""
+
+    knowledge: str | None = None
+    send_needed: bool = False
+    send_content: str = ""
 
 
 class AssistedExecutor(BaseExecutor):
@@ -35,7 +76,8 @@ class AssistedExecutor(BaseExecutor):
       1. Pre-call:  inject identity + recent episodes + keyword-matched knowledge
       2. LLM 1-shot call (no tools)
       3. Post-call: record episode
-      4. Post-call: extract knowledge (additional 1-shot)
+      4. Post-call: knowledge extraction + send judgement (unified 1-shot)
+      5. If send needed: framework sends message on behalf of the person
     """
 
     def __init__(
@@ -43,9 +85,11 @@ class AssistedExecutor(BaseExecutor):
         model_config: ModelConfig,
         person_dir: Path,
         memory: MemoryManager,
+        messenger: Messenger | None = None,
     ) -> None:
         super().__init__(model_config, person_dir)
         self._memory = memory
+        self._messenger = messenger
 
     async def _call_llm(
         self,
@@ -75,15 +119,63 @@ class AssistedExecutor(BaseExecutor):
 
         return await litellm.acompletion(**kwargs)
 
+    async def _post_call(
+        self, trigger: str, prompt: str, reply: str,
+    ) -> PostCallResult:
+        """Post-call: knowledge extraction + send judgement in 1 LLM call."""
+        is_message = trigger.startswith("message:")
+        supervisor = self._model_config.supervisor or ""
+
+        if is_message:
+            post_prompt = POST_CALL_PROMPT_MESSAGE
+        else:
+            post_prompt = POST_CALL_PROMPT_HEARTBEAT.format(supervisor=supervisor)
+
+        extract_messages = [
+            {
+                "role": "user",
+                "content": (
+                    f"{post_prompt}\n\n"
+                    f"## やりとり\n質問: {prompt[:1000]}\n\n回答: {reply[:1000]}"
+                ),
+            }
+        ]
+        extract_resp = await self._call_llm(extract_messages)
+        text = extract_resp.choices[0].message.content or ""
+
+        result = PostCallResult()
+
+        # Parse knowledge extraction
+        knowledge_match = re.search(
+            r"## 知識抽出\s*\n(.+?)(?=\n## |\Z)", text, re.DOTALL,
+        )
+        if knowledge_match:
+            knowledge_text = knowledge_match.group(1).strip()
+            if knowledge_text and knowledge_text != "なし":
+                result.knowledge = knowledge_text
+
+        # Parse send judgement
+        reply_match = re.search(r"返信:\s*(.+)", text)
+        report_match = re.search(r"報告:\s*(.+)", text)
+        if reply_match:
+            result.send_needed = True
+            result.send_content = reply_match.group(1).strip()
+        elif report_match:
+            result.send_needed = True
+            result.send_content = report_match.group(1).strip()
+
+        return result
+
     async def execute(
         self,
         prompt: str,
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run the assisted execution flow."""
-        logger.info("_run_assisted START prompt_len=%d", len(prompt))
+        logger.info("_run_assisted START prompt_len=%d trigger=%s", len(prompt), trigger)
 
         # ── 1. Pre-call: gather context ──────────────────
         identity = self._memory.read_identity()
@@ -117,25 +209,31 @@ class AssistedExecutor(BaseExecutor):
         episode = f"- {ts} [assisted] prompt: {prompt[:200]}… → reply: {reply[:200]}…"
         self._memory.append_episode(episode)
 
-        # ── 4. Post-call: knowledge extraction ───────────
+        # ── 4. Post-call: knowledge extraction + send judgement ─
         try:
-            extract_messages = [
-                {
-                    "role": "user",
-                    "content": (
-                        "以下のやりとりから、今後の判断に役立つ教訓や事実があれば"
-                        "1〜3行で要約してください。なければ「なし」とだけ答えてください。\n\n"
-                        f"質問: {prompt[:1000]}\n\n回答: {reply[:1000]}"
-                    ),
-                }
-            ]
-            extract_resp = await self._call_llm(extract_messages)
-            extracted = extract_resp.choices[0].message.content or ""
-            if extracted.strip() and extracted.strip() != "なし":
+            post = await self._post_call(trigger, prompt, reply)
+
+            if post.knowledge:
                 topic = datetime.now().strftime("learned_%Y%m%d_%H%M%S")
-                self._memory.write_knowledge(topic, extracted.strip())
-                logger.info("Knowledge extracted: %s", extracted[:100])
+                self._memory.write_knowledge(topic, post.knowledge)
+                logger.info("Knowledge extracted: %s", post.knowledge[:100])
+
+            # ── 5. Send message on behalf of the person ──
+            if post.send_needed and self._messenger:
+                if trigger.startswith("message:"):
+                    sender = trigger.split(":", 1)[1]
+                    self._messenger.send(to=sender, content=post.send_content)
+                    logger.info("Mode B auto-reply sent to %s", sender)
+                elif self._model_config.supervisor:
+                    self._messenger.send(
+                        to=self._model_config.supervisor,
+                        content=post.send_content,
+                    )
+                    logger.info(
+                        "Mode B auto-report sent to %s",
+                        self._model_config.supervisor,
+                    )
         except Exception:
-            logger.debug("Knowledge extraction failed", exc_info=True)
+            logger.debug("Post-call processing failed", exc_info=True)
 
         return ExecutionResult(text=reply)
