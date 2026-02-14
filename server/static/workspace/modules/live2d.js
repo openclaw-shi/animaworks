@@ -35,7 +35,7 @@ export function setLive2dAppearance(name, appearance) {
 }
 
 /** Valid expression names. */
-const EXPRESSIONS = ["normal", "happy", "troubled", "angry", "surprised", "thinking"];
+const EXPRESSIONS = ["neutral", "smile", "laugh", "troubled", "surprised", "thinking", "embarrassed"];
 
 // ── Private State ──────────────────────
 
@@ -58,10 +58,10 @@ let _characterName = null;
 let _profile = null;
 
 /** @type {string} */
-let _expression = "normal";
+let _expression = "neutral";
 
 /** @type {string} */
-let _prevExpression = "normal";
+let _prevExpression = "neutral";
 
 /** @type {number} */
 let _expressionTransitionStart = 0;
@@ -74,6 +74,9 @@ let _silhouetteMode = false;
 
 /** @type {HTMLImageElement|null} — bust-up image element (shown when _imageMode=true) */
 let _bustupImg = null;
+
+/** @type {Object<string, string>} — expression name → image URL map for multi-expression support */
+let _bustupImages = {};
 
 /** @type {boolean} */
 let _isTalking = false;
@@ -598,9 +601,10 @@ function drawHairFront(prof, headCx, headCy, headRx, headRy) {
  */
 function getExpressionDrawers(expr) {
   switch (expr) {
-    case "happy":    return { drawEyes: drawEyesHappy, drawEyebrows: drawEyebrowsHappy, drawMouth: drawMouthHappy, drawExtras: drawExtrasHappy };
+    case "smile":    return { drawEyes: drawEyesHappy, drawEyebrows: drawEyebrowsHappy, drawMouth: drawMouthHappy, drawExtras: drawExtrasHappy };
+    case "laugh":    return { drawEyes: drawEyesHappy, drawEyebrows: drawEyebrowsHappy, drawMouth: drawMouthHappy, drawExtras: drawExtrasHappy };
     case "troubled": return { drawEyes: drawEyesTroubled, drawEyebrows: drawEyebrowsTroubled, drawMouth: drawMouthTroubled, drawExtras: drawExtrasTroubled };
-    case "angry":    return { drawEyes: drawEyesAngry, drawEyebrows: drawEyebrowsAngry, drawMouth: drawMouthAngry, drawExtras: drawExtrasNone };
+    case "embarrassed": return { drawEyes: drawEyesTroubled, drawEyebrows: drawEyebrowsHappy, drawMouth: drawMouthNormal, drawExtras: drawExtrasHappy };
     case "surprised":return { drawEyes: drawEyesSurprised, drawEyebrows: drawEyebrowsSurprised, drawMouth: drawMouthSurprised, drawExtras: drawExtrasNone };
     case "thinking": return { drawEyes: drawEyesThinking, drawEyebrows: drawEyebrowsThinking, drawMouth: drawMouthThinking, drawExtras: drawExtrasThinking };
     default:         return { drawEyes: drawEyesNormal, drawEyebrows: drawEyebrowsNormal, drawMouth: drawMouthNormal, drawExtras: drawExtrasNone };
@@ -1491,8 +1495,8 @@ export function disposeBustup() {
   _ctx = null;
   _characterName = null;
   _profile = null;
-  _expression = "normal";
-  _prevExpression = "normal";
+  _expression = "neutral";
+  _prevExpression = "neutral";
   _isTalking = false;
   _clickCallback = null;
   _imageMode = false;
@@ -1515,6 +1519,7 @@ export async function setCharacter(name) {
     _characterName = null;
     _profile = null;
     _silhouetteMode = false;
+    _bustupImages = {};
     _switchToCanvasMode();
     return;
   }
@@ -1524,24 +1529,34 @@ export async function setCharacter(name) {
   _profile = _profileCache.get(key) || generateProfile(key);
 
   // Reset expression
-  _expression = "normal";
-  _prevExpression = "normal";
+  _expression = "neutral";
+  _prevExpression = "neutral";
 
-  // Check for AI-generated bust-up image
-  try {
-    const url = await probeAsset(key, "avatar_bustup.png");
-    if (url) {
-      _silhouetteMode = false;
-      _switchToImageMode(url);
-      return;
+  // Preload all expression images
+  _bustupImages = {};
+  for (const expr of EXPRESSIONS) {
+    try {
+      const filename = expr === "neutral"
+        ? "avatar_bustup.png"
+        : `avatar_bustup_${expr}.png`;
+      const url = await probeAsset(key, filename);
+      if (url) {
+        _bustupImages[expr] = url;
+      }
+    } catch {
+      // expression image not available — skip
     }
-  } catch {
-    // probe failed — fall through to silhouette
   }
 
-  // No image asset — show coloured silhouette placeholder
-  _silhouetteMode = true;
-  _switchToCanvasMode();
+  // Default image not found — fall back to silhouette
+  if (!_bustupImages["neutral"]) {
+    _silhouetteMode = true;
+    _switchToCanvasMode();
+    return;
+  }
+
+  _silhouetteMode = false;
+  _switchToImageMode(_bustupImages["neutral"]);
 }
 
 /**
@@ -1581,13 +1596,13 @@ function _switchToCanvasMode() {
 
 /**
  * Change the character's facial expression with a brief cross-fade transition.
- * @param {string} expression - One of: 'normal', 'happy', 'troubled', 'angry', 'surprised', 'thinking'
+ * @param {string} expression - One of: 'neutral', 'smile', 'laugh', 'troubled', 'surprised', 'thinking', 'embarrassed'
  */
 export function setExpression(expression) {
-  const expr = (expression || "normal").toLowerCase();
+  const expr = (expression || "neutral").toLowerCase();
   if (!EXPRESSIONS.includes(expr)) {
-    console.warn(`Unknown expression "${expression}", falling back to "normal"`);
-    return setExpression("normal");
+    console.warn(`Unknown expression "${expression}", falling back to "neutral"`);
+    return setExpression("neutral");
   }
 
   if (expr === _expression) return;
@@ -1595,6 +1610,14 @@ export function setExpression(expression) {
   _prevExpression = _expression;
   _expression = expr;
   _expressionTransitionStart = performance.now();
+
+  // Switch image in image mode
+  if (_imageMode && _bustupImg) {
+    const url = _bustupImages[expr] || _bustupImages["neutral"];
+    if (url) {
+      _bustupImg.src = url;
+    }
+  }
 }
 
 /**

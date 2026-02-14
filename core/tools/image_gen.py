@@ -62,6 +62,65 @@ _CHIBI_PROMPT = (
     "Same outfit colors and features. White background, full body, anime style."
 )
 
+# Expression-specific prompts for bustup image variants
+_EXPRESSION_PROMPTS: dict[str, str] = {
+    "neutral": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Calm neutral expression, relaxed posture, looking at viewer. "
+        "Anime illustration style, soft lighting."
+    ),
+    "smile": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Gentle warm smile, eyes slightly softened, "
+        "body leaning slightly forward as if engaged in conversation. "
+        "Anime illustration style, soft lighting."
+    ),
+    "laugh": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Bright joyful laugh, eyes squeezed happily, mouth open in a smile, "
+        "one hand near mouth or chest, body slightly tilted with amusement. "
+        "Anime illustration style, soft lighting."
+    ),
+    "troubled": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Worried troubled expression, eyebrows furrowed and slightly raised, "
+        "head tilted to one side, one hand near chin or neck in an uncertain gesture. "
+        "Anime illustration style, soft lighting."
+    ),
+    "surprised": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Genuinely surprised expression, eyes wide open, eyebrows raised high, "
+        "mouth slightly open, body leaning back slightly, hands raised near chest. "
+        "Anime illustration style, soft lighting."
+    ),
+    "thinking": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Thoughtful pondering expression, looking slightly upward, "
+        "one hand on chin or touching cheek, contemplative pose. "
+        "Anime illustration style, soft lighting."
+    ),
+    "embarrassed": (
+        "Portrait of the same character from chest up. "
+        "Same outfit, same colors, same features. "
+        "Shy embarrassed expression, light blush on cheeks, "
+        "eyes averted to the side, one hand fidgeting near face or hair. "
+        "Anime illustration style, soft lighting."
+    ),
+}
+
+from core.schemas import VALID_EMOTIONS as _VALID_EXPRESSION_NAMES
+
+# Verify prompts cover all valid emotions
+assert set(_EXPRESSION_PROMPTS.keys()) == _VALID_EXPRESSION_NAMES, (
+    f"Expression prompts mismatch: {set(_EXPRESSION_PROMPTS.keys())} != {_VALID_EXPRESSION_NAMES}"
+)
+
 # Default animation presets for office digital persons
 # See https://docs.meshy.ai/api/animation-library for full catalog
 _DEFAULT_ANIMATIONS: dict[str, int] = {
@@ -604,6 +663,7 @@ class PipelineResult:
 
     fullbody_path: Path | None = None
     bustup_path: Path | None = None
+    bustup_paths: dict[str, Path] = field(default_factory=dict)
     chibi_path: Path | None = None
     model_path: Path | None = None
     rigged_model_path: Path | None = None
@@ -615,6 +675,7 @@ class PipelineResult:
         return {
             "fullbody": str(self.fullbody_path) if self.fullbody_path else None,
             "bustup": str(self.bustup_path) if self.bustup_path else None,
+            "bustup_expressions": {k: str(v) for k, v in self.bustup_paths.items()},
             "chibi": str(self.chibi_path) if self.chibi_path else None,
             "model": str(self.model_path) if self.model_path else None,
             "rigged_model": str(self.rigged_model_path) if self.rigged_model_path else None,
@@ -659,6 +720,57 @@ class ImageGenPipeline:
         self._assets_dir = person_dir / "assets"
         self._config = config or ImageGenConfig()
 
+    def generate_bustup_expression(
+        self,
+        reference_image: bytes,
+        expression: str,
+        skip_existing: bool = True,
+    ) -> Path | None:
+        """Generate a single expression variant of the bustup image.
+
+        Args:
+            reference_image: Full-body reference image bytes.
+            expression: Expression name (e.g. "smile", "troubled").
+            skip_existing: Skip if output file already exists.
+
+        Returns:
+            Path to generated image, or None on failure.
+        """
+        if expression not in _VALID_EXPRESSION_NAMES:
+            logger.warning("Unknown expression: %s", expression)
+            return None
+
+        output_filename = (
+            "avatar_bustup.png" if expression == "neutral"
+            else f"avatar_bustup_{expression}.png"
+        )
+        output_path = self._assets_dir / output_filename
+
+        if skip_existing and output_path.exists():
+            logger.info("Skipping existing: %s", output_path)
+            return output_path
+
+        prompt = _EXPRESSION_PROMPTS[expression]
+
+        # Apply style prefix/suffix
+        if self._config.style_prefix:
+            prompt = self._config.style_prefix + prompt
+        if self._config.style_suffix:
+            prompt = prompt + self._config.style_suffix
+
+        self._assets_dir.mkdir(parents=True, exist_ok=True)
+
+        kontext = FluxKontextClient()
+        result_bytes = kontext.generate_from_reference(
+            reference_image=reference_image,
+            prompt=prompt,
+            aspect_ratio="3:4",
+        )
+
+        output_path.write_bytes(result_bytes)
+        logger.info("Generated expression '%s': %s", expression, output_path)
+        return output_path
+
     def generate_all(
         self,
         prompt: str,
@@ -666,6 +778,7 @@ class ImageGenPipeline:
         skip_existing: bool = True,
         steps: list[str] | None = None,
         animations: dict[str, int] | None = None,
+        expressions: list[str] | None = None,
     ) -> PipelineResult:
         """Run the 6-step pipeline synchronously.
 
@@ -756,25 +869,25 @@ class ImageGenPipeline:
         chibi_bytes: bytes | None = None
 
         if "bustup" in enabled:
-            bustup_path = self._assets_dir / self.ASSET_NAMES["bustup"]
-            if skip_existing and bustup_path.exists():
-                result.skipped.append("bustup")
-                result.bustup_path = bustup_path
-            else:
+            expr_list = expressions or ["neutral", "smile", "laugh", "troubled", "surprised"]
+            logger.info("Step 2: Generating bustup expressions: %s", expr_list)
+            for expr in expr_list:
                 try:
-                    logger.info("Step 2: Generating bust-up with Flux Kontext …")
-                    kontext = FluxKontextClient()
-                    bustup_bytes = kontext.generate_from_reference(
+                    path = self.generate_bustup_expression(
                         reference_image=fullbody_bytes,
-                        prompt=_BUSTUP_PROMPT,
-                        aspect_ratio="3:4",
+                        expression=expr,
+                        skip_existing=skip_existing,
                     )
-                    bustup_path.write_bytes(bustup_bytes)
-                    result.bustup_path = bustup_path
-                    logger.info("Step 2 complete: %s", bustup_path)
+                    if path:
+                        result.bustup_paths[expr] = path
+                        if expr == "neutral":
+                            result.bustup_path = path
                 except Exception as exc:
-                    result.errors.append(f"bustup: {exc}")
-                    logger.error("Step 2 failed: %s", exc)
+                    result.errors.append(f"bustup_{expr}: {exc}")
+                    logger.error("Bustup expression '%s' failed: %s", expr, exc)
+            if not result.bustup_path and result.bustup_paths:
+                result.bustup_path = next(iter(result.bustup_paths.values()))
+            logger.info("Step 2 complete: %d expressions generated", len(result.bustup_paths))
 
         if "chibi" in enabled:
             chibi_path = self._assets_dir / self.ASSET_NAMES["chibi"]
@@ -968,6 +1081,21 @@ def get_tool_schemas() -> list[dict]:
                             "If true, skip steps whose output file already exists."
                         ),
                         "default": True,
+                    },
+                    "expressions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "neutral", "smile", "laugh",
+                                "troubled", "surprised", "thinking",
+                                "embarrassed",
+                            ],
+                        },
+                        "description": (
+                            "Which bustup expressions to generate. "
+                            "Default: neutral, smile, laugh, troubled, surprised."
+                        ),
                     },
                 },
                 "required": ["prompt"],

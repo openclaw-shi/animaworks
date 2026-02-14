@@ -228,14 +228,14 @@ async function openConversation(personName) {
 
     onBustupClick(() => {
       setExpression("surprised");
-      setTimeout(() => setExpression("happy"), 1200);
-      setTimeout(() => setExpression("normal"), 2500);
+      setTimeout(() => setExpression("smile"), 1200);
+      setTimeout(() => setExpression("neutral"), 2500);
     });
   }
 
   // Set character (may load AI-generated bust-up image) and expression
   await setCharacter(personName);
-  setExpression("normal");
+  setExpression("neutral");
 
   // Load and render chat history
   loadAndRenderConvMessages(personName);
@@ -375,7 +375,7 @@ async function sendConversationMessage() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     setTalking(true);
-    setExpression("normal");
+    setExpression("neutral");
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -399,11 +399,12 @@ async function sendConversationMessage() {
           updateStreamingBubble(streamingMsg);
         } else if (evt === "tool_end") {
           streamingMsg.activeTool = null;
-          setExpression("normal");
+          setExpression("neutral");
           updateStreamingBubble(streamingMsg);
         } else if (evt === "done") {
-          setExpression("happy");
-          setTimeout(() => setExpression("normal"), 2000);
+          const emotion = data.emotion || "neutral";
+          setExpression(emotion);
+          setTimeout(() => setExpression("neutral"), 3000);
         } else if (evt === "error") {
           setExpression("troubled");
           if (data.error || data.message) {
@@ -506,12 +507,6 @@ function setupWebSocket() {
       const animState = mapPersonStatusToAnim(data.status);
       updateCharacterState(data.name, animState);
       setState({ characterStates: { ...getState().characterStates, [data.name]: animState } });
-    }
-    // Update bust-up expression if conversation is open for this person
-    if (getState().conversationPerson === data.name) {
-      const animState = mapPersonStatusToAnim(data.status);
-      if (animState === "error") setExpression("troubled");
-      else if (animState === "working") setExpression("thinking");
     }
     addActivity("system", data.name, `Status: ${data.status}`);
   }));

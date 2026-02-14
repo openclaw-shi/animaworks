@@ -16,6 +16,34 @@ from core.memory.shortterm import ShortTermMemory
 
 logger = logging.getLogger("animaworks.prompt_builder")
 
+# ── Emotion Instruction ───────────────────────────────────
+
+def _build_emotion_instruction() -> str:
+    """Build EMOTION_INSTRUCTION with the canonical emotion list."""
+    from core.schemas import VALID_EMOTIONS
+    emotion_list = ", ".join(sorted(VALID_EMOTIONS))
+    return f"""\
+## 表情メタデータ
+
+応答の最後の行に、あなたの今の感情を以下の形式で付加してください。
+この行はユーザーには表示されません。
+
+<!-- emotion: {{"emotion": "<感情名>"}} -->
+
+使える感情名: {emotion_list}
+
+例:
+- 嬉しい話題、褒められた時 → smile または laugh
+- 難しい質問、困った時 → troubled
+- 予想外の情報を聞いた時 → surprised
+- じっくり考える必要がある時 → thinking
+- 恥ずかしい話題、照れる時 → embarrassed
+- 通常の会話 → neutral
+"""
+
+
+EMOTION_INSTRUCTION = _build_emotion_instruction()
+
 
 def _discover_other_persons(person_dir: Path) -> list[str]:
     """List sibling person directories."""
@@ -160,6 +188,9 @@ def build_system_prompt(
         tools_guide = build_tools_guide(tool_registry or [], personal_tools)
         if tools_guide:
             parts.append(tools_guide)
+
+    # Emotion metadata instruction for bustup expression
+    parts.append(EMOTION_INSTRUCTION)
 
     parts.append(load_prompt("behavior_rules"))
 

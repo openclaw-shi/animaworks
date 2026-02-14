@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from server.events import emit
 
@@ -29,6 +29,18 @@ class AssetGenerateRequest(BaseModel):
     negative_prompt: str = ""
     steps: list[str] | None = None
     skip_existing: bool = True
+
+
+class ExpressionGenerateRequest(BaseModel):
+    expression: str
+
+    @field_validator("expression")
+    @classmethod
+    def validate_expression(cls, v: str) -> str:
+        from core.schemas import VALID_EMOTIONS
+        if v not in VALID_EMOTIONS:
+            raise ValueError(f"Invalid expression: {v}. Valid: {', '.join(sorted(VALID_EMOTIONS))}")
+        return v
 
 
 def create_assets_router() -> APIRouter:
@@ -187,5 +199,53 @@ def create_assets_router() -> APIRouter:
             })
 
         return result.to_dict()
+
+    @router.post("/persons/{name}/assets/generate-expression")
+    async def generate_expression_on_demand(
+        name: str, body: ExpressionGenerateRequest, request: Request,
+    ):
+        """Generate a specific bustup expression variant on demand."""
+        import asyncio
+
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        assets_dir = person_dir / "assets"
+        reference_path = assets_dir / "avatar_fullbody.png"
+        if not reference_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="No reference image (avatar_fullbody.png) found",
+            )
+
+        reference_bytes = reference_path.read_bytes()
+
+        from core.tools.image_gen import ImageGenPipeline
+
+        pipeline = ImageGenPipeline(person_dir)
+
+        loop = asyncio.get_running_loop()
+        result_path = await loop.run_in_executor(
+            None,
+            lambda: pipeline.generate_bustup_expression(
+                reference_image=reference_bytes,
+                expression=body.expression,
+                skip_existing=True,
+            ),
+        )
+
+        if result_path:
+            await emit(request, "person.assets_updated", {
+                "name": name,
+                "assets": [result_path.name],
+                "expression": body.expression,
+            })
+
+        return {
+            "expression": body.expression,
+            "path": str(result_path) if result_path else None,
+        }
 
     return router

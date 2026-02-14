@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Depends, Request
@@ -33,6 +34,43 @@ def _format_sse(event: str, payload: dict[str, Any]) -> str:
     """Format a single SSE frame."""
     data = json.dumps(payload, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {data}\n\n"
+
+
+
+# ── Emotion Extraction ────────────────────────────────────
+
+from core.schemas import VALID_EMOTIONS
+
+_EMOTION_PATTERN = re.compile(
+    r'<!--\s*emotion:\s*(\{.*?\})\s*-->', re.DOTALL,
+)
+
+
+def extract_emotion(response_text: str) -> tuple[str, str]:
+    """Extract emotion metadata from LLM response text.
+
+    The LLM appends ``<!-- emotion: {"emotion": "smile"} -->`` to its
+    response.  This function strips the tag and returns the clean text
+    plus the emotion name.
+
+    Returns:
+        (clean_text, emotion) where *emotion* falls back to ``"neutral"``
+        when missing or invalid.
+    """
+    match = _EMOTION_PATTERN.search(response_text)
+    if not match:
+        return response_text, "neutral"
+
+    clean_text = _EMOTION_PATTERN.sub("", response_text).rstrip()
+
+    try:
+        meta = json.loads(match.group(1))
+        emotion = meta.get("emotion", "neutral")
+        if emotion not in VALID_EMOTIONS:
+            emotion = "neutral"
+        return clean_text, emotion
+    except (json.JSONDecodeError, AttributeError):
+        return clean_text, "neutral"
 
 
 def _handle_chunk(chunk: dict[str, Any]) -> tuple[str | None, str]:
@@ -64,7 +102,11 @@ def _handle_chunk(chunk: dict[str, Any]) -> tuple[str | None, str]:
     if event_type == "cycle_done":
         cycle_result = chunk.get("cycle_result", {})
         response_text = cycle_result.get("summary", "")
-        return _format_sse("done", cycle_result), response_text
+        # Extract emotion from response and include in done event
+        clean_text, emotion = extract_emotion(response_text)
+        cycle_result["summary"] = clean_text
+        cycle_result["emotion"] = emotion
+        return _format_sse("done", cycle_result), clean_text
 
     if event_type == "error":
         return _format_sse("error", {
@@ -95,9 +137,10 @@ async def _stream_events(
                 yield frame
 
         if full_response:
+            clean_text, _ = extract_emotion(full_response)
             await emit(
                 request, "chat.response",
-                {"name": name, "message": full_response},
+                {"name": name, "message": clean_text},
             )
 
     except Exception:
@@ -132,11 +175,12 @@ def create_chat_router() -> APIRouter:
             )
 
             response = result.get("response", "")
+            clean_response, _ = extract_emotion(response)
 
             await emit(request, "person.status", {"name": name, "status": "idle"})
-            await emit(request, "chat.response", {"name": name, "message": response})
+            await emit(request, "chat.response", {"name": name, "message": clean_response})
 
-            return ChatResponse(response=response, person=name)
+            return ChatResponse(response=clean_response, person=name)
 
         except KeyError:
             from fastapi import HTTPException
@@ -176,7 +220,13 @@ def create_chat_router() -> APIRouter:
                         result = ipc_response.result or {}
                         full_response = result.get("response", full_response)
                         cycle_result = result.get("cycle_result", {})
-                        yield _format_sse("done", cycle_result or {"summary": full_response})
+                        # Extract emotion from response
+                        summary = cycle_result.get("summary", full_response)
+                        clean_text, emotion = extract_emotion(summary)
+                        cycle_result["summary"] = clean_text
+                        cycle_result["emotion"] = emotion
+                        full_response = clean_text
+                        yield _format_sse("done", cycle_result or {"summary": clean_text, "emotion": emotion})
                         break
 
                     if ipc_response.chunk:
@@ -194,9 +244,10 @@ def create_chat_router() -> APIRouter:
                             yield _format_sse("text_delta", {"text": ipc_response.chunk})
 
                 if full_response:
+                    clean_text, _ = extract_emotion(full_response)
                     await emit(
                         request, "chat.response",
-                        {"name": name, "message": full_response},
+                        {"name": name, "message": clean_text},
                     )
 
             except KeyError:

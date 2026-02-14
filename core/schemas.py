@@ -14,6 +14,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+# ── Emotion Constants ─────────────────────────────────────
+
+VALID_EMOTIONS: frozenset[str] = frozenset({
+    "neutral", "smile", "laugh", "troubled",
+    "surprised", "thinking", "embarrassed",
+})
+
+
 class CronTask(BaseModel):
     """Cron task definition supporting both LLM and command types.
 
