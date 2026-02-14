@@ -111,19 +111,19 @@ class AgentCore:
     def _resolve_execution_mode(self) -> str:
         """Determine the effective execution mode: ``a1``, ``a2``, or ``b``.
 
-        Auto-detection logic (when ``execution_mode`` is None):
-          - Claude model + Agent SDK available -> a1
-          - Non-Claude model -> a2
+        Uses ``resolved_mode`` from config when available.
+        Falls back to auto-detection for legacy config.md paths.
         """
-        explicit = self.model_config.execution_mode
-        if explicit == "assisted":
-            return "b"
-        if explicit == "autonomous" or explicit is None:
-            if self._is_claude_model() and self._sdk_available:
-                return "a1"
-            if explicit is None and not self._is_claude_model():
-                return "a2"
-            return "a2"
+        rm = self.model_config.resolved_mode
+        if rm:
+            mode = rm.lower()  # "A1" → "a1"
+            if mode == "a1" and not self._sdk_available:
+                return "a2"  # SDK unavailable fallback
+            return mode
+
+        # Fallback (resolved_mode absent = legacy config.md path)
+        if self._is_claude_model() and self._sdk_available:
+            return "a1"
         return "a2"
 
     @staticmethod

@@ -75,7 +75,12 @@ class MemoryManager:
 
     def read_model_config(self) -> ModelConfig:
         """Load model config from unified config.json, with config.md fallback."""
-        from core.config import get_config_path, load_config, resolve_person_config
+        from core.config import (
+            get_config_path,
+            load_config,
+            resolve_execution_mode,
+            resolve_person_config,
+        )
 
         config_path = get_config_path()
         if config_path.exists():
@@ -85,6 +90,9 @@ class MemoryManager:
             # Derive env var name from credential name (e.g. "anthropic" -> "ANTHROPIC_API_KEY")
             cred_name = resolved.credential
             api_key_env = f"{cred_name.upper()}_API_KEY"
+            mode = resolve_execution_mode(
+                config, resolved.model, resolved.execution_mode,
+            )
             return ModelConfig(
                 model=resolved.model,
                 fallback_model=resolved.fallback_model,
@@ -100,6 +108,7 @@ class MemoryManager:
                 role=resolved.role,
                 supervisor=resolved.supervisor,
                 speciality=resolved.speciality,
+                resolved_mode=mode,
             )
 
         # Legacy fallback: parse config.md

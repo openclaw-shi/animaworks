@@ -36,6 +36,7 @@ class ModelConfig(BaseModel):
     role: str | None = None  # "commander" or "worker"
     supervisor: str | None = None  # supervisor Person name
     speciality: str | None = None  # free-text specialisation
+    resolved_mode: str | None = None  # "A1"/"A2"/"B" — resolved from config
 
 
 class PersonConfig(BaseModel):
