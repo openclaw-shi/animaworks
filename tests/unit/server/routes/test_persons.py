@@ -27,7 +27,6 @@ def _make_test_app(persons: dict | None = None):
 
 def _make_mock_person(
     name: str = "alice",
-    role: str = "commander",
     supervisor: str | None = None,
     person_dir: Path | None = None,
 ):
@@ -40,7 +39,6 @@ def _make_mock_person(
     person.status = status
 
     mc = MagicMock()
-    mc.role = role
     mc.supervisor = supervisor
     person.model_config = mc
 
@@ -98,7 +96,7 @@ class TestListPersons:
         assert resp.json() == []
 
     async def test_list_with_persons(self):
-        alice = _make_mock_person("alice", role="commander")
+        alice = _make_mock_person("alice")
         app = _make_test_app({"alice": alice})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -106,7 +104,7 @@ class TestListPersons:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["name"] == "alice"
-        assert data[0]["role"] == "commander"
+        assert data[0]["supervisor"] is None
 
 
 # ── GET /persons/{name} ─────────────────────────────────

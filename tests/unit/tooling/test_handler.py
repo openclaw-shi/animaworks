@@ -1,13 +1,12 @@
 """Tests for core.tooling.handler — ToolHandler permission and dispatch."""
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.tooling.handler import ToolHandler, _DELEGATE_TIMEOUT_S, _SHELL_METACHAR_RE
+from core.tooling.handler import ToolHandler, _SHELL_METACHAR_RE
 
 
 # ── Fixtures ──────────────────────────────────────────────────
@@ -66,12 +65,6 @@ def handler_with_messenger(
 
 
 class TestProperties:
-    def test_delegate_fn_property(self, handler: ToolHandler):
-        assert handler.delegate_fn is None
-        fn = AsyncMock()
-        handler.delegate_fn = fn
-        assert handler.delegate_fn is fn
-
     def test_on_message_sent_property(self, handler: ToolHandler):
         assert handler.on_message_sent is None
         fn = MagicMock()
@@ -367,46 +360,6 @@ class TestCommandPermissions:
     def test_invalid_syntax(self, handler: ToolHandler, memory: MagicMock):
         memory.read_permissions.return_value = "## コマンド実行\n- git: OK"
         assert "invalid command syntax" in handler._check_command_permission("git 'unclosed")
-
-
-# ── handle_delegate ───────────────────────────────────────────
-
-
-class TestHandleDelegate:
-    @pytest.mark.asyncio
-    async def test_no_delegate_fn(self, handler: ToolHandler):
-        result = await handler.handle_delegate({"to": "sub", "task": "do something"})
-        assert "delegation not configured" in result
-
-    @pytest.mark.asyncio
-    async def test_missing_to_or_task(self, handler: ToolHandler):
-        handler.delegate_fn = AsyncMock()
-        result = await handler.handle_delegate({"to": "", "task": ""})
-        assert "'to' and 'task' are required" in result
-
-    @pytest.mark.asyncio
-    async def test_success(self, handler: ToolHandler):
-        handler.delegate_fn = AsyncMock(return_value="task done")
-        result = await handler.handle_delegate(
-            {"to": "worker", "task": "do this", "context": "some context"},
-        )
-        assert result == "task done"
-
-    @pytest.mark.asyncio
-    async def test_exception_in_delegate(self, handler: ToolHandler):
-        handler.delegate_fn = AsyncMock(side_effect=RuntimeError("boom"))
-        result = await handler.handle_delegate({"to": "worker", "task": "fail"})
-        assert "Delegation failed" in result
-
-    @pytest.mark.asyncio
-    async def test_timeout(self, handler: ToolHandler):
-        async def slow_fn(to, task, context):
-            await asyncio.sleep(999)
-
-        handler.delegate_fn = slow_fn
-        with patch("core.tooling.handler._DELEGATE_TIMEOUT_S", 0.01):
-            result = await handler.handle_delegate({"to": "worker", "task": "slow"})
-        assert "timed out" in result
 
 
 # ── Shell metachar regex ──────────────────────────────────────

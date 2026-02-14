@@ -31,30 +31,6 @@ async def lifespan(app: FastAPI):
     logger.info("Server stopped")
 
 
-async def _delegate(
-    persons: dict[str, DigitalPerson],
-    target_name: str,
-    task: str,
-    context: str | None,
-) -> str:
-    """Execute a delegated task on the target person's AgentCore.
-
-    Called synchronously (awaited) by the delegating commander.
-    Bypasses the Person-level lock to avoid deadlock — concurrency
-    is handled by AgentCore's own ``_agent_lock``.
-    """
-    target = persons.get(target_name)
-    if not target:
-        return f"Error: Person '{target_name}' not found"
-
-    prompt = task
-    if context:
-        prompt = f"## 背景情報\n{context}\n\n## 指示\n{task}"
-
-    result = await target.agent.run_cycle(prompt, trigger=f"delegation:{target_name}")
-    return result.summary
-
-
 def create_app(persons_dir: Path, shared_dir: Path) -> FastAPI:
     app = FastAPI(title="AnimaWorks", version="0.1.0", lifespan=lifespan)
 
@@ -70,12 +46,6 @@ def create_app(persons_dir: Path, shared_dir: Path) -> FastAPI:
                 persons[person.name] = person
                 lifecycle.register_person(person)
                 logger.info("Loaded person: %s", person.name)
-
-    # Inject delegate callbacks so commanders can delegate to subordinates
-    for person in persons.values():
-        person.set_delegate_fn(
-            lambda name, task, ctx=None, _p=persons: _delegate(_p, name, task, ctx)
-        )
 
     # Inject message-sent callback to broadcast person.interaction via WebSocket
     def _on_message_sent(from_person: str, to_person: str, content: str) -> None:

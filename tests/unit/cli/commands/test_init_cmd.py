@@ -213,7 +213,7 @@ class TestRegisterPersonInConfig:
             mock_config.persons = {}
             mock_load.return_value = mock_config
 
-            _register_person_in_config(tmp_path, "alice", role="commander")
+            _register_person_in_config(tmp_path, "alice")
 
             mock_save.assert_called_once()
 

@@ -161,18 +161,36 @@ class LifecycleManager:
             return
 
         logger.info("Cron: %s -> %s", name, task_name)
-        result = await person.run_cron_task(task_name, description)
-        if self._ws_broadcast:
-            await self._ws_broadcast(
-                {
-                    "type": "person.cron",
-                    "data": {
-                        "name": name,
-                        "task": task_name,
-                        "result": result.model_dump(),
-                    },
-                }
-            )
+        # Run cron tasks without awaiting lock — use create_task so
+        # multiple simultaneous cron tasks don't block each other.
+        asyncio.create_task(
+            self._run_cron_and_broadcast(person, name, task_name, description),
+            name=f"cron-{name}-{task_name}",
+        )
+
+    async def _run_cron_and_broadcast(
+        self,
+        person: DigitalPerson,
+        name: str,
+        task_name: str,
+        description: str,
+    ) -> None:
+        """Execute a cron task and broadcast the result."""
+        try:
+            result = await person.run_cron_task(task_name, description)
+            if self._ws_broadcast:
+                await self._ws_broadcast(
+                    {
+                        "type": "person.cron",
+                        "data": {
+                            "name": name,
+                            "task": task_name,
+                            "result": result.model_dump(),
+                        },
+                    }
+                )
+        except Exception:
+            logger.exception("Cron task failed: %s -> %s", name, task_name)
 
     # ── Inbox Watcher ──────────────────────────────────────
 

@@ -143,24 +143,6 @@ FILE_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-DELEGATE_TOOL: dict[str, Any] = {
-    "name": "delegate_task",
-    "description": "Delegate a task to a subordinate person and wait for the result.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "to": {"type": "string", "description": "Subordinate person name"},
-            "task": {"type": "string", "description": "Task instruction"},
-            "context": {
-                "type": "string",
-                "description": "Background context (optional)",
-            },
-        },
-        "required": ["to", "task"],
-    },
-}
-
-
 # ── Format converters ────────────────────────────────────────
 
 
@@ -197,14 +179,12 @@ def to_litellm_format(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def build_tool_list(
     *,
     include_file_tools: bool = False,
-    include_delegate: bool = False,
     external_schemas: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble a tool list from canonical definitions.
 
     Args:
         include_file_tools: Include file/command operation tools (for A2 mode).
-        include_delegate: Include the delegate_task tool (for commanders).
         external_schemas: Additional tool schemas in canonical format.
 
     Returns:
@@ -213,8 +193,6 @@ def build_tool_list(
     tools: list[dict[str, Any]] = list(MEMORY_TOOLS)
     if include_file_tools:
         tools.extend(FILE_TOOLS)
-    if include_delegate:
-        tools.append(DELEGATE_TOOL)
     if external_schemas:
         tools.extend(external_schemas)
     return tools

@@ -62,14 +62,9 @@ class LiteLLMExecutor(BaseExecutor):
 
     def _build_tools(self) -> list[dict[str, Any]]:
         """Build the LiteLLM-format tool list."""
-        has_delegate = (
-            self._tool_handler.delegate_fn is not None
-            and self._model_config.role == "commander"
-        )
         external = load_tool_schemas(self._tool_registry, self._personal_tools)
         canonical = build_tool_list(
             include_file_tools=True,
-            include_delegate=has_delegate,
             external_schemas=external,
         )
         return to_litellm_format(canonical)
@@ -93,6 +88,7 @@ class LiteLLMExecutor(BaseExecutor):
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run the LiteLLM tool-use loop.
 
@@ -184,10 +180,7 @@ class LiteLLMExecutor(BaseExecutor):
                 except _json.JSONDecodeError:
                     fn_args = {}
 
-                if fn_name == "delegate_task":
-                    result = await self._tool_handler.handle_delegate(fn_args)
-                else:
-                    result = self._tool_handler.handle(fn_name, fn_args)
+                result = self._tool_handler.handle(fn_name, fn_args)
 
                 messages.append({
                     "role": "tool",

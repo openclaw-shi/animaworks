@@ -31,7 +31,7 @@ from core.paths import load_prompt
 from core.prompt.builder import build_system_prompt, inject_shortterm
 from core.schemas import CycleResult, ModelConfig
 from core.memory.shortterm import SessionState, ShortTermMemory
-from core.tooling.handler import DelegateFn, ToolHandler
+from core.tooling.handler import ToolHandler
 
 logger = logging.getLogger("animaworks.agent")
 
@@ -74,19 +74,12 @@ class AgentCore:
 
         mode = self._resolve_execution_mode()
         logger.info(
-            "AgentCore: model=%s, mode=%s, role=%s, api_key=%s, base_url=%s",
+            "AgentCore: model=%s, mode=%s, api_key=%s, base_url=%s",
             self.model_config.model,
             mode,
-            self.model_config.role or "(none)",
             "direct" if self.model_config.api_key else f"env:{self.model_config.api_key_env}",
             self.model_config.api_base_url or "(default)",
         )
-
-    # ── Delegate callback ──────────────────────────────────
-
-    def set_delegate_fn(self, fn: DelegateFn) -> None:
-        """Inject the delegate callback (called from server/app.py)."""
-        self._tool_handler.delegate_fn = fn
 
     def set_on_message_sent(self, fn: Callable[[str, str, str], None]) -> None:
         """Inject a callback invoked after a send_message tool call."""
@@ -111,19 +104,19 @@ class AgentCore:
     def _resolve_execution_mode(self) -> str:
         """Determine the effective execution mode: ``a1``, ``a2``, or ``b``.
 
-        Auto-detection logic (when ``execution_mode`` is None):
-          - Claude model + Agent SDK available -> a1
-          - Non-Claude model -> a2
+        Uses ``resolved_mode`` from config when available.
+        Falls back to auto-detection for legacy config.md paths.
         """
-        explicit = self.model_config.execution_mode
-        if explicit == "assisted":
-            return "b"
-        if explicit == "autonomous" or explicit is None:
-            if self._is_claude_model() and self._sdk_available:
-                return "a1"
-            if explicit is None and not self._is_claude_model():
-                return "a2"
-            return "a2"
+        rm = self.model_config.resolved_mode
+        if rm:
+            mode = rm.lower()  # "A1" → "a1"
+            if mode == "a1" and not self._sdk_available:
+                return "a2"  # SDK unavailable fallback
+            return mode
+
+        # Fallback (resolved_mode absent = legacy config.md path)
+        if self._is_claude_model() and self._sdk_available:
+            return "a1"
         return "a2"
 
     @staticmethod
@@ -249,6 +242,7 @@ class AgentCore:
             model_config=self.model_config,
             person_dir=self.person_dir,
             memory=self.memory,
+            messenger=self.messenger,
         )
 
     def _resolve_api_key(self) -> str | None:
@@ -288,7 +282,7 @@ class AgentCore:
 
         # ── Mode B: assisted (1-shot, no tools) ──────────
         if mode == "b":
-            result = await self._executor.execute(prompt=prompt)
+            result = await self._executor.execute(prompt=prompt, trigger=trigger)
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 "run_cycle END (assisted) trigger=%s duration_ms=%d",

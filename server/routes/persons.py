@@ -36,7 +36,6 @@ def create_persons_router() -> APIRouter:
         for p in persons.values():
             data = p.status.model_dump()
             mc = p.model_config
-            data["role"] = mc.role
             data["supervisor"] = mc.supervisor
             data["appearance"] = _read_appearance(p.person_dir)
             result.append(data)

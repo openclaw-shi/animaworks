@@ -98,20 +98,6 @@ class TestNeedsBootstrap:
 
 
 class TestCallbacks:
-    def test_set_delegate_fn(self, data_dir, make_person):
-        person_dir = make_person("alice")
-        shared_dir = data_dir / "shared"
-
-        with patch("core.person.AgentCore") as MockAgent, \
-             patch("core.person.MemoryManager") as MockMM, \
-             patch("core.person.Messenger"):
-            MockMM.return_value.read_model_config.return_value = MagicMock()
-            from core.person import DigitalPerson
-            dp = DigitalPerson(person_dir, shared_dir)
-            fn = MagicMock()
-            dp.set_delegate_fn(fn)
-            dp.agent.set_delegate_fn.assert_called_once_with(fn)
-
     def test_set_on_message_sent(self, data_dir, make_person):
         person_dir = make_person("alice")
         shared_dir = data_dir / "shared"

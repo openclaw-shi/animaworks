@@ -70,7 +70,6 @@ class PersonModelConfig(BaseModel):
     max_chains: int | None = None
     conversation_history_threshold: float | None = None
     execution_mode: str | None = None  # "autonomous" or "assisted"
-    role: str | None = None  # "commander" or "worker"
     supervisor: str | None = None  # name of supervisor Person
     speciality: str | None = None  # free-text specialisation
 
@@ -87,7 +86,6 @@ class PersonDefaults(BaseModel):
     max_chains: int = 2
     conversation_history_threshold: float = 0.30
     execution_mode: str | None = None  # None = auto-detect from model
-    role: str | None = None
     supervisor: str | None = None
     speciality: str | None = None
 
@@ -96,6 +94,7 @@ class AnimaWorksConfig(BaseModel):
     version: int = 1
     system: SystemConfig = SystemConfig()
     credentials: dict[str, CredentialConfig] = {"anthropic": CredentialConfig()}
+    model_modes: dict[str, str] = {}  # モデル名 → "A1"/"A2"/"B"
     person_defaults: PersonDefaults = PersonDefaults()
     persons: dict[str, PersonModelConfig] = {}
 
@@ -243,3 +242,47 @@ def resolve_person_config(
 
     credential = config.credentials[credential_name]
     return resolved_defaults, credential
+
+
+# ---------------------------------------------------------------------------
+# Model mode resolution
+# ---------------------------------------------------------------------------
+
+# Default model_modes (fallback when config.json has no entry)
+DEFAULT_MODEL_MODES: dict[str, str] = {
+    "claude-opus-4-20250514": "A1",
+    "claude-sonnet-4-20250514": "A1",
+    "claude-haiku-3.5-20241022": "A1",
+    "openai/gpt-4o": "A2",
+    "openai/gpt-4o-mini": "A2",
+    "google/gemini-2.0-flash": "A2",
+    "google/gemini-2.5-pro": "A2",
+    "ollama/gemma3:27b": "B",
+    "ollama/llama3.3:70b": "B",
+    "ollama/qwen2.5-coder:32b": "B",
+}
+
+
+def resolve_execution_mode(
+    config: AnimaWorksConfig,
+    model_name: str,
+    explicit_override: str | None = None,
+) -> str:
+    """Resolve execution mode from model name.
+
+    Priority:
+      1. Person's execution_mode explicit override (legacy)
+      2. config.json model_modes table
+      3. DEFAULT_MODEL_MODES (hard-coded fallback)
+      4. Default "B" (safe side)
+    """
+    if explicit_override:
+        mapping = {"autonomous": "A2", "assisted": "B"}
+        return mapping.get(explicit_override, explicit_override.upper())
+
+    table = config.model_modes or {}
+    if model_name in table:
+        return table[model_name].upper()
+    if model_name in DEFAULT_MODEL_MODES:
+        return DEFAULT_MODEL_MODES[model_name]
+    return "B"  # unknown model → safe side

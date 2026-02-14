@@ -55,7 +55,6 @@ def model_config() -> ModelConfig:
         max_turns=5,
         context_threshold=0.50,
         max_chains=2,
-        role=None,
     )
 
 
@@ -114,30 +113,6 @@ class TestBuildTools:
         assert "read_file" in names
         assert "write_file" in names
 
-    def test_includes_delegate_for_commander(
-        self, model_config: ModelConfig, person_dir: Path, memory: MagicMock,
-    ):
-        model_config.role = "commander"
-        th = ToolHandler(person_dir=person_dir, memory=memory, tool_registry=[])
-        th.delegate_fn = AsyncMock()
-        from core.execution.litellm_loop import LiteLLMExecutor
-        ex = LiteLLMExecutor(
-            model_config=model_config,
-            person_dir=person_dir,
-            tool_handler=th,
-            tool_registry=[],
-            memory=memory,
-        )
-        with patch("core.tooling.schemas.load_external_schemas", return_value=[]):
-            tools = ex._build_tools()
-        names = [t["function"]["name"] for t in tools]
-        assert "delegate_task" in names
-
-    def test_no_delegate_without_role(self, executor):
-        with patch("core.tooling.schemas.load_external_schemas", return_value=[]):
-            tools = executor._build_tools()
-        names = [t["function"]["name"] for t in tools]
-        assert "delegate_task" not in names
 
 
 # ── _build_llm_kwargs ────────────────────────────────────────
@@ -202,19 +177,6 @@ class TestExecuteWithTools:
         with patch("litellm.acompletion", mock):
             result = await executor.execute("test prompt", system_prompt="sys")
         assert "Final answer" in result.text
-
-    async def test_handles_delegate_task(self, executor):
-        executor._tool_handler.delegate_fn = AsyncMock(return_value="delegated result")
-        executor._model_config.role = "commander"
-
-        tc = make_tool_call("delegate_task", {"to": "worker", "task": "do this"})
-        resp_with_tool = make_litellm_response(content="", tool_calls=[tc])
-        resp_final = make_litellm_response(content="Done", tool_calls=None)
-
-        mock = AsyncMock(side_effect=[resp_with_tool, resp_final])
-        with patch("litellm.acompletion", mock):
-            result = await executor.execute("test", system_prompt="sys")
-        assert "Done" in result.text
 
     async def test_invalid_json_args_handled(self, executor):
         tc = make_tool_call("search_memory", {"query": "test"})

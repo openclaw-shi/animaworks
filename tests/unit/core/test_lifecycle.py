@@ -193,6 +193,8 @@ class TestHeartbeatWrapper:
 
 class TestCronWrapper:
     async def test_cron_with_broadcast(self):
+        import asyncio
+
         lm = LifecycleManager()
         person = MagicMock()
         person.name = "alice"
@@ -204,6 +206,8 @@ class TestCronWrapper:
         lm._ws_broadcast = broadcast
 
         await lm._cron_wrapper("alice", "daily_report", "Generate report")
+        # _cron_wrapper creates a background task; let it run
+        await asyncio.sleep(0)
         person.run_cron_task.assert_called_once_with("daily_report", "Generate report")
         broadcast.assert_called_once()
 

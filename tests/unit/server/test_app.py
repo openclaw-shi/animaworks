@@ -2,64 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-
-# ── _delegate ────────────────────────────────────────────
-
-
-class TestDelegate:
-    """Tests for the _delegate helper function."""
-
-    async def test_delegate_success(self):
-        from server.app import _delegate
-
-        mock_agent = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.summary = "Task completed"
-        mock_agent.run_cycle.return_value = mock_result
-
-        mock_person = MagicMock()
-        mock_person.agent = mock_agent
-
-        persons = {"worker": mock_person}
-
-        result = await _delegate(persons, "worker", "do stuff", None)
-
-        assert result == "Task completed"
-        mock_agent.run_cycle.assert_awaited_once_with(
-            "do stuff", trigger="delegation:worker"
-        )
-
-    async def test_delegate_with_context(self):
-        from server.app import _delegate
-
-        mock_agent = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.summary = "Done"
-        mock_agent.run_cycle.return_value = mock_result
-
-        mock_person = MagicMock()
-        mock_person.agent = mock_agent
-
-        persons = {"worker": mock_person}
-
-        result = await _delegate(persons, "worker", "do stuff", "some context")
-
-        assert result == "Done"
-        call_args = mock_agent.run_cycle.call_args
-        assert "背景情報" in call_args[0][0]
-        assert "some context" in call_args[0][0]
-        assert "do stuff" in call_args[0][0]
-
-    async def test_delegate_person_not_found(self):
-        from server.app import _delegate
-
-        result = await _delegate({}, "nonexistent", "task", None)
-
-        assert "not found" in result
 
 
 # ── create_app ───────────────────────────────────────────
@@ -120,7 +65,6 @@ class TestCreateApp:
 
         assert "alice" in app.state.persons
         mock_lc.register_person.assert_called_once_with(mock_person)
-        mock_person.set_delegate_fn.assert_called_once()
         mock_person.set_on_message_sent.assert_called_once()
 
     @patch("server.app.LifecycleManager")

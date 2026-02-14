@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import core.tools
 from core.tooling.schemas import (
-    DELEGATE_TOOL,
     FILE_TOOLS,
     MEMORY_TOOLS,
     build_tool_list,
@@ -74,14 +73,6 @@ class TestFileTools:
         assert "timeout" in schema["parameters"]["properties"]
 
 
-class TestDelegateTool:
-    def test_delegate_tool_schema(self):
-        assert DELEGATE_TOOL["name"] == "delegate_task"
-        assert "to" in DELEGATE_TOOL["parameters"]["properties"]
-        assert "task" in DELEGATE_TOOL["parameters"]["properties"]
-        assert set(DELEGATE_TOOL["parameters"]["required"]) == {"to", "task"}
-
-
 # ── Format converters ─────────────────────────────────────────
 
 
@@ -140,7 +131,6 @@ class TestBuildToolList:
         assert "write_memory_file" in names
         assert "send_message" in names
         assert "read_file" not in names
-        assert "delegate_task" not in names
 
     def test_include_file_tools(self):
         result = build_tool_list(include_file_tools=True)
@@ -149,11 +139,6 @@ class TestBuildToolList:
         assert "write_file" in names
         assert "edit_file" in names
         assert "execute_command" in names
-
-    def test_include_delegate(self):
-        result = build_tool_list(include_delegate=True)
-        names = [t["name"] for t in result]
-        assert "delegate_task" in names
 
     def test_include_external_schemas(self):
         ext = [{"name": "custom_tool", "description": "custom", "parameters": {}}]
@@ -165,18 +150,16 @@ class TestBuildToolList:
         ext = [{"name": "ext1", "description": "e", "parameters": {}}]
         result = build_tool_list(
             include_file_tools=True,
-            include_delegate=True,
             external_schemas=ext,
         )
         names = [t["name"] for t in result]
         assert "search_memory" in names
         assert "read_file" in names
-        assert "delegate_task" in names
         assert "ext1" in names
 
     def test_does_not_mutate_memory_tools(self):
         original_len = len(MEMORY_TOOLS)
-        build_tool_list(include_file_tools=True, include_delegate=True)
+        build_tool_list(include_file_tools=True)
         assert len(MEMORY_TOOLS) == original_len
 
 

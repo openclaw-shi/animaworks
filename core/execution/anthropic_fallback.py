@@ -61,14 +61,9 @@ class AnthropicFallbackExecutor(BaseExecutor):
 
     def _build_tools(self) -> list[dict[str, Any]]:
         """Build the Anthropic-format tool list."""
-        has_delegate = (
-            self._tool_handler.delegate_fn is not None
-            and self._model_config.role == "commander"
-        )
         external = load_tool_schemas(self._tool_registry, self._personal_tools)
         canonical = build_tool_list(
             include_file_tools=False,
-            include_delegate=has_delegate,
             external_schemas=external,
         )
         return to_anthropic_format(canonical)
@@ -79,6 +74,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run Anthropic SDK with tool_use loop."""
         import anthropic
@@ -166,10 +162,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
 
             tool_results = []
             for tu in tool_uses:
-                if tu.name == "delegate_task":
-                    result = await self._tool_handler.handle_delegate(tu.input)
-                else:
-                    result = self._tool_handler.handle(tu.name, tu.input)
+                result = self._tool_handler.handle(tu.name, tu.input)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tu.id,

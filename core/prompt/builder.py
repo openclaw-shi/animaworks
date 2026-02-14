@@ -161,11 +161,11 @@ def build_system_prompt(
     other_persons = _discover_other_persons(pd)
     parts.append(_build_messaging_section(pd, other_persons))
 
-    # Hiring context: suggest team building when commander has no subordinates
+    # Hiring context: suggest team building when top-level person has no peers
     if not other_persons:
         try:
             model_config = memory.read_model_config()
-            if model_config.role == "commander":
+            if model_config.supervisor is None:
                 parts.append(load_prompt("hiring_context"))
         except Exception:
             logger.debug("Skipped hiring context injection", exc_info=True)

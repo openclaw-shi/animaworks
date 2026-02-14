@@ -47,7 +47,6 @@ class TestModelConfig:
         assert mc.max_chains == 2
         assert mc.conversation_history_threshold == 0.30
         assert mc.execution_mode is None
-        assert mc.role is None
         assert mc.supervisor is None
         assert mc.speciality is None
 
@@ -58,7 +57,6 @@ class TestModelConfig:
             api_key="sk-test",
             api_base_url="http://localhost:8000",
             execution_mode="assisted",
-            role="worker",
             supervisor="boss",
         )
         assert mc.model == "gpt-4o"
@@ -66,7 +64,6 @@ class TestModelConfig:
         assert mc.api_key == "sk-test"
         assert mc.api_base_url == "http://localhost:8000"
         assert mc.execution_mode == "assisted"
-        assert mc.role == "worker"
         assert mc.supervisor == "boss"
 
 

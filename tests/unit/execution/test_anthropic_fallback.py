@@ -29,7 +29,6 @@ def model_config() -> ModelConfig:
         max_turns=5,
         context_threshold=0.50,
         max_chains=2,
-        role=None,
     )
 
 
@@ -123,23 +122,6 @@ class TestBuildTools:
         assert "read_file" not in names
         assert "write_file" not in names
 
-    def test_includes_delegate_for_commander(
-        self, model_config: ModelConfig, person_dir: Path, memory: MagicMock,
-    ):
-        model_config.role = "commander"
-        th = ToolHandler(person_dir=person_dir, memory=memory, tool_registry=[])
-        th.delegate_fn = AsyncMock()
-        executor = AnthropicFallbackExecutor(
-            model_config=model_config,
-            person_dir=person_dir,
-            tool_handler=th,
-            tool_registry=[],
-            memory=memory,
-        )
-        with patch("core.tooling.schemas.load_external_schemas", return_value=[]):
-            tools = executor._build_tools()
-        names = [t["name"] for t in tools]
-        assert "delegate_task" in names
 
 
 # ── execute() — simple response ──────────────────────────────
@@ -221,28 +203,6 @@ class TestExecuteWithTools:
             result = await executor.execute("test prompt", system_prompt="sys")
 
         assert "Final answer" in result.text
-
-    async def test_handles_delegate_task(self, executor: AnthropicFallbackExecutor):
-        executor._tool_handler.delegate_fn = AsyncMock(return_value="delegated")
-        executor._model_config.role = "commander"
-
-        tool_block = _make_tool_use_block(
-            "delegate_task", {"to": "worker", "task": "do this"},
-        )
-        resp_with_tool = _make_response([tool_block])
-        resp_final = _make_response([_make_text_block("Done")])
-
-        with patch("anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = MagicMock()
-            mock_client.messages = MagicMock()
-            mock_client.messages.create = AsyncMock(
-                side_effect=[resp_with_tool, resp_final],
-            )
-            mock_cls.return_value = mock_client
-
-            result = await executor.execute("test", system_prompt="sys")
-
-        assert "Done" in result.text
 
     async def test_max_iterations_reached(self, executor: AnthropicFallbackExecutor):
         tool_block = _make_tool_use_block("search_memory", {"query": "test"})

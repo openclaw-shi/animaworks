@@ -14,12 +14,11 @@ It owns permission checks, memory/file/command operations, and delegates
 external tool calls to ``ExternalToolDispatcher``.
 """
 
-import asyncio
 import logging
 import re
 import shlex
 import subprocess
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -29,14 +28,8 @@ from core.messenger import Messenger
 
 logger = logging.getLogger("animaworks.tool_handler")
 
-# Type alias for the delegate callback injected by server/app.py.
-DelegateFn = Callable[[str, str, str | None], Coroutine[Any, Any, str]]
-
 # Type alias for the message-sent callback (from, to, content).
 OnMessageSentFn = Callable[[str, str, str], None]
-
-# Default delegation timeout in seconds.
-_DELEGATE_TIMEOUT_S: int = 300
 
 # Shell metacharacters that indicate injection attempts.
 _SHELL_METACHAR_RE = re.compile(r"[;&|`$(){}]")
@@ -56,29 +49,17 @@ class ToolHandler:
         messenger: Messenger | None = None,
         tool_registry: list[str] | None = None,
         personal_tools: dict[str, str] | None = None,
-        delegate_fn: DelegateFn | None = None,
         on_message_sent: OnMessageSentFn | None = None,
     ) -> None:
         self._person_dir = person_dir
         self._memory = memory
         self._messenger = messenger
-        self._delegate_fn = delegate_fn
         self._on_message_sent = on_message_sent
         self._replied_to: set[str] = set()
         self._external = ExternalToolDispatcher(
             tool_registry or [],
             personal_tools=personal_tools,
         )
-
-    # ── Delegate callback property ───────────────────────────
-
-    @property
-    def delegate_fn(self) -> DelegateFn | None:
-        return self._delegate_fn
-
-    @delegate_fn.setter
-    def delegate_fn(self, fn: DelegateFn | None) -> None:
-        self._delegate_fn = fn
 
     @property
     def on_message_sent(self) -> OnMessageSentFn | None:
@@ -139,66 +120,6 @@ class ToolHandler:
 
         logger.warning("Unknown tool requested: %s", name)
         return f"Unknown tool: {name}"
-
-    async def handle_delegate(self, args: dict[str, Any]) -> str:
-        """Handle the ``delegate_task`` tool call (async).
-
-        Enforces a timeout to prevent indefinite blocking when the
-        subordinate hangs or takes excessively long.  On timeout the
-        underlying ``asyncio.Task`` is explicitly cancelled and awaited
-        so that coroutine resources are cleaned up promptly.
-        """
-        if not self._delegate_fn:
-            return "Error: delegation not configured for this person"
-        target = args.get("to", "")
-        task_desc = args.get("task", "")
-        context = args.get("context")
-        if not target or not task_desc:
-            return "Error: 'to' and 'task' are required"
-        logger.info("delegate_task to=%s task=%s", target, task_desc[:100])
-
-        # Wrap in an explicit Task so we can cancel on timeout.
-        delegate_task: asyncio.Task[str] = asyncio.create_task(
-            self._delegate_fn(target, task_desc, context),
-            name=f"delegate-{target}",
-        )
-        try:
-            result = await asyncio.wait_for(
-                asyncio.shield(delegate_task),
-                timeout=_DELEGATE_TIMEOUT_S,
-            )
-            logger.info("delegate_task completed, result_len=%d", len(result))
-            return result
-        except asyncio.TimeoutError:
-            logger.warning(
-                "delegate_task to '%s' timed out after %ds -- cancelling worker task",
-                target,
-                _DELEGATE_TIMEOUT_S,
-            )
-            # Explicitly cancel the worker task and suppress CancelledError
-            delegate_task.cancel()
-            try:
-                await delegate_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            logger.info(
-                "Timed-out delegate task to '%s' has been cancelled", target,
-            )
-            return (
-                f"Delegation to '{target}' timed out after "
-                f"{_DELEGATE_TIMEOUT_S}s. The subordinate task has been "
-                f"cancelled."
-            )
-        except Exception as e:
-            logger.error("delegate_task failed: %s", e)
-            # Ensure the task is cleaned up on unexpected errors too
-            if not delegate_task.done():
-                delegate_task.cancel()
-                try:
-                    await delegate_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-            return f"Delegation failed: {e}"
 
     # ── Memory tool handlers ─────────────────────────────────
 

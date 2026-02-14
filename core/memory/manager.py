@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from core.paths import get_common_skills_dir, get_company_dir, get_shared_dir
@@ -75,7 +75,12 @@ class MemoryManager:
 
     def read_model_config(self) -> ModelConfig:
         """Load model config from unified config.json, with config.md fallback."""
-        from core.config import get_config_path, load_config, resolve_person_config
+        from core.config import (
+            get_config_path,
+            load_config,
+            resolve_execution_mode,
+            resolve_person_config,
+        )
 
         config_path = get_config_path()
         if config_path.exists():
@@ -85,6 +90,9 @@ class MemoryManager:
             # Derive env var name from credential name (e.g. "anthropic" -> "ANTHROPIC_API_KEY")
             cred_name = resolved.credential
             api_key_env = f"{cred_name.upper()}_API_KEY"
+            mode = resolve_execution_mode(
+                config, resolved.model, resolved.execution_mode,
+            )
             return ModelConfig(
                 model=resolved.model,
                 fallback_model=resolved.fallback_model,
@@ -97,9 +105,9 @@ class MemoryManager:
                 max_chains=resolved.max_chains,
                 conversation_history_threshold=resolved.conversation_history_threshold,
                 execution_mode=resolved.execution_mode,
-                role=resolved.role,
                 supervisor=resolved.supervisor,
                 speciality=resolved.speciality,
+                resolved_mode=mode,
             )
 
         # Legacy fallback: parse config.md
@@ -196,6 +204,61 @@ class MemoryManager:
             (f.stem, self._extract_skill_summary(f))
             for f in sorted(self.common_skills_dir.glob("*.md"))
         ]
+
+    # ── Cron log ──────────────────────────────────────────
+
+    _CRON_LOG_DIR = "state/cron_logs"
+    _CRON_LOG_MAX_LINES = 50
+
+    def append_cron_log(
+        self, task_name: str, *, summary: str, duration_ms: int,
+    ) -> None:
+        """Append a cron execution result to the daily log."""
+        log_dir = self.person_dir / self._CRON_LOG_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = log_dir / f"{date.today().isoformat()}.jsonl"
+
+        import json as _json
+        entry = _json.dumps({
+            "timestamp": datetime.now().isoformat(),
+            "task": task_name,
+            "summary": summary[:500],
+            "duration_ms": duration_ms,
+        }, ensure_ascii=False)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+
+        # Keep file bounded
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        if len(lines) > self._CRON_LOG_MAX_LINES:
+            path.write_text(
+                "\n".join(lines[-self._CRON_LOG_MAX_LINES:]) + "\n",
+                encoding="utf-8",
+            )
+
+    def read_cron_log(self, days: int = 1) -> str:
+        """Read cron logs for the last *days* days."""
+        log_dir = self.person_dir / self._CRON_LOG_DIR
+        if not log_dir.is_dir():
+            return ""
+
+        import json as _json
+        parts: list[str] = []
+        for i in range(days):
+            target = date.today() - timedelta(days=i)
+            path = log_dir / f"{target.isoformat()}.jsonl"
+            if not path.exists():
+                continue
+            for line in path.read_text(encoding="utf-8").strip().splitlines():
+                try:
+                    e = _json.loads(line)
+                    parts.append(
+                        f"- {e['timestamp']}: [{e['task']}] {e['summary'][:200]} "
+                        f"({e['duration_ms']}ms)"
+                    )
+                except (_json.JSONDecodeError, KeyError):
+                    continue
+        return "\n".join(parts)
 
     # ── Shared user memory ────────────────────────────────
 

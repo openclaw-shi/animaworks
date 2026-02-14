@@ -14,7 +14,7 @@ from collections.abc import AsyncGenerator, Callable
 from datetime import datetime
 from pathlib import Path
 
-from core.agent import AgentCore, DelegateFn
+from core.agent import AgentCore
 from core.memory.conversation import ConversationMemory
 from core.memory import MemoryManager
 from core.messenger import Messenger
@@ -51,10 +51,6 @@ class DigitalPerson:
         self._on_lock_released: Callable[[], None] | None = None
 
         logger.info("DigitalPerson '%s' initialized from %s", self.name, person_dir)
-
-    def set_delegate_fn(self, fn: DelegateFn) -> None:
-        """Inject a delegate callback so this person can delegate tasks."""
-        self.agent.set_delegate_fn(fn)
 
     def set_on_message_sent(
         self, fn: Callable[[str, str, str], None],
@@ -340,6 +336,14 @@ class DigitalPerson:
                         prompt, trigger=f"cron:{task_name}"
                     )
                     self._last_activity = datetime.now()
+
+                    # Record cron execution result
+                    self.memory.append_cron_log(
+                        task_name,
+                        summary=result.summary,
+                        duration_ms=result.duration_ms,
+                    )
+
                     logger.info(
                         "[%s] run_cron_task END task=%s duration_ms=%d",
                         self.name, task_name, result.duration_ms,

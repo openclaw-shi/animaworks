@@ -33,9 +33,9 @@ class ModelConfig(BaseModel):
     max_chains: int = 2  # max auto-continuation sessions
     conversation_history_threshold: float = 0.30  # conversation compression trigger
     execution_mode: str | None = None  # "autonomous" or "assisted"; None = auto
-    role: str | None = None  # "commander" or "worker"
     supervisor: str | None = None  # supervisor Person name
     speciality: str | None = None  # free-text specialisation
+    resolved_mode: str | None = None  # "A1"/"A2"/"B" — resolved from config
 
 
 class PersonConfig(BaseModel):

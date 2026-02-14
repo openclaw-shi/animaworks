@@ -95,6 +95,7 @@ class BaseExecutor(ABC):
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run the execution engine and return the response.
 
@@ -106,6 +107,9 @@ class BaseExecutor(ABC):
                 Not used by Mode B.
             shortterm: Short-term memory for inline session chaining
                 (A2 / Fallback). A1 chaining is managed by AgentCore.
+            trigger: Trigger identifier (e.g. "message:sakura", "heartbeat").
+                Used by Mode B for post-call send judgement. Other modes
+                ignore this parameter.
 
         Returns:
             ExecutionResult with the response text and optional metadata.

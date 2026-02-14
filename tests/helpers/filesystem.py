@@ -82,7 +82,6 @@ def create_person_dir(
     permissions: str = "",
     model: str = "claude-sonnet-4-20250514",
     execution_mode: str | None = None,
-    role: str | None = None,
     credential: str | None = None,
     api_key: str | None = None,
     api_key_env: str = "ANTHROPIC_API_KEY",
@@ -124,8 +123,6 @@ def create_person_dir(
     person_config: dict[str, Any] = {"model": model}
     if execution_mode is not None:
         person_config["execution_mode"] = execution_mode
-    if role is not None:
-        person_config["role"] = role
     if credential is not None:
         person_config["credential"] = credential
     person_config["context_threshold"] = context_threshold

@@ -75,7 +75,6 @@ class TestPersonModelConfig:
         assert pmc.context_threshold is None
         assert pmc.max_chains is None
         assert pmc.execution_mode is None
-        assert pmc.role is None
         assert pmc.supervisor is None
         assert pmc.speciality is None
 
@@ -275,9 +274,7 @@ class TestResolvePersonConfig:
     def test_partial_overrides(self):
         config = AnimaWorksConfig()
         config.persons["bob"] = PersonModelConfig(
-            role="commander",
-            supervisor=None,  # explicitly None = use default
+            supervisor="alice",
         )
         resolved, _ = resolve_person_config(config, "bob")
-        assert resolved.role == "commander"
-        assert resolved.supervisor is None  # default is also None
+        assert resolved.supervisor == "alice"

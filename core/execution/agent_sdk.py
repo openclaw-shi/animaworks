@@ -109,6 +109,7 @@ class AgentSDKExecutor(BaseExecutor):
         system_prompt: str = "",
         tracker: ContextTracker | None = None,
         shortterm: ShortTermMemory | None = None,
+        trigger: str = "",
     ) -> ExecutionResult:
         """Run a session via Claude Agent SDK with context monitoring hook.
 
