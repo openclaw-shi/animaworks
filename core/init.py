@@ -188,6 +188,7 @@ def _validate_safe_path(data_dir: Path) -> None:
 def _create_default_config(data_dir: Path) -> None:
     """Generate a default config.json for a freshly initialized runtime."""
     from core.config import (
+        DEFAULT_MODEL_MODE_PATTERNS,
         AnimaWorksConfig,
         CredentialConfig,
         PersonModelConfig,
@@ -196,6 +197,7 @@ def _create_default_config(data_dir: Path) -> None:
 
     config = AnimaWorksConfig(
         credentials={"anthropic": CredentialConfig()},
+        model_modes=dict(DEFAULT_MODEL_MODE_PATTERNS),
     )
 
     # Auto-detect persons from the just-copied templates

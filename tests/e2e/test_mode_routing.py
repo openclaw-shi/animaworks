@@ -41,10 +41,10 @@ class TestModeRouting:
         assert agent._resolve_execution_mode() == "a2"
 
     def test_ollama_model_routes_to_a2(self, make_agent_core):
-        """Non-Claude model (Ollama) → Mode A2."""
+        """Ollama model with tool_use support → Mode A2."""
         agent = make_agent_core(
             name="ollama-a2",
-            model="ollama/gemma3:27b",
+            model="ollama/qwen3:14b",
         )
         assert agent._resolve_execution_mode() == "a2"
 
@@ -52,8 +52,16 @@ class TestModeRouting:
         """Ollama model + execution_mode='assisted' → Mode B."""
         agent = make_agent_core(
             name="ollama-b",
-            model="ollama/gemma3:27b",
+            model="ollama/qwen3:14b",
             execution_mode="assisted",
+        )
+        assert agent._resolve_execution_mode() == "b"
+
+    def test_ollama_non_tool_model_routes_to_b(self, make_agent_core):
+        """Ollama model without reliable tool_use → Mode B."""
+        agent = make_agent_core(
+            name="ollama-gemma-b",
+            model="ollama/gemma3:27b",
         )
         assert agent._resolve_execution_mode() == "b"
 

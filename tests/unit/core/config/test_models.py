@@ -16,9 +16,12 @@ from core.config.models import (
     PersonModelConfig,
     SystemConfig,
     WorkerSystemConfig,
+    _match_pattern_table,
+    _pattern_specificity,
     get_config_path,
     invalidate_cache,
     load_config,
+    resolve_execution_mode,
     resolve_person_config,
     save_config,
 )
@@ -311,3 +314,125 @@ class TestResolvePersonConfig:
         )
         resolved, _ = resolve_person_config(config, "bob")
         assert resolved.supervisor == "alice"
+
+
+# ── Pattern specificity ───────────────────────────────────
+
+
+class TestPatternSpecificity:
+    def test_exact_match_beats_wildcard(self):
+        exact = _pattern_specificity("ollama/qwen3:14b")
+        wildcard = _pattern_specificity("ollama/qwen3:*")
+        assert exact < wildcard  # lower = higher priority
+
+    def test_longer_prefix_beats_shorter(self):
+        long_prefix = _pattern_specificity("ollama/qwen3-coder:*")
+        short_prefix = _pattern_specificity("ollama/*")
+        assert long_prefix < short_prefix
+
+    def test_exact_matches_equal_tier(self):
+        a = _pattern_specificity("claude-sonnet-4-20250514")
+        b = _pattern_specificity("openai/gpt-4o")
+        # Both are exact — tier 0
+        assert a[0] == 0
+        assert b[0] == 0
+
+
+# ── Pattern table matching ────────────────────────────────
+
+
+class TestMatchPatternTable:
+    def test_exact_match(self):
+        table = {"ollama/qwen3:14b": "A2", "ollama/*": "B"}
+        assert _match_pattern_table("ollama/qwen3:14b", table) == "A2"
+
+    def test_prefix_wildcard(self):
+        table = {"claude-*": "A1"}
+        assert _match_pattern_table("claude-sonnet-4-20250514", table) == "A1"
+
+    def test_suffix_wildcard(self):
+        table = {"ollama/llama4:*": "A2"}
+        assert _match_pattern_table("ollama/llama4:scout", table) == "A2"
+
+    def test_partial_wildcard(self):
+        table = {"ollama/glm-4.7*": "A2"}
+        assert _match_pattern_table("ollama/glm-4.7:9b", table) == "A2"
+
+    def test_no_match_returns_none(self):
+        table = {"claude-*": "A1", "openai/*": "A2"}
+        assert _match_pattern_table("unknown/model", table) is None
+
+    def test_specific_pattern_beats_catchall(self):
+        table = {
+            "ollama/qwen3:14b": "A2",
+            "ollama/*": "B",
+        }
+        assert _match_pattern_table("ollama/qwen3:14b", table) == "A2"
+        assert _match_pattern_table("ollama/some-other", table) == "B"
+
+    def test_empty_table_returns_none(self):
+        assert _match_pattern_table("claude-sonnet-4-20250514", {}) is None
+
+    def test_case_normalization(self):
+        table = {"claude-*": "a1"}
+        assert _match_pattern_table("claude-opus-4-20250514", table) == "A1"
+
+
+# ── resolve_execution_mode (wildcard) ─────────────────────
+
+
+class TestResolveExecutionModeWildcard:
+    def test_explicit_override_autonomous(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "any-model", "autonomous") == "A2"
+
+    def test_explicit_override_assisted(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "any-model", "assisted") == "B"
+
+    def test_claude_wildcard_a1(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "claude-sonnet-4-20250514") == "A1"
+        assert resolve_execution_mode(config, "claude-opus-4-20250514") == "A1"
+        # Future Claude model also matches
+        assert resolve_execution_mode(config, "claude-haiku-5-20260101") == "A1"
+
+    def test_cloud_api_providers_a2(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "openai/gpt-4.1") == "A2"
+        assert resolve_execution_mode(config, "google/gemini-2.5-pro") == "A2"
+        assert resolve_execution_mode(config, "zai/zai-model") == "A2"
+        assert resolve_execution_mode(config, "minimax/some-model") == "A2"
+        assert resolve_execution_mode(config, "moonshot/kimi") == "A2"
+
+    def test_ollama_a2_models(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "ollama/qwen3:14b") == "A2"
+        assert resolve_execution_mode(config, "ollama/qwen3:30b") == "A2"
+        assert resolve_execution_mode(config, "ollama/llama4:scout") == "A2"
+
+    def test_ollama_b_models(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "ollama/qwen3:8b") == "B"
+        assert resolve_execution_mode(config, "ollama/deepseek-r1:14b") == "B"
+        assert resolve_execution_mode(config, "ollama/gemma3:27b") == "B"
+
+    def test_unknown_model_fallback_b(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "totally/unknown-model") == "B"
+
+    def test_config_exact_overrides_code_default(self):
+        config = AnimaWorksConfig(model_modes={"ollama/qwen3:8b": "A2"})
+        # Code default says B, but config.json says A2
+        assert resolve_execution_mode(config, "ollama/qwen3:8b") == "A2"
+
+    def test_config_wildcard_overrides_code_default(self):
+        config = AnimaWorksConfig(model_modes={"ollama/gemma3*": "A2"})
+        # Code default says B for gemma3*, but config.json overrides
+        assert resolve_execution_mode(config, "ollama/gemma3:27b") == "A2"
+
+    def test_empty_config_falls_through_to_code(self):
+        config = AnimaWorksConfig(model_modes={})
+        assert resolve_execution_mode(config, "claude-sonnet-4-20250514") == "A1"
+        assert resolve_execution_mode(config, "openai/gpt-4.1") == "A2"
+        assert resolve_execution_mode(config, "ollama/qwen3:8b") == "B"

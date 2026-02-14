@@ -13,6 +13,7 @@ load / save / resolve helpers with a module-level singleton cache.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -302,26 +303,104 @@ def resolve_person_config(
 # Model mode resolution
 # ---------------------------------------------------------------------------
 
-# Default model_modes (fallback when config.json has no entry)
-DEFAULT_MODEL_MODES: dict[str, str] = {
-    "claude-opus-4-20250514": "A1",
-    "claude-sonnet-4-20250514": "A1",
-    "claude-haiku-3.5-20241022": "A1",
-    "openai/gpt-4o": "A2",
-    "openai/gpt-4o-mini": "A2",
-    "azure/gpt-4.1": "A2",
-    "azure/gpt-4.1-mini": "A2",
-    "azure/gpt-4o": "A2",
-    "google/gemini-2.0-flash": "A2",
-    "google/gemini-2.5-pro": "A2",
-    "ollama/gemma3:27b": "B",
-    "ollama/llama3.3:70b": "B",
-    "ollama/qwen2.5-coder:32b": "B",
+# Default model_modes with wildcard pattern support.
+# Patterns use fnmatch syntax (*, ?, [seq]).
+# Order matters for specificity — more specific patterns should appear first,
+# but the resolver sorts by specificity automatically.
+DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
+    # ── A1: Claude Agent SDK ──────────────────────────────
+    "claude-*": "A1",
+
+    # ── A2: Cloud API providers (LiteLLM + tool_use) ──────
+    "openai/*": "A2",
+    "azure/*": "A2",
+    "google/*": "A2",
+    "mistral/*": "A2",
+    "xai/*": "A2",
+    "cohere/*": "A2",
+    "zai/*": "A2",
+    "minimax/*": "A2",
+    "moonshot/*": "A2",
+    "deepseek/deepseek-chat": "A2",
+
+    # ── A2: Ollama models with reliable tool_use ──────────
+    "ollama/qwen3:14b": "A2",
+    "ollama/qwen3:30b": "A2",
+    "ollama/qwen3:32b": "A2",
+    "ollama/qwen3:235b": "A2",
+    "ollama/qwen3-coder:*": "A2",
+    "ollama/llama4:*": "A2",
+    "ollama/mistral-small3.2:*": "A2",
+    "ollama/devstral*": "A2",
+    "ollama/glm-4.7*": "A2",
+    "ollama/glm-5*": "A2",
+    "ollama/minimax*": "A2",
+    "ollama/kimi-k2*": "A2",
+    "ollama/gpt-oss*": "A2",
+
+    # ── B: No reliable tool_use ───────────────────────────
+    "ollama/qwen3:0.6b": "B",
+    "ollama/qwen3:1.7b": "B",
+    "ollama/qwen3:4b": "B",
+    "ollama/qwen3:8b": "B",
+    "ollama/gemma3*": "B",
+    "ollama/deepseek-r1*": "B",
+    "ollama/deepseek-v3*": "B",
+    "ollama/phi4*": "B",
+    "ollama/*": "B",
 }
 
-# Provider prefixes that default to A2 (tool_use capable) when the specific
-# model name is not in DEFAULT_MODEL_MODES or config.json.
-_A2_PROVIDER_PREFIXES = ("openai/", "azure/", "google/")
+# Backward-compatible alias
+DEFAULT_MODEL_MODES = DEFAULT_MODEL_MODE_PATTERNS
+
+
+def _pattern_specificity(pattern: str) -> tuple[int, int, int]:
+    """Return a sort key so more-specific patterns match first.
+
+    Ranking (lower = matched first):
+      - Exact match (no wildcard chars): (0, 0, -len)
+      - Wildcard pattern: (1, -prefix_len, -total_len)
+        where prefix_len is the length before the first wildcard char.
+    """
+    if not any(c in pattern for c in ("*", "?", "[")):
+        # Exact match — highest priority
+        return (0, 0, -len(pattern))
+    # Find prefix length before first wildcard character
+    prefix_len = len(pattern)
+    for i, ch in enumerate(pattern):
+        if ch in ("*", "?", "["):
+            prefix_len = i
+            break
+    return (1, -prefix_len, -len(pattern))
+
+
+def _match_pattern_table(
+    model_name: str,
+    table: dict[str, str],
+) -> str | None:
+    """Match *model_name* against a pattern table.
+
+    Phase 1: O(1) exact dict lookup.
+    Phase 2: fnmatch scan in specificity-descending order.
+
+    Returns the mode string (e.g. ``"A1"``) or ``None`` if no match.
+    """
+    # Phase 1: exact match
+    if model_name in table:
+        return table[model_name].upper()
+
+    # Phase 2: wildcard patterns sorted by specificity
+    wildcard_patterns = [
+        p for p in table
+        if any(c in p for c in ("*", "?", "["))
+    ]
+    wildcard_patterns.sort(key=_pattern_specificity)
+
+    for pattern in wildcard_patterns:
+        if fnmatch.fnmatch(model_name, pattern):
+            return table[pattern].upper()
+
+    return None
 
 
 def resolve_execution_mode(
@@ -329,27 +408,28 @@ def resolve_execution_mode(
     model_name: str,
     explicit_override: str | None = None,
 ) -> str:
-    """Resolve execution mode from model name.
+    """Resolve execution mode from model name with wildcard pattern support.
 
     Priority:
       1. Person's execution_mode explicit override (legacy)
-      2. config.json model_modes table
-      3. DEFAULT_MODEL_MODES (hard-coded fallback)
-      4. Provider prefix heuristic (openai/, azure/, google/ → A2)
-      5. Default "B" (safe side)
+      2. config.json model_modes table (exact + wildcard)
+      3. DEFAULT_MODEL_MODE_PATTERNS (exact + wildcard)
+      4. Default "B" (safe side)
     """
     if explicit_override:
         mapping = {"autonomous": "A2", "assisted": "B"}
         return mapping.get(explicit_override, explicit_override.upper())
 
-    table = config.model_modes or {}
-    if model_name in table:
-        return table[model_name].upper()
-    if model_name in DEFAULT_MODEL_MODES:
-        return DEFAULT_MODEL_MODES[model_name]
+    # config.json model_modes (user overrides)
+    user_table = config.model_modes or {}
+    if user_table:
+        result = _match_pattern_table(model_name, user_table)
+        if result is not None:
+            return result
 
-    # Heuristic: known tool_use-capable providers default to A2
-    if any(model_name.startswith(p) for p in _A2_PROVIDER_PREFIXES):
-        return "A2"
+    # Code defaults
+    result = _match_pattern_table(model_name, DEFAULT_MODEL_MODE_PATTERNS)
+    if result is not None:
+        return result
 
     return "B"  # unknown model → safe side
