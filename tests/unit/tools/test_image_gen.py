@@ -263,6 +263,156 @@ class TestImageGenPipeline:
         result = pipe.generate_all(prompt="test", steps=["bustup"])
         assert len(result.errors) > 0
 
+    def test_init_with_config(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        cfg = ImageGenConfig(style_prefix="anime, ", vibe_strength=0.7)
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+        assert pipe._config is cfg
+        assert pipe._config.style_prefix == "anime, "
+        assert pipe._config.vibe_strength == 0.7
+
+    def test_init_without_config_uses_default(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        pipe = ImageGenPipeline(tmp_path)
+        assert isinstance(pipe._config, ImageGenConfig)
+        assert pipe._config.style_reference is None
+        assert pipe._config.style_prefix == ""
+        assert pipe._config.vibe_strength == 0.6
+
+    def test_generate_all_applies_style_prefix_suffix(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        cfg = ImageGenConfig(
+            style_prefix="anime coloring, ",
+            style_suffix=", high quality",
+        )
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+
+        with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
+            mock_client = MagicMock()
+            mock_client.generate_fullbody.return_value = b"PNG-DATA"
+            mock_nai_cls.return_value = mock_client
+
+            pipe.generate_all(
+                prompt="1girl, black hair",
+                skip_existing=False,
+                steps=["fullbody"],
+            )
+
+            call_kwargs = mock_client.generate_fullbody.call_args[1]
+            assert call_kwargs["prompt"] == "anime coloring, 1girl, black hair, high quality"
+
+    def test_generate_all_applies_negative_prompt_extra(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        cfg = ImageGenConfig(negative_prompt_extra="realistic, 3d render")
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+
+        with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
+            mock_client = MagicMock()
+            mock_client.generate_fullbody.return_value = b"PNG-DATA"
+            mock_nai_cls.return_value = mock_client
+
+            pipe.generate_all(
+                prompt="1girl",
+                negative_prompt="lowres, bad anatomy",
+                skip_existing=False,
+                steps=["fullbody"],
+            )
+
+            call_kwargs = mock_client.generate_fullbody.call_args[1]
+            assert call_kwargs["negative_prompt"] == "lowres, bad anatomy, realistic, 3d render"
+
+    def test_generate_all_applies_negative_prompt_extra_empty(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        cfg = ImageGenConfig(negative_prompt_extra="realistic")
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+
+        with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
+            mock_client = MagicMock()
+            mock_client.generate_fullbody.return_value = b"PNG-DATA"
+            mock_nai_cls.return_value = mock_client
+
+            pipe.generate_all(
+                prompt="1girl",
+                negative_prompt="",
+                skip_existing=False,
+                steps=["fullbody"],
+            )
+
+            call_kwargs = mock_client.generate_fullbody.call_args[1]
+            assert call_kwargs["negative_prompt"] == "realistic"
+
+    def test_generate_all_loads_style_reference(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        style_ref = tmp_path / "style_ref.png"
+        style_ref.write_bytes(b"STYLE-IMAGE-DATA")
+
+        cfg = ImageGenConfig(style_reference=str(style_ref))
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+
+        with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
+            mock_client = MagicMock()
+            mock_client.generate_fullbody.return_value = b"PNG-DATA"
+            mock_nai_cls.return_value = mock_client
+
+            pipe.generate_all(
+                prompt="1girl",
+                skip_existing=False,
+                steps=["fullbody"],
+            )
+
+            call_kwargs = mock_client.generate_fullbody.call_args[1]
+            assert call_kwargs["vibe_image"] == b"STYLE-IMAGE-DATA"
+
+    def test_generate_all_warns_missing_style_reference(self, tmp_path: Path, caplog):
+        import logging
+        from core.config.models import ImageGenConfig
+
+        cfg = ImageGenConfig(style_reference="/nonexistent/path/style.png")
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+
+        with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
+            mock_client = MagicMock()
+            mock_client.generate_fullbody.return_value = b"PNG-DATA"
+            mock_nai_cls.return_value = mock_client
+
+            with caplog.at_level(logging.WARNING):
+                pipe.generate_all(
+                    prompt="1girl",
+                    skip_existing=False,
+                    steps=["fullbody"],
+                )
+
+            call_kwargs = mock_client.generate_fullbody.call_args[1]
+            assert call_kwargs["vibe_image"] is None
+            assert any("Style reference not found" in r.message for r in caplog.records)
+
+    def test_generate_all_passes_vibe_params(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
+        cfg = ImageGenConfig(vibe_strength=0.3, vibe_info_extracted=0.5)
+        pipe = ImageGenPipeline(tmp_path, config=cfg)
+
+        with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
+            mock_client = MagicMock()
+            mock_client.generate_fullbody.return_value = b"PNG-DATA"
+            mock_nai_cls.return_value = mock_client
+
+            pipe.generate_all(
+                prompt="1girl",
+                skip_existing=False,
+                steps=["fullbody"],
+            )
+
+            call_kwargs = mock_client.generate_fullbody.call_args[1]
+            assert call_kwargs["vibe_strength"] == 0.3
+            assert call_kwargs["vibe_info_extracted"] == 0.5
+
 
 # ── get_tool_schemas ──────────────────────────────────────────────
 

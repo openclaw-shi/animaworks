@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import core.tools
-from core.tooling.dispatch import ExternalToolDispatcher, _execute
+from pathlib import Path
+
+from core.tooling.dispatch import ExternalToolDispatcher, _execute, _handle_generate_character_assets
 import core.tooling.dispatch as _dispatch_mod
 
 
@@ -507,3 +509,62 @@ class TestExecuteFunction:
             args={"audio_path": "/tmp/audio.wav"},
         )
         assert result == "transcribed text"
+
+
+# ── _handle_generate_character_assets() ──────────────────────
+
+
+class TestHandleGenerateCharacterAssets:
+    def test_passes_image_gen_config_to_pipeline(self):
+        from core.config.models import AnimaWorksConfig, ImageGenConfig
+
+        mock_config = AnimaWorksConfig(
+            image_gen=ImageGenConfig(
+                style_prefix="anime, ",
+                vibe_strength=0.7,
+            )
+        )
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {"fullbody": "/path/to/img.png"}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config):
+            result = _handle_generate_character_assets(
+                mock_mod,
+                {"person_dir": "/tmp/test", "prompt": "1girl"},
+            )
+
+        # Verify ImageGenPipeline was constructed with the config's image_gen
+        call_args = mock_mod.ImageGenPipeline.call_args
+        assert call_args[0][0] == Path("/tmp/test")
+        assert call_args[1]["config"] is mock_config.image_gen
+        assert call_args[1]["config"].style_prefix == "anime, "
+        assert call_args[1]["config"].vibe_strength == 0.7
+        assert result == {"fullbody": "/path/to/img.png"}
+
+    def test_uses_default_config_when_no_image_gen(self):
+        from core.config.models import AnimaWorksConfig, ImageGenConfig
+
+        mock_config = AnimaWorksConfig()  # default config
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config):
+            _handle_generate_character_assets(
+                mock_mod,
+                {"person_dir": "/tmp/test", "prompt": "1girl"},
+            )
+
+        call_args = mock_mod.ImageGenPipeline.call_args
+        config_arg = call_args[1]["config"]
+        assert isinstance(config_arg, ImageGenConfig)
+        assert config_arg.style_reference is None
+        assert config_arg.style_prefix == ""
+        assert config_arg.vibe_strength == 0.6

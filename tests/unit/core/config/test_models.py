@@ -11,6 +11,7 @@ from core.config.models import (
     AnimaWorksConfig,
     CredentialConfig,
     GatewaySystemConfig,
+    ImageGenConfig,
     PersonDefaults,
     PersonModelConfig,
     SystemConfig,
@@ -105,6 +106,38 @@ class TestAnimaWorksConfig:
         data = config.model_dump(mode="json")
         restored = AnimaWorksConfig.model_validate(data)
         assert restored.persons["alice"].model == "gpt-4o"
+
+
+class TestImageGenConfig:
+    def test_defaults(self):
+        ic = ImageGenConfig()
+        assert ic.style_reference is None
+        assert ic.style_prefix == ""
+        assert ic.style_suffix == ""
+        assert ic.negative_prompt_extra == ""
+        assert ic.vibe_strength == 0.6
+        assert ic.vibe_info_extracted == 0.8
+
+    def test_custom_values(self):
+        ic = ImageGenConfig(
+            style_reference="/path/to/ref.png",
+            style_prefix="anime coloring, ",
+            style_suffix=", high quality",
+            negative_prompt_extra="realistic",
+            vibe_strength=0.5,
+            vibe_info_extracted=0.9,
+        )
+        assert ic.style_reference == "/path/to/ref.png"
+        assert ic.style_prefix == "anime coloring, "
+        assert ic.style_suffix == ", high quality"
+        assert ic.negative_prompt_extra == "realistic"
+        assert ic.vibe_strength == 0.5
+        assert ic.vibe_info_extracted == 0.9
+
+    def test_animaworks_config_has_image_gen(self):
+        config = AnimaWorksConfig()
+        assert isinstance(config.image_gen, ImageGenConfig)
+        assert config.image_gen.style_reference is None
 
 
 # ── Cache management ──────────────────────────────────────
