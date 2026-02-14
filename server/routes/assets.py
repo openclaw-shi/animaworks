@@ -7,11 +7,10 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from server.dependencies import get_person
 from server.events import emit
 
 logger = logging.getLogger("animaworks.routes.assets")
@@ -36,9 +35,14 @@ def create_assets_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/persons/{name}/assets")
-    async def list_assets(name: str, person=Depends(get_person)):
+    async def list_assets(name: str, request: Request):
         """List available assets for a person."""
-        assets_dir = person.person_dir / "assets"
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        assets_dir = person_dir / "assets"
         if not assets_dir.exists():
             return {"assets": []}
         return {
@@ -50,9 +54,14 @@ def create_assets_router() -> APIRouter:
         }
 
     @router.get("/persons/{name}/assets/metadata")
-    async def get_asset_metadata(name: str, person=Depends(get_person)):
+    async def get_asset_metadata(name: str, request: Request):
         """Return structured metadata about a person's available assets."""
-        assets_dir = person.person_dir / "assets"
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        assets_dir = person_dir / "assets"
         base_url = f"/api/persons/{name}/assets"
 
         asset_files = {
@@ -85,7 +94,7 @@ def create_assets_router() -> APIRouter:
                     }
 
         # Extract image_color from identity.md
-        identity_path = person.person_dir / "identity.md"
+        identity_path = person_dir / "identity.md"
         if identity_path.exists():
             try:
                 text = identity_path.read_text(encoding="utf-8")
@@ -101,14 +110,19 @@ def create_assets_router() -> APIRouter:
         return result
 
     @router.api_route("/persons/{name}/assets/{filename}", methods=["GET", "HEAD"])
-    async def get_asset(name: str, filename: str, person=Depends(get_person)):
+    async def get_asset(name: str, filename: str, request: Request):
         """Serve a static asset file from a person's assets directory."""
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
         # Validate filename (prevent path traversal)
         safe_name = Path(filename).name
         if safe_name != filename or ".." in filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
 
-        file_path = person.person_dir / "assets" / safe_name
+        file_path = person_dir / "assets" / safe_name
         if not file_path.exists() or not file_path.is_file():
             raise HTTPException(status_code=404, detail="Asset not found")
 
@@ -123,17 +137,21 @@ def create_assets_router() -> APIRouter:
     @router.post("/persons/{name}/assets/generate")
     async def generate_assets(
         name: str, body: AssetGenerateRequest, request: Request,
-        person=Depends(get_person),
     ):
         """Trigger character asset generation pipeline."""
         import asyncio
+
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
 
         if not body.prompt:
             raise HTTPException(status_code=400, detail="prompt is required")
 
         from core.tools.image_gen import ImageGenPipeline
 
-        pipeline = ImageGenPipeline(person.person_dir)
+        pipeline = ImageGenPipeline(person_dir)
 
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(

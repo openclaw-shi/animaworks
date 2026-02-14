@@ -3,14 +3,8 @@ from __future__ import annotations
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from fastapi import HTTPException, Request
-
-
-# ── FastAPI Dependencies ──────────────────────────────────────
-
-async def get_person(name: str, request: Request):
-    """FastAPI dependency: resolve person by name or raise 404."""
-    person = request.app.state.persons.get(name)
-    if not person:
-        raise HTTPException(status_code=404, detail=f"Person not found: {name}")
-    return person
+# NOTE: With process isolation, DigitalPerson instances are no longer
+# in the parent process. All routes should use ProcessSupervisor IPC
+# or read files directly from disk instead of using get_person dependency.
+#
+# This file is kept for reference but the dependency is no longer used.

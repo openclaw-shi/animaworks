@@ -59,12 +59,11 @@ class PersonRunner:
             logger.info(f"Initializing Person: {self.person_name}")
 
             # Initialize DigitalPerson
+            person_dir = self.persons_dir / self.person_name
             self.person = DigitalPerson(
-                name=self.person_name,
-                persons_dir=self.persons_dir,
+                person_dir=person_dir,
                 shared_dir=self.shared_dir
             )
-            await self.person.initialize()
 
             # Start IPC server
             self.ipc_server = IPCServer(

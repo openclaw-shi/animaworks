@@ -14,8 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from core.lifecycle import LifecycleManager
-from core.person import DigitalPerson
+from core.supervisor import ProcessSupervisor
 from server.routes import create_router
 from server.websocket import WebSocketManager
 
@@ -24,10 +23,12 @@ logger = logging.getLogger("animaworks.server")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.lifecycle.start()
-    logger.info("Server started")
+    # Start all Person processes
+    await app.state.supervisor.start_all(app.state.person_names)
+    logger.info("Server started with process isolation")
     yield
-    app.state.lifecycle.shutdown()
+    # Shutdown all processes
+    await app.state.supervisor.shutdown_all()
     logger.info("Server stopped")
 
 
@@ -35,42 +36,28 @@ def create_app(persons_dir: Path, shared_dir: Path) -> FastAPI:
     app = FastAPI(title="AnimaWorks", version="0.1.0", lifespan=lifespan)
 
     ws_manager = WebSocketManager()
-    lifecycle = LifecycleManager()
-    lifecycle.set_broadcast(ws_manager.broadcast)
 
-    persons: dict[str, DigitalPerson] = {}
+    # Create run directory for sockets and PID files
+    run_dir = Path.home() / ".animaworks" / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize ProcessSupervisor
+    supervisor = ProcessSupervisor(
+        persons_dir=persons_dir,
+        shared_dir=shared_dir,
+        run_dir=run_dir
+    )
+
+    # Discover person names from disk
+    person_names: list[str] = []
     if persons_dir.exists():
         for person_dir in sorted(persons_dir.iterdir()):
             if person_dir.is_dir() and (person_dir / "identity.md").exists():
-                person = DigitalPerson(person_dir, shared_dir)
-                persons[person.name] = person
-                lifecycle.register_person(person)
-                logger.info("Loaded person: %s", person.name)
+                person_names.append(person_dir.name)
+                logger.info("Discovered person: %s", person_dir.name)
 
-    # Inject message-sent callback to broadcast person.interaction via WebSocket
-    def _on_message_sent(from_person: str, to_person: str, content: str) -> None:
-        import asyncio
-
-        event = {
-            "type": "person.interaction",
-            "data": {
-                "from_person": from_person,
-                "to_person": to_person,
-                "type": "message",
-                "summary": content[:200],
-            },
-        }
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(ws_manager.broadcast(event))
-        except RuntimeError:
-            logger.debug("No event loop for person.interaction broadcast")
-
-    for person in persons.values():
-        person.set_on_message_sent(_on_message_sent)
-
-    app.state.persons = persons
-    app.state.lifecycle = lifecycle
+    app.state.supervisor = supervisor
+    app.state.person_names = person_names
     app.state.ws_manager = ws_manager
     app.state.persons_dir = persons_dir
     app.state.shared_dir = shared_dir

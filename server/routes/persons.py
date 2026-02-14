@@ -31,32 +31,81 @@ def create_persons_router() -> APIRouter:
 
     @router.get("/persons")
     async def list_persons(request: Request):
-        persons = request.app.state.persons
+        supervisor = request.app.state.supervisor
+        persons_dir = request.app.state.persons_dir
+        person_names = request.app.state.person_names
+
         result = []
-        for p in persons.values():
-            data = p.status.model_dump()
-            mc = p.model_config
-            data["supervisor"] = mc.supervisor
-            data["appearance"] = _read_appearance(p.person_dir)
+        for name in person_names:
+            person_dir = persons_dir / name
+
+            # Get process status
+            proc_status = supervisor.get_process_status(name)
+
+            # Read static files
+            appearance = _read_appearance(person_dir)
+
+            # Combine data
+            data = {
+                "name": name,
+                "status": proc_status.get("status", "unknown"),
+                "pid": proc_status.get("pid"),
+                "uptime_sec": proc_status.get("uptime_sec"),
+                "appearance": appearance,
+            }
             result.append(data)
+
         return result
 
     @router.get("/persons/{name}")
-    async def get_person_detail(name: str, person=Depends(get_person)):
+    async def get_person_detail(name: str, request: Request):
+        supervisor = request.app.state.supervisor
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+
+        if not person_dir.exists():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        # Get process status
+        proc_status = supervisor.get_process_status(name)
+
+        # Read memory files directly from disk
+        from core.memory.manager import MemoryManager
+
+        memory = MemoryManager(person_dir)
+
         return {
-            "status": person.status.model_dump(),
-            "identity": person.memory.read_identity(),
-            "injection": person.memory.read_injection(),
-            "state": person.memory.read_current_state(),
-            "pending": person.memory.read_pending(),
-            "knowledge_files": person.memory.list_knowledge_files(),
-            "episode_files": person.memory.list_episode_files(),
-            "procedure_files": person.memory.list_procedure_files(),
+            "status": proc_status,
+            "identity": memory.read_identity(),
+            "injection": memory.read_injection(),
+            "state": memory.read_current_state(),
+            "pending": memory.read_pending(),
+            "knowledge_files": memory.list_knowledge_files(),
+            "episode_files": memory.list_episode_files(),
+            "procedure_files": memory.list_procedure_files(),
         }
 
     @router.post("/persons/{name}/trigger")
-    async def trigger_heartbeat(name: str, person=Depends(get_person)):
-        result = await person.run_heartbeat()
-        return result.model_dump()
+    async def trigger_heartbeat(name: str, request: Request):
+        supervisor = request.app.state.supervisor
+
+        try:
+            # Send IPC request to run heartbeat
+            result = await supervisor.send_request(
+                person_name=name,
+                method="run_heartbeat",
+                params={},
+                timeout=120.0  # Heartbeat can take longer
+            )
+
+            return result
+
+        except KeyError:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+        except ValueError as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail=str(e))
 
     return router

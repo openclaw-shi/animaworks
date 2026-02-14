@@ -114,26 +114,45 @@ def create_chat_router() -> APIRouter:
     router = APIRouter()
 
     @router.post("/persons/{name}/chat")
-    async def chat(name: str, body: ChatRequest, request: Request, person=Depends(get_person)):
+    async def chat(name: str, body: ChatRequest, request: Request):
+        supervisor = request.app.state.supervisor
+
         await emit(request, "person.status", {"name": name, "status": "thinking"})
 
-        response = await person.process_message(body.message, from_person=body.from_person)
+        try:
+            # Send IPC request to Person process
+            result = await supervisor.send_request(
+                person_name=name,
+                method="process_message",
+                params={
+                    "message": body.message,
+                    "from_person": body.from_person
+                },
+                timeout=60.0
+            )
 
-        await emit(request, "person.status", {"name": name, "status": "idle"})
-        await emit(request, "chat.response", {"name": name, "message": response})
+            response = result.get("response", "")
 
-        return ChatResponse(response=response, person=name)
+            await emit(request, "person.status", {"name": name, "status": "idle"})
+            await emit(request, "chat.response", {"name": name, "message": response})
+
+            return ChatResponse(response=response, person=name)
+
+        except KeyError:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+        except ValueError as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/persons/{name}/chat/stream")
-    async def chat_stream(name: str, body: ChatRequest, request: Request, person=Depends(get_person)):
-        return StreamingResponse(
-            _stream_events(person, name, body, request),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+    async def chat_stream(name: str, body: ChatRequest, request: Request):
+        # Streaming not yet implemented in IPC layer
+        # TODO: Implement streaming support in Phase 4
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=501,
+            detail="Streaming not yet implemented with process isolation"
         )
 
     return router

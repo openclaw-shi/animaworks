@@ -6,11 +6,11 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from core.memory.conversation import ConversationMemory
+from core.memory.manager import MemoryManager
 from core.memory.shortterm import ShortTermMemory
-from server.dependencies import get_person
 
 logger = logging.getLogger("animaworks.routes.sessions")
 
@@ -19,11 +19,18 @@ def create_sessions_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/persons/{name}/sessions")
-    async def list_sessions(name: str, person=Depends(get_person)):
+    async def list_sessions(name: str, request: Request):
         """List all available sessions: active conversation, archives, episodes."""
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        from core.config.models import load_model_config
+        model_config = load_model_config(person_dir)
 
         # Active conversation
-        conv = ConversationMemory(person.person_dir, person.model_config)
+        conv = ConversationMemory(person_dir, model_config)
         conv_state = conv.load()
         active_conv = None
         if conv_state.turns or conv_state.compressed_summary:
@@ -41,7 +48,7 @@ def create_sessions_router() -> APIRouter:
             }
 
         # Archived sessions
-        stm = ShortTermMemory(person.person_dir)
+        stm = ShortTermMemory(person_dir)
         archived = []
         archive_dir = stm._archive_dir
         if archive_dir.exists():
@@ -70,8 +77,9 @@ def create_sessions_router() -> APIRouter:
                     pass
 
         # Episodes
+        memory = MemoryManager(person_dir)
         episodes = []
-        ep_dir = person.memory.episodes_dir
+        ep_dir = memory.episodes_dir
         if ep_dir.exists():
             for ep_file in sorted(ep_dir.glob("*.md"), reverse=True):
                 content = ep_file.read_text(encoding="utf-8")
@@ -95,10 +103,15 @@ def create_sessions_router() -> APIRouter:
 
     @router.get("/persons/{name}/sessions/{session_id}")
     async def get_session_detail(
-        name: str, session_id: str, person=Depends(get_person),
+        name: str, session_id: str, request: Request,
     ):
         """Get archived session detail."""
-        stm = ShortTermMemory(person.person_dir)
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        stm = ShortTermMemory(person_dir)
         archive_dir = stm._archive_dir
         json_path = archive_dir / f"{session_id}.json"
         md_path = archive_dir / f"{session_id}.md"
@@ -123,9 +136,17 @@ def create_sessions_router() -> APIRouter:
         }
 
     @router.get("/persons/{name}/transcripts/{date}")
-    async def get_transcript(name: str, date: str, person=Depends(get_person)):
+    async def get_transcript(name: str, date: str, request: Request):
         """Get full conversation transcript for a specific date."""
-        conv = ConversationMemory(person.person_dir, person.model_config)
+        persons_dir = request.app.state.persons_dir
+        person_dir = persons_dir / name
+        if not person_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        from core.config.models import load_model_config
+        model_config = load_model_config(person_dir)
+
+        conv = ConversationMemory(person_dir, model_config)
         messages = conv.load_transcript(date)
         return {
             "person": name,
