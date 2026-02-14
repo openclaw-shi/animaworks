@@ -19,7 +19,7 @@ import contextvars
 import json
 import logging
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 
 _request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
@@ -120,3 +120,113 @@ def setup_logging(
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
+
+
+# ── Person-specific Logging ────────────────────────────────────────────
+
+
+class PersonNameFilter(logging.Filter):
+    """Inject person name into log records."""
+
+    def __init__(self, person_name: str):
+        super().__init__()
+        self.person_name = person_name
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.person_name = self.person_name  # type: ignore[attr-defined]
+        return True
+
+
+def setup_person_logging(
+    person_name: str,
+    log_dir: Path,
+    level: str = "INFO",
+    also_to_console: bool = True
+) -> None:
+    """Configure person-specific logging with daily rotation.
+
+    Creates a dedicated log directory for the person with:
+    - Daily log rotation (YYYYMMDD.log format)
+    - 30-day retention
+    - current.log symlink to the current log file
+    - Optional console output
+
+    Args:
+        person_name: Name of the person (used for log directory and prefix)
+        log_dir: Base log directory (e.g., ~/.animaworks/logs)
+        level: Log level (DEBUG, INFO, WARNING, etc.)
+        also_to_console: Whether to also log to console
+
+    Directory structure created:
+        {log_dir}/persons/{person_name}/
+        ├── current.log -> 20260214.log
+        ├── 20260214.log
+        ├── 20260213.log
+        └── ...
+    """
+    # Create person log directory
+    person_log_dir = log_dir / "persons" / person_name
+    person_log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Main log file with daily rotation
+    log_file = person_log_dir / f"{datetime.now().strftime('%Y%m%d')}.log"
+
+    # Setup root logger
+    root = logging.getLogger()
+    root.setLevel(getattr(logging, level.upper(), logging.INFO))
+    root.handlers.clear()
+
+    # Create person name filter
+    person_filter = PersonNameFilter(person_name)
+
+    # File handler with timed rotation
+    file_handler = TimedRotatingFileHandler(
+        filename=log_file,
+        when="midnight",
+        interval=1,
+        backupCount=30,  # Keep 30 days
+        encoding="utf-8",
+        utc=False
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+    )
+    file_handler.addFilter(person_filter)
+    file_handler.suffix = "%Y%m%d.log"  # Match filename format
+    root.addHandler(file_handler)
+
+    # Create/update current.log symlink
+    current_link = person_log_dir / "current.log"
+    if current_link.exists() or current_link.is_symlink():
+        current_link.unlink()
+    try:
+        current_link.symlink_to(log_file.name)
+    except OSError:
+        # On Windows, symlinks may require admin privileges
+        # Fall back to copying the path as a text file reference
+        current_link.write_text(str(log_file.name))
+
+    # Optional console handler
+    if also_to_console:
+        console = logging.StreamHandler()
+        console.setLevel(logging.DEBUG)
+        console.setFormatter(
+            logging.Formatter(
+                fmt=f"[{person_name}] %(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                datefmt="%H:%M:%S"
+            )
+        )
+        console.addFilter(person_filter)
+        root.addHandler(console)
+
+    # Reduce noise from third-party libraries
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"Person logging configured: {person_name} -> {log_file}")

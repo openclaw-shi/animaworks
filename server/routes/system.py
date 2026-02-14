@@ -24,30 +24,23 @@ def create_system_router() -> APIRouter:
 
     @router.get("/system/status")
     async def system_status(request: Request):
-        persons = request.app.state.persons
-        scheduler = request.app.state.lifecycle.scheduler
+        supervisor = request.app.state.supervisor
+        person_names = request.app.state.person_names
+
+        # Get all process statuses
+        process_statuses = supervisor.get_all_status()
+
         return {
-            "persons": len(persons),
-            "scheduler_running": scheduler.running,
-            "jobs": [
-                {
-                    "id": j.id,
-                    "name": j.name,
-                    "next_run": str(j.next_run_time),
-                }
-                for j in scheduler.get_jobs()
-            ],
+            "persons": len(person_names),
+            "processes": process_statuses,
         }
 
     @router.post("/system/reload")
     async def reload_persons(request: Request):
         """Full sync: add new persons, refresh existing, remove deleted."""
-        from core.person import DigitalPerson
-
-        persons = request.app.state.persons
-        lifecycle = request.app.state.lifecycle
+        supervisor = request.app.state.supervisor
         persons_dir = request.app.state.persons_dir
-        shared_dir = request.app.state.shared_dir
+        current_names = set(request.app.state.person_names)
 
         added: list[str] = []
         refreshed: list[str] = []
@@ -64,27 +57,23 @@ def create_system_router() -> APIRouter:
                 name = person_dir.name
                 on_disk.add(name)
 
-                if name not in persons:
-                    # New person
-                    person = DigitalPerson(person_dir, shared_dir)
-                    persons[name] = person
-                    lifecycle.register_person(person)
+                if name not in current_names:
+                    # New person - start process
+                    await supervisor.start_person(name)
+                    request.app.state.person_names.append(name)
                     added.append(name)
                     logger.info("Hot-loaded person: %s", name)
                 else:
-                    # Existing person — re-initialize to pick up file changes
-                    lifecycle.unregister_person(name)
-                    person = DigitalPerson(person_dir, shared_dir)
-                    persons[name] = person
-                    lifecycle.register_person(person)
+                    # Existing person — restart to pick up file changes
+                    await supervisor.restart_person(name)
                     refreshed.append(name)
                     logger.info("Refreshed person: %s", name)
 
         # Remove persons whose directories no longer exist
-        for name in list(persons.keys()):
+        for name in list(current_names):
             if name not in on_disk:
-                lifecycle.unregister_person(name)
-                del persons[name]
+                await supervisor.stop_person(name)
+                request.app.state.person_names.remove(name)
                 removed.append(name)
                 logger.info("Unloaded person: %s", name)
 
@@ -92,7 +81,7 @@ def create_system_router() -> APIRouter:
             "added": added,
             "refreshed": refreshed,
             "removed": removed,
-            "total": len(persons),
+            "total": len(request.app.state.person_names),
         }
 
     # ── Activity ───────────────────────────────────────────

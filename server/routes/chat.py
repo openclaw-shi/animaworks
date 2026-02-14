@@ -114,20 +114,102 @@ def create_chat_router() -> APIRouter:
     router = APIRouter()
 
     @router.post("/persons/{name}/chat")
-    async def chat(name: str, body: ChatRequest, request: Request, person=Depends(get_person)):
+    async def chat(name: str, body: ChatRequest, request: Request):
+        supervisor = request.app.state.supervisor
+
         await emit(request, "person.status", {"name": name, "status": "thinking"})
 
-        response = await person.process_message(body.message, from_person=body.from_person)
+        try:
+            # Send IPC request to Person process
+            result = await supervisor.send_request(
+                person_name=name,
+                method="process_message",
+                params={
+                    "message": body.message,
+                    "from_person": body.from_person
+                },
+                timeout=60.0
+            )
 
-        await emit(request, "person.status", {"name": name, "status": "idle"})
-        await emit(request, "chat.response", {"name": name, "message": response})
+            response = result.get("response", "")
 
-        return ChatResponse(response=response, person=name)
+            await emit(request, "person.status", {"name": name, "status": "idle"})
+            await emit(request, "chat.response", {"name": name, "message": response})
+
+            return ChatResponse(response=response, person=name)
+
+        except KeyError:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+        except ValueError as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/persons/{name}/chat/stream")
-    async def chat_stream(name: str, body: ChatRequest, request: Request, person=Depends(get_person)):
+    async def chat_stream(name: str, body: ChatRequest, request: Request):
+        """Stream chat response via SSE over IPC."""
+        supervisor = request.app.state.supervisor
+
+        # Verify person exists before starting the stream
+        if name not in supervisor.processes:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"Person not found: {name}")
+
+        async def _ipc_stream_events() -> AsyncIterator[str]:
+            """Async generator that converts IPC stream to SSE frames."""
+            full_response = ""
+            try:
+                await emit(request, "person.status", {"name": name, "status": "thinking"})
+
+                async for ipc_response in supervisor.send_request_stream(
+                    person_name=name,
+                    method="process_message",
+                    params={
+                        "message": body.message,
+                        "from_person": body.from_person,
+                        "stream": True,
+                    },
+                    timeout=120.0,
+                ):
+                    if ipc_response.done:
+                        # Final response with full result
+                        result = ipc_response.result or {}
+                        full_response = result.get("response", full_response)
+                        cycle_result = result.get("cycle_result", {})
+                        yield _format_sse("done", cycle_result or {"summary": full_response})
+                        break
+
+                    if ipc_response.chunk:
+                        # Parse the chunk JSON from the IPC layer
+                        try:
+                            chunk_data = json.loads(ipc_response.chunk)
+                            frame, response_text = _handle_chunk(chunk_data)
+                            if response_text:
+                                full_response = response_text
+                            if frame:
+                                yield frame
+                        except json.JSONDecodeError:
+                            # Raw text chunk fallback
+                            full_response += ipc_response.chunk
+                            yield _format_sse("text_delta", {"text": ipc_response.chunk})
+
+                if full_response:
+                    await emit(
+                        request, "chat.response",
+                        {"name": name, "message": full_response},
+                    )
+
+            except KeyError:
+                logger.error("Person not found during stream: %s", name)
+                yield _format_sse("error", {"message": f"Person not found: {name}"})
+            except Exception:
+                logger.exception("IPC stream error for person=%s", name)
+                yield _format_sse("error", {"message": "Internal server error"})
+            finally:
+                await emit(request, "person.status", {"name": name, "status": "idle"})
+
         return StreamingResponse(
-            _stream_events(person, name, body, request),
+            _ipc_stream_events(),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

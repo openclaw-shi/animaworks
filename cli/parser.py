@@ -190,6 +190,43 @@ def cli_main() -> None:
     )
     p_cfg_list.set_defaults(func=cmd_config_list)
 
+    # ── Person Management ─────────────────────────────────────
+    p_person = sub.add_parser("person", help="Manage person processes")
+    person_sub = p_person.add_subparsers(dest="person_command")
+
+    # person restart
+    p_person_restart = person_sub.add_parser("restart", help="Restart a person process")
+    p_person_restart.add_argument("person", help="Person name")
+    p_person_restart.set_defaults(func=_lazy_person_restart)
+
+    # person status
+    p_person_status = person_sub.add_parser("status", help="Show person process status")
+    p_person_status.add_argument(
+        "person", nargs="?", default=None,
+        help="Person name (omit for all persons)"
+    )
+    p_person_status.set_defaults(func=_lazy_person_status)
+
+    # ── Logs ──────────────────────────────────────────────────
+    p_logs = sub.add_parser("logs", help="View person logs")
+    p_logs.add_argument(
+        "person", nargs="?", default=None,
+        help="Person name (required unless --all)"
+    )
+    p_logs.add_argument(
+        "--all", action="store_true",
+        help="Show all logs (server + all persons)"
+    )
+    p_logs.add_argument(
+        "--lines", type=int, default=50,
+        help="Number of lines to show (default: 50)"
+    )
+    p_logs.add_argument(
+        "--date", default=None,
+        help="Specific date (YYYYMMDD format)"
+    )
+    p_logs.set_defaults(func=_lazy_logs)
+
     args = parser.parse_args()
 
     # Apply --data-dir override before any command
@@ -275,6 +312,24 @@ def _lazy_list(args: argparse.Namespace) -> None:
     from cli.commands.messaging import cmd_list
 
     cmd_list(args)
+
+
+def _lazy_person_restart(args: argparse.Namespace) -> None:
+    from cli.commands.person_mgmt import cmd_person_restart
+
+    cmd_person_restart(args)
+
+
+def _lazy_person_status(args: argparse.Namespace) -> None:
+    from cli.commands.person_mgmt import cmd_person_status
+
+    cmd_person_status(args)
+
+
+def _lazy_logs(args: argparse.Namespace) -> None:
+    from cli.commands.logs import cmd_logs
+
+    cmd_logs(args)
 
 
 def _lazy_status(args: argparse.Namespace) -> None:
