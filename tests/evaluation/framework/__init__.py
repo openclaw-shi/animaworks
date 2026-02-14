@@ -57,6 +57,18 @@ except ImportError:
     ExperimentLogger = None  # type: ignore
     MetricsCollector = None  # type: ignore
 
+# Phase 3-4: Statistical Analysis and Visualization
+try:
+    from .analysis import StatisticalAnalyzer
+    from .visualization import ExperimentVisualizer
+
+    _PHASE34_AVAILABLE = True
+except ImportError:
+    # Phase 3-4 components not available (missing scipy/matplotlib etc)
+    _PHASE34_AVAILABLE = False
+    StatisticalAnalyzer = None  # type: ignore
+    ExperimentVisualizer = None  # type: ignore
+
 __all__ = [
     # Phase 2: Dataset Generation (always available)
     "DatasetGenerator",
@@ -91,4 +103,12 @@ if _PHASE1_AVAILABLE:
         # Tools
         "ExperimentLogger",
         "MetricsCollector",
+    ])
+
+# Add Phase 3-4 components if available
+if _PHASE34_AVAILABLE:
+    __all__.extend([
+        # Analysis & Visualization
+        "StatisticalAnalyzer",
+        "ExperimentVisualizer",
     ])
