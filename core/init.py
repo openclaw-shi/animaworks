@@ -171,6 +171,7 @@ def _ensure_runtime_only_dirs(data_dir: Path) -> None:
     (data_dir / "shared" / "users").mkdir(parents=True, exist_ok=True)
     (data_dir / "tmp" / "attachments").mkdir(parents=True, exist_ok=True)
     (data_dir / "common_skills").mkdir(parents=True, exist_ok=True)
+    (data_dir / "common_knowledge").mkdir(parents=True, exist_ok=True)
 
 
 def _validate_safe_path(data_dir: Path) -> None:

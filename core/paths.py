@@ -50,6 +50,10 @@ def get_common_skills_dir() -> Path:
     return get_data_dir() / "common_skills"
 
 
+def get_common_knowledge_dir() -> Path:
+    return get_data_dir() / "common_knowledge"
+
+
 def get_tmp_dir() -> Path:
     return get_data_dir() / "tmp"
 

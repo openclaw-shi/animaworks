@@ -39,7 +39,7 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
                 "query": {"type": "string", "description": "Search keyword"},
                 "scope": {
                     "type": "string",
-                    "enum": ["knowledge", "episodes", "procedures", "all"],
+                    "enum": ["knowledge", "episodes", "procedures", "common_knowledge", "all"],
                     "description": "Memory category to search",
                 },
             },

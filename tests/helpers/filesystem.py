@@ -61,6 +61,7 @@ def create_test_data_dir(base: Path) -> Path:
         "# Company Vision\nTest company.", encoding="utf-8"
     )
     (data_dir / "common_skills").mkdir()
+    (data_dir / "common_knowledge").mkdir()
     (data_dir / "tmp" / "attachments").mkdir(parents=True)
 
     # Write default config.json

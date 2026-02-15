@@ -11,6 +11,7 @@ from core.paths import (
     TEMPLATES_DIR,
     PROMPTS_DIR,
     _prompt_cache,
+    get_common_knowledge_dir,
     get_common_skills_dir,
     get_company_dir,
     get_data_dir,
@@ -82,6 +83,10 @@ class TestSubdirHelpers:
     def test_get_common_skills_dir(self, tmp_path):
         with patch.dict("os.environ", {"ANIMAWORKS_DATA_DIR": str(tmp_path)}):
             assert get_common_skills_dir() == tmp_path.resolve() / "common_skills"
+
+    def test_get_common_knowledge_dir(self, tmp_path):
+        with patch.dict("os.environ", {"ANIMAWORKS_DATA_DIR": str(tmp_path)}):
+            assert get_common_knowledge_dir() == tmp_path.resolve() / "common_knowledge"
 
     def test_get_tmp_dir(self, tmp_path):
         with patch.dict("os.environ", {"ANIMAWORKS_DATA_DIR": str(tmp_path)}):

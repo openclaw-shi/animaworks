@@ -110,6 +110,37 @@ class TestHandleRouting:
         result = handler.handle("read_memory_file", {"path": "nonexistent.md"})
         assert "File not found" in result
 
+    def test_read_memory_file_common_knowledge_prefix(
+        self, handler: ToolHandler, tmp_path: Path,
+    ):
+        """read_memory_file with common_knowledge/ prefix resolves to shared dir."""
+        ck_dir = tmp_path / "ck"
+        ck_dir.mkdir()
+        (ck_dir / "policy.md").write_text("shared content", encoding="utf-8")
+        with patch(
+            "core.paths.get_common_knowledge_dir",
+            return_value=ck_dir,
+        ):
+            result = handler.handle(
+                "read_memory_file", {"path": "common_knowledge/policy.md"},
+            )
+        assert result == "shared content"
+
+    def test_read_memory_file_common_knowledge_not_found(
+        self, handler: ToolHandler, tmp_path: Path,
+    ):
+        """read_memory_file with common_knowledge/ prefix for missing file."""
+        ck_dir = tmp_path / "ck_empty"
+        ck_dir.mkdir()
+        with patch(
+            "core.paths.get_common_knowledge_dir",
+            return_value=ck_dir,
+        ):
+            result = handler.handle(
+                "read_memory_file", {"path": "common_knowledge/missing.md"},
+            )
+        assert "File not found" in result
+
     def test_write_memory_file_overwrite(self, handler: ToolHandler, person_dir: Path):
         result = handler.handle(
             "write_memory_file",

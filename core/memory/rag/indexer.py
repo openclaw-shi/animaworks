@@ -59,6 +59,8 @@ class MemoryIndexer:
         person_name: str,
         person_dir: Path,
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+        *,
+        collection_prefix: str | None = None,
     ) -> None:
         """Initialize indexer.
 
@@ -67,10 +69,15 @@ class MemoryIndexer:
             person_name: Person name (for collection naming)
             person_dir: Path to person's memory directory
             embedding_model: Sentence-transformers model name
+            collection_prefix: Override for collection name prefix.
+                Defaults to person_name.  Use ``"shared"`` for
+                common_knowledge indexing so collection becomes
+                ``shared_common_knowledge``.
         """
         self.vector_store = vector_store
         self.person_name = person_name
         self.person_dir = person_dir
+        self.collection_prefix = collection_prefix or person_name
         self.embedding_model_name = embedding_model
 
         # Initialize embedding model
@@ -181,7 +188,7 @@ class MemoryIndexer:
         ]
 
         # Upsert to vector store
-        collection_name = f"{self.person_name}_{memory_type}"
+        collection_name = f"{self.collection_prefix}_{memory_type}"
         self.vector_store.create_collection(collection_name, EMBEDDING_DIMENSION)
         self.vector_store.upsert(collection_name, documents)
 
@@ -239,13 +246,13 @@ class MemoryIndexer:
         """Chunk file based on memory type.
 
         Strategies:
-        - knowledge: Markdown heading sections
+        - knowledge / common_knowledge: Markdown heading sections
         - episodes: Time-based sections (## HH:MM)
         - procedures: Whole file (don't split procedures)
         - skills: Whole file
         - shared_users: Whole file
         """
-        if memory_type == "knowledge":
+        if memory_type in ("knowledge", "common_knowledge"):
             return self._chunk_by_markdown_headings(file_path, content)
         elif memory_type == "episodes":
             return self._chunk_by_time_headings(file_path, content)
@@ -356,7 +363,7 @@ class MemoryIndexer:
     def _make_chunk_id(self, file_path: Path, memory_type: str, index: int) -> str:
         """Generate unique chunk ID."""
         rel_path = file_path.relative_to(self.person_dir)
-        return f"{self.person_name}/{memory_type}/{rel_path}#{index}"
+        return f"{self.collection_prefix}/{memory_type}/{rel_path}#{index}"
 
     def _extract_metadata(
         self,
@@ -368,7 +375,7 @@ class MemoryIndexer:
     ) -> dict[str, str | int | float | list[str]]:
         """Extract metadata from file and content."""
         metadata: dict[str, str | int | float | list[str]] = {
-            "person": self.person_name,
+            "person": self.collection_prefix,
             "memory_type": memory_type,
             "source_file": str(file_path.relative_to(self.person_dir)),
             "chunk_index": chunk_index,

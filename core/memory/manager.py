@@ -13,7 +13,7 @@ import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from core.paths import get_common_skills_dir, get_company_dir, get_shared_dir
+from core.paths import get_common_knowledge_dir, get_common_skills_dir, get_company_dir, get_shared_dir
 from core.schemas import ModelConfig
 
 logger = logging.getLogger("animaworks.memory")
@@ -30,6 +30,7 @@ class MemoryManager:
         self.person_dir = person_dir
         self.company_dir = get_company_dir()
         self.common_skills_dir = get_common_skills_dir()
+        self.common_knowledge_dir = get_common_knowledge_dir()
         self.episodes_dir = person_dir / "episodes"
         self.knowledge_dir = person_dir / "knowledge"
         self.procedures_dir = person_dir / "procedures"
@@ -409,10 +410,16 @@ class MemoryManager:
     def search_memory_text(
         self, query: str, scope: str = "all"
     ) -> list[tuple[str, str]]:
-        """Search memory files by keyword. Returns (filename, matching_line) pairs.
+        """Search memory files by keyword and optional vector similarity.
 
-        *scope* can be ``"knowledge"``, ``"episodes"``, ``"procedures"``, or
-        ``"all"`` (default).
+        Returns ``(filename, matching_line)`` pairs.
+
+        *scope* can be ``"knowledge"``, ``"episodes"``, ``"procedures"``,
+        ``"common_knowledge"``, or ``"all"`` (default).
+
+        When RAG dependencies are available the method performs **hybrid
+        search**: keyword matches are returned first, followed by
+        vector-similarity results that were not already found by keyword.
         """
         dirs: list[Path] = []
         if scope in ("knowledge", "all"):
@@ -421,7 +428,11 @@ class MemoryManager:
             dirs.append(self.episodes_dir)
         if scope in ("procedures", "all"):
             dirs.append(self.procedures_dir)
+        if scope in ("common_knowledge", "all"):
+            if self.common_knowledge_dir.is_dir():
+                dirs.append(self.common_knowledge_dir)
 
+        # Keyword search
         results: list[tuple[str, str]] = []
         q = query.lower()
         for d in dirs:
@@ -429,7 +440,52 @@ class MemoryManager:
                 for line in f.read_text(encoding="utf-8").splitlines():
                     if q in line.lower():
                         results.append((f.name, line.strip()))
+
+        # Hybrid: append vector search results when RAG is available
+        if self._indexer is not None and scope in ("knowledge", "common_knowledge", "all"):
+            try:
+                vector_hits = self._vector_search_memory(query, scope)
+                seen_files = {r[0] for r in results}
+                for fname, snippet in vector_hits:
+                    if fname not in seen_files:
+                        results.append((fname, snippet))
+                        seen_files.add(fname)
+            except Exception as e:
+                logger.debug("Vector search augmentation failed: %s", e)
+
         return results
+
+    def _vector_search_memory(
+        self, query: str, scope: str,
+    ) -> list[tuple[str, str]]:
+        """Perform vector search to augment keyword results.
+
+        Returns ``(filename, first_line_of_content)`` pairs.
+        """
+        from core.memory.rag.retriever import MemoryRetriever
+
+        person_name = self.person_dir.name
+        retriever = MemoryRetriever(
+            self._indexer.vector_store,
+            self._indexer,
+            self.knowledge_dir,
+        )
+
+        include_shared = scope in ("common_knowledge", "all")
+        rag_results = retriever.search(
+            query=query,
+            person_name=person_name,
+            memory_type="knowledge",
+            top_k=5,
+            include_shared=include_shared,
+        )
+
+        hits: list[tuple[str, str]] = []
+        for r in rag_results:
+            source = r.metadata.get("source_file", r.doc_id)
+            first_line = r.content.split("\n", 1)[0].strip()
+            hits.append((str(source), first_line))
+        return hits
 
     def search_procedures(self, query: str) -> list[tuple[str, str]]:
         """Search procedures/ by keyword."""

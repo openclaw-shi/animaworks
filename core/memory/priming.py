@@ -255,6 +255,8 @@ class PrimingEngine:
         """Channel C: Related knowledge search (vector search).
 
         Uses dense vector retrieval via MemoryRetriever.
+        Searches both personal knowledge and shared common_knowledge,
+        merging results by score.
         """
         if not self.knowledge_dir.is_dir() or not keywords:
             logger.debug("Channel C: No knowledge dir or no keywords")
@@ -278,19 +280,25 @@ class PrimingEngine:
             query = " ".join(keywords[:5])
             person_name = self.person_dir.name
 
-            # Vector search
+            # Vector search (personal + shared common_knowledge)
             results = self._retriever.search(
                 query=query,
                 person_name=person_name,
                 memory_type="knowledge",
                 top_k=3,
+                include_shared=True,
             )
 
             if results:
                 # Format results
                 parts = []
                 for i, result in enumerate(results):
-                    parts.append(f"--- Result {i + 1} (score: {result.score:.3f}) ---")
+                    source_label = result.metadata.get("person", person_name)
+                    label = "shared" if source_label == "shared" else "personal"
+                    parts.append(
+                        f"--- Result {i + 1} [{label}] "
+                        f"(score: {result.score:.3f}) ---"
+                    )
                     parts.append(result.content)
                     parts.append("")
 

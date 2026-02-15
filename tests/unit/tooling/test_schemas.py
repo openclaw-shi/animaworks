@@ -31,6 +31,16 @@ class TestMemoryTools:
         assert "query" in schema["parameters"]["properties"]
         assert "query" in schema["parameters"]["required"]
 
+    def test_search_memory_scope_includes_common_knowledge(self):
+        schema = next(t for t in MEMORY_TOOLS if t["name"] == "search_memory")
+        scope_enum = schema["parameters"]["properties"]["scope"]["enum"]
+        assert "common_knowledge" in scope_enum
+        # Also verify other expected values are still present
+        assert "knowledge" in scope_enum
+        assert "episodes" in scope_enum
+        assert "procedures" in scope_enum
+        assert "all" in scope_enum
+
     def test_read_memory_file_schema(self):
         schema = next(t for t in MEMORY_TOOLS if t["name"] == "read_memory_file")
         assert "path" in schema["parameters"]["properties"]

@@ -174,12 +174,19 @@ class ToolHandler:
         return "\n".join(f"- {fname}: {line}" for fname, line in results[:10])
 
     def _handle_read_memory_file(self, args: dict[str, Any]) -> str:
-        path = self._person_dir / args["path"]
+        rel = args["path"]
+        # Support common_knowledge/ prefix — resolve to shared dir
+        if rel.startswith("common_knowledge/"):
+            from core.paths import get_common_knowledge_dir
+            suffix = rel[len("common_knowledge/"):]
+            path = get_common_knowledge_dir() / suffix
+        else:
+            path = self._person_dir / rel
         if path.exists() and path.is_file():
-            logger.debug("read_memory_file path=%s", args["path"])
+            logger.debug("read_memory_file path=%s", rel)
             return path.read_text(encoding="utf-8")
-        logger.debug("read_memory_file NOT FOUND path=%s", args["path"])
-        return f"File not found: {args['path']}"
+        logger.debug("read_memory_file NOT FOUND path=%s", rel)
+        return f"File not found: {rel}"
 
     def _handle_write_memory_file(self, args: dict[str, Any]) -> str:
         path = self._person_dir / args["path"]

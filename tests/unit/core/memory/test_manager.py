@@ -313,6 +313,56 @@ class TestSearchMemoryText:
         assert results == []
 
 
+class TestSearchMemoryTextCommonKnowledge:
+    def test_search_common_knowledge_scope(self, mm, data_dir):
+        """search_memory_text with scope='common_knowledge' searches the shared dir."""
+        ck_dir = data_dir / "common_knowledge"
+        ck_dir.mkdir(parents=True, exist_ok=True)
+        (ck_dir / "shared_policy.md").write_text(
+            "Company-wide shared policy document", encoding="utf-8"
+        )
+        results = mm.search_memory_text("shared policy", scope="common_knowledge")
+        assert len(results) >= 1
+        assert any("shared_policy.md" in r[0] for r in results)
+
+    def test_search_common_knowledge_scope_no_personal(self, mm, person_dir, data_dir):
+        """scope='common_knowledge' does NOT search personal knowledge."""
+        (person_dir / "knowledge" / "personal.md").write_text(
+            "Personal knowledge only", encoding="utf-8"
+        )
+        ck_dir = data_dir / "common_knowledge"
+        ck_dir.mkdir(parents=True, exist_ok=True)
+        results = mm.search_memory_text("Personal knowledge", scope="common_knowledge")
+        # Should NOT find the personal knowledge file
+        assert all("personal.md" not in r[0] for r in results)
+
+    def test_search_all_includes_common_knowledge(self, mm, person_dir, data_dir):
+        """scope='all' includes common_knowledge dir in search."""
+        ck_dir = data_dir / "common_knowledge"
+        ck_dir.mkdir(parents=True, exist_ok=True)
+        (ck_dir / "global_info.md").write_text(
+            "Global information for everyone", encoding="utf-8"
+        )
+        (person_dir / "knowledge" / "local.md").write_text(
+            "Local knowledge for person", encoding="utf-8"
+        )
+        results = mm.search_memory_text("information", scope="all")
+        filenames = [r[0] for r in results]
+        assert any("global_info.md" in f for f in filenames)
+
+    def test_search_common_knowledge_empty_dir(self, mm, data_dir):
+        """scope='common_knowledge' with empty dir returns no results."""
+        ck_dir = data_dir / "common_knowledge"
+        ck_dir.mkdir(parents=True, exist_ok=True)
+        results = mm.search_memory_text("anything", scope="common_knowledge")
+        assert results == []
+
+    def test_common_knowledge_dir_attribute(self, mm, data_dir):
+        """MemoryManager has common_knowledge_dir attribute pointing to shared dir."""
+        expected = data_dir / "common_knowledge"
+        assert mm.common_knowledge_dir == expected
+
+
 class TestSearchKnowledge:
     def test_search(self, mm, person_dir):
         (person_dir / "knowledge" / "topic.md").write_text(

@@ -77,6 +77,8 @@ class MemoryRetriever:
         memory_type: str = "knowledge",
         top_k: int = 3,
         enable_spreading_activation: bool = False,
+        *,
+        include_shared: bool = False,
     ) -> list[RetrievalResult]:
         """Perform dense vector search with temporal decay.
 
@@ -86,21 +88,32 @@ class MemoryRetriever:
             memory_type: Memory type (knowledge, episodes, etc.)
             top_k: Number of results to return
             enable_spreading_activation: Enable graph-based spreading activation
+            include_shared: Also search ``shared_common_knowledge`` collection
+                and merge results by score.
 
         Returns:
             List of retrieval results sorted by combined score
         """
         logger.debug(
-            "Vector search: query='%s', person=%s, type=%s, top_k=%d, spreading=%s",
+            "Vector search: query='%s', person=%s, type=%s, top_k=%d, "
+            "spreading=%s, shared=%s",
             query,
             person_name,
             memory_type,
             top_k,
             enable_spreading_activation,
+            include_shared,
         )
 
-        # 1. Dense Vector search
+        # 1. Dense Vector search (personal collection)
         vector_results = self._vector_search(query, person_name, memory_type, top_k * 2)
+
+        # 1b. Shared collection search (if requested)
+        if include_shared and memory_type == "knowledge":
+            shared_results = self._vector_search_collection(
+                query, "shared_common_knowledge", top_k * 2,
+            )
+            vector_results.extend(shared_results)
 
         # 2. Convert to RetrievalResult
         results = [
@@ -141,7 +154,21 @@ class MemoryRetriever:
         memory_type: str,
         top_k: int,
     ) -> list[tuple[str, str, float, dict]]:
-        """Perform vector similarity search.
+        """Perform vector similarity search on a person collection.
+
+        Returns:
+            List of (doc_id, content, score, metadata) tuples
+        """
+        collection_name = f"{person_name}_{memory_type}"
+        return self._vector_search_collection(query, collection_name, top_k)
+
+    def _vector_search_collection(
+        self,
+        query: str,
+        collection_name: str,
+        top_k: int,
+    ) -> list[tuple[str, str, float, dict]]:
+        """Perform vector similarity search on a named collection.
 
         Returns:
             List of (doc_id, content, score, metadata) tuples
@@ -150,7 +177,6 @@ class MemoryRetriever:
         embedding = self.indexer._generate_embeddings([query])[0]
 
         # Query vector store
-        collection_name = f"{person_name}_{memory_type}"
         results = self.vector_store.query(
             collection=collection_name,
             embedding=embedding,

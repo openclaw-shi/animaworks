@@ -79,6 +79,8 @@ class FileWatcher:
         indexer,  # MemoryIndexer instance
         knowledge_graph=None,  # KnowledgeGraph instance (optional)
         person_name: str | None = None,
+        *,
+        extra_watch_dirs: list[tuple[Path, str]] | None = None,
     ) -> None:
         """Initialize file watcher.
 
@@ -87,11 +89,14 @@ class FileWatcher:
             indexer: MemoryIndexer instance for indexing operations
             knowledge_graph: Optional KnowledgeGraph for incremental updates
             person_name: Person name (required if knowledge_graph is provided)
+            extra_watch_dirs: Additional (directory, memory_type) pairs to watch.
+                Used for common_knowledge/ watching with a shared indexer.
         """
         self.person_dir = person_dir
         self.indexer = indexer
         self.knowledge_graph = knowledge_graph
         self.person_name = person_name
+        self._extra_watch_dirs = extra_watch_dirs or []
         self.observer: Observer | None = None
         self._running = False
 
@@ -123,6 +128,10 @@ class FileWatcher:
             self.person_dir / "procedures",
             self.person_dir / "skills",
         ]
+
+        # Add extra watch dirs (e.g., common_knowledge/)
+        for extra_dir, _memory_type in self._extra_watch_dirs:
+            watch_dirs.append(extra_dir)
 
         for watch_dir in watch_dirs:
             if watch_dir.is_dir():
@@ -276,6 +285,14 @@ class FileWatcher:
         Returns:
             Memory type or None if not recognized
         """
+        # Check extra watch dirs first (e.g., common_knowledge/)
+        for extra_dir, memory_type in self._extra_watch_dirs:
+            try:
+                file_path.relative_to(extra_dir)
+                return memory_type
+            except ValueError:
+                continue
+
         try:
             rel_path = file_path.relative_to(self.person_dir)
             parent_dir = rel_path.parts[0]
@@ -304,6 +321,8 @@ def create_file_watcher(
     indexer,
     knowledge_graph=None,
     person_name: str | None = None,
+    *,
+    extra_watch_dirs: list[tuple[Path, str]] | None = None,
 ) -> FileWatcher:
     """Create a file watcher for a person's memory directory.
 
@@ -312,8 +331,15 @@ def create_file_watcher(
         indexer: MemoryIndexer instance
         knowledge_graph: Optional KnowledgeGraph for incremental updates
         person_name: Person name (required if knowledge_graph is provided)
+        extra_watch_dirs: Additional (directory, memory_type) pairs to watch.
 
     Returns:
         FileWatcher instance (not started)
     """
-    return FileWatcher(person_dir, indexer, knowledge_graph, person_name)
+    return FileWatcher(
+        person_dir,
+        indexer,
+        knowledge_graph,
+        person_name,
+        extra_watch_dirs=extra_watch_dirs,
+    )
