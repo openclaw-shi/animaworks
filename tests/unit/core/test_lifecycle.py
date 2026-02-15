@@ -310,18 +310,35 @@ class TestCronWrapper:
 
 
 class TestSetupHeartbeat:
-    def test_parses_interval_from_config(self):
+    def test_interval_is_always_30_minutes(self):
+        """Heartbeat interval is fixed at 30 minutes regardless of config."""
         lm = LifecycleManager()
         person = MagicMock()
         person.name = "alice"
+        # Even if config says 15 minutes, interval should remain 30
         person.memory.read_heartbeat_config.return_value = "巡回間隔: 15分"
         person.memory.read_cron_config.return_value = ""
         person.set_on_lock_released = MagicMock()
 
         lm.register_person(person)
-        # Job should be registered
         jobs = lm.scheduler.get_jobs()
-        assert any(j.id == "alice_heartbeat" for j in jobs)
+        hb_job = next(j for j in jobs if j.id == "alice_heartbeat")
+        # CronTrigger fields: verify minute is */30
+        assert str(hb_job.trigger).find("*/30") != -1
+
+    def test_interval_fixed_with_5min_config(self):
+        """Ensure 5-minute config is ignored; interval stays 30."""
+        lm = LifecycleManager()
+        person = MagicMock()
+        person.name = "bob"
+        person.memory.read_heartbeat_config.return_value = "5分ごと"
+        person.memory.read_cron_config.return_value = ""
+        person.set_on_lock_released = MagicMock()
+
+        lm.register_person(person)
+        jobs = lm.scheduler.get_jobs()
+        hb_job = next(j for j in jobs if j.id == "bob_heartbeat")
+        assert str(hb_job.trigger).find("*/30") != -1
 
     def test_parses_active_hours(self):
         lm = LifecycleManager()
@@ -501,23 +518,27 @@ class TestReloadPersonSchedule:
         lm = LifecycleManager()
         person = MagicMock()
         person.name = "alice"
-        person.memory.read_heartbeat_config.return_value = "30分ごと\n9:00 - 22:00"
+        person.memory.read_heartbeat_config.return_value = "9:00 - 22:00"
         person.memory.read_cron_config.return_value = ""
         person.set_on_lock_released = MagicMock()
         person.set_on_schedule_changed = MagicMock()
 
         lm.register_person(person)
-        # Initial setup creates heartbeat job
         initial_jobs = [j.id for j in lm.scheduler.get_jobs() if j.id.startswith("alice_")]
         assert len(initial_jobs) >= 1
 
-        # Now modify heartbeat config and reload
-        person.memory.read_heartbeat_config.return_value = "15分ごと\n8:00 - 23:00"
+        # Change active hours only; interval stays 30
+        person.memory.read_heartbeat_config.return_value = "8:00 - 23:00"
         result = lm.reload_person_schedule("alice")
 
         assert result["reloaded"] == "alice"
         assert result["removed"] >= 1
         assert len(result["new_jobs"]) >= 1
+        # Verify interval is still 30 after reload
+        hb_job = next(
+            j for j in lm.scheduler.get_jobs() if j.id == "alice_heartbeat"
+        )
+        assert str(hb_job.trigger).find("*/30") != -1
 
     def test_reload_with_cron_tasks(self):
         lm = LifecycleManager()

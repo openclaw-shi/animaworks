@@ -127,10 +127,7 @@ class LifecycleManager:
     def _setup_heartbeat(self, person: DigitalPerson) -> None:
         config = person.memory.read_heartbeat_config()
 
-        interval = 30
-        m = re.search(r"(\d+)\s*分", config)
-        if m:
-            interval = int(m.group(1))
+        _HEARTBEAT_INTERVAL = 30  # Fixed system-wide; not configurable per person
 
         active_start, active_end = 9, 22
         m = re.search(r"(\d{1,2}):\d{0,2}\s*-\s*(\d{1,2})", config)
@@ -140,7 +137,7 @@ class LifecycleManager:
         self.scheduler.add_job(
             self._heartbeat_wrapper,
             CronTrigger(
-                minute=f"*/{interval}",
+                minute=f"*/{_HEARTBEAT_INTERVAL}",
                 hour=f"{active_start}-{active_end - 1}",
             ),
             id=f"{person.name}_heartbeat",
@@ -151,7 +148,7 @@ class LifecycleManager:
         logger.info(
             "Heartbeat '%s': every %dmin, active %d:00-%d:00",
             person.name,
-            interval,
+            _HEARTBEAT_INTERVAL,
             active_start,
             active_end,
         )

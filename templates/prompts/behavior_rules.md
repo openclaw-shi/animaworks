@@ -58,7 +58,7 @@ Default: do not narrate routine, low-risk tool calls
 1. まず `read_memory_file(path="heartbeat.md")` で現在のチェックリストを確認する
 2. チェックリストセクションに新しい項目を追加する
    - `write_memory_file(path="heartbeat.md", content="...", mode="overwrite")` で更新
-   - ⚠「## 実行間隔」「## 活動時間」「## 通知ルール」セクションは変更しないこと
+   - ⚠「## 活動時間」「## 通知ルール」セクションは変更しないこと
    - チェックリスト項目のみ追加・変更する
 3. 具体的な手順が伴う場合は `procedures/` にも手順書を作成する
 4. 更新完了を指示者に報告する
