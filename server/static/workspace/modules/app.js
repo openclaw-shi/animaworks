@@ -427,6 +427,11 @@ async function sendConversationMessage() {
           setExpression("neutral");
           updateStreamingBubble(streamingMsg);
         } else if (evt === "done") {
+          // Use clean summary (emotion tag already stripped server-side)
+          if (data.summary) {
+            streamingMsg.text = data.summary;
+            updateStreamingBubble(streamingMsg);
+          }
           const emotion = data.emotion || "neutral";
           setExpression(emotion);
           setTimeout(() => setExpression("neutral"), 3000);
@@ -509,6 +514,7 @@ function updateStatusDisplay(ok, text) {
 // ── WebSocket Handlers ──────────────────────
 
 const wsUnsubscribers = [];
+const lastPersonStatus = {};
 
 function setupWebSocket() {
   wsUnsubscribers.forEach((fn) => fn());
@@ -533,7 +539,11 @@ function setupWebSocket() {
       updateCharacterState(data.name, animState);
       setState({ characterStates: { ...getState().characterStates, [data.name]: animState } });
     }
-    addActivity("system", data.name, `Status: ${data.status}`);
+    // Only log to activity feed when status actually changes
+    if (lastPersonStatus[data.name] !== data.status) {
+      lastPersonStatus[data.name] = data.status;
+      addActivity("system", data.name, `Status: ${data.status}`);
+    }
   }));
 
   // ── person.interaction — inter-person messaging visualization ──

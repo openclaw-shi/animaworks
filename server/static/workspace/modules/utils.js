@@ -11,13 +11,22 @@ export function escapeHtml(str) {
 }
 
 /**
+ * Strip LLM emotion tags from text.
+ * Emotion tags (<!-- emotion: {"emotion": "smile"} -->) are metadata
+ * for expression switching and should never be shown to the user.
+ */
+export function stripEmotionTag(text) {
+  return text.replace(/<!--\s*emotion:\s*\{.*?\}\s*-->/gs, "").trimEnd();
+}
+
+/**
  * Lightweight Markdown → HTML renderer.
  * Escapes HTML first, then applies safe transforms.
  */
 export function renderSimpleMarkdown(text) {
   if (!text) return "";
 
-  let html = escapeHtml(text);
+  let html = escapeHtml(stripEmotionTag(text));
 
   // Fenced code blocks: ```lang\n...\n```
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
