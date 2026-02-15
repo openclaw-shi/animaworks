@@ -329,10 +329,28 @@ def _handle_github_create_pr(mod: Any, args: dict[str, Any]) -> Any:
 def _handle_generate_character_assets(mod: Any, args: dict[str, Any]) -> Any:
     """Handle ``generate_character_assets`` schema."""
     from core.config.models import load_config
+    from core.paths import get_persons_dir
 
     person_dir = Path(args.pop("person_dir", ""))
+    supervisor_name: str | None = args.pop("supervisor_name", None)
     config = load_config()
-    pipeline = mod.ImageGenPipeline(person_dir, config=config.image_gen)
+    image_config = config.image_gen
+
+    # Use supervisor's fullbody image as Vibe Transfer reference
+    if supervisor_name:
+        supervisor_fullbody = (
+            get_persons_dir() / supervisor_name / "assets" / "avatar_fullbody.png"
+        )
+        if supervisor_fullbody.exists():
+            image_config = image_config.model_copy(
+                update={"style_reference": str(supervisor_fullbody)},
+            )
+            logger.info(
+                "Using supervisor image as vibe reference: %s",
+                supervisor_fullbody,
+            )
+
+    pipeline = mod.ImageGenPipeline(person_dir, config=image_config)
     result = pipeline.generate_all(
         prompt=args["prompt"],
         negative_prompt=args.get("negative_prompt", ""),

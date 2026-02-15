@@ -1204,6 +1204,15 @@ def get_tool_schemas() -> list[dict]:
                             "Default: all six steps."
                         ),
                     },
+                    "supervisor_name": {
+                        "type": "string",
+                        "description": (
+                            "Supervisor person name. When specified, the "
+                            "supervisor's avatar_fullbody.png is used as "
+                            "the Vibe Transfer reference image for style "
+                            "consistency."
+                        ),
+                    },
                     "skip_existing": {
                         "type": "boolean",
                         "description": (

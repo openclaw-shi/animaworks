@@ -568,3 +568,165 @@ class TestHandleGenerateCharacterAssets:
         assert config_arg.style_reference is None
         assert config_arg.style_prefix == ""
         assert config_arg.vibe_strength == 0.6
+
+    def test_supervisor_image_used_as_vibe_reference(self, tmp_path):
+        """When supervisor_name is given and fullbody exists, use it as style_reference."""
+        from core.config.models import AnimaWorksConfig, ImageGenConfig
+
+        # Create supervisor's fullbody image
+        supervisor_dir = tmp_path / "persons" / "sakura" / "assets"
+        supervisor_dir.mkdir(parents=True)
+        fullbody = supervisor_dir / "avatar_fullbody.png"
+        fullbody.write_bytes(b"fake-png-data")
+
+        mock_config = AnimaWorksConfig(
+            image_gen=ImageGenConfig(style_prefix="anime, ", vibe_strength=0.7),
+        )
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {"fullbody": "/path/to/img.png"}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config), \
+             patch("core.paths.get_persons_dir", return_value=tmp_path / "persons"):
+            result = _handle_generate_character_assets(
+                mock_mod,
+                {
+                    "person_dir": "/tmp/new_person",
+                    "prompt": "1girl",
+                    "supervisor_name": "sakura",
+                },
+            )
+
+        call_args = mock_mod.ImageGenPipeline.call_args
+        config_arg = call_args[1]["config"]
+        assert config_arg.style_reference == str(fullbody)
+        # Original config fields should be preserved
+        assert config_arg.style_prefix == "anime, "
+        assert config_arg.vibe_strength == 0.7
+        assert result == {"fullbody": "/path/to/img.png"}
+
+    def test_supervisor_image_missing_falls_back_to_global(self, tmp_path):
+        """When supervisor_name is given but fullbody doesn't exist, keep global config."""
+        from core.config.models import AnimaWorksConfig, ImageGenConfig
+
+        # No supervisor image created
+        mock_config = AnimaWorksConfig(
+            image_gen=ImageGenConfig(style_reference="/global/style.png"),
+        )
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config), \
+             patch("core.paths.get_persons_dir", return_value=tmp_path / "persons"):
+            _handle_generate_character_assets(
+                mock_mod,
+                {
+                    "person_dir": "/tmp/new_person",
+                    "prompt": "1girl",
+                    "supervisor_name": "nonexistent",
+                },
+            )
+
+        call_args = mock_mod.ImageGenPipeline.call_args
+        config_arg = call_args[1]["config"]
+        # Should keep global style_reference unchanged
+        assert config_arg.style_reference == "/global/style.png"
+
+    def test_no_supervisor_name_uses_global_config(self):
+        """When supervisor_name is not provided, use global config as-is."""
+        from core.config.models import AnimaWorksConfig, ImageGenConfig
+
+        mock_config = AnimaWorksConfig(
+            image_gen=ImageGenConfig(style_reference="/global/style.png"),
+        )
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config):
+            _handle_generate_character_assets(
+                mock_mod,
+                {"person_dir": "/tmp/new_person", "prompt": "1girl"},
+            )
+
+        call_args = mock_mod.ImageGenPipeline.call_args
+        config_arg = call_args[1]["config"]
+        assert config_arg is mock_config.image_gen
+
+    def test_supervisor_overrides_global_style_reference(self, tmp_path):
+        """Supervisor image takes priority over global style_reference."""
+        from core.config.models import AnimaWorksConfig, ImageGenConfig
+
+        # Create supervisor's fullbody image
+        supervisor_dir = tmp_path / "persons" / "sakura" / "assets"
+        supervisor_dir.mkdir(parents=True)
+        fullbody = supervisor_dir / "avatar_fullbody.png"
+        fullbody.write_bytes(b"fake-png-data")
+
+        mock_config = AnimaWorksConfig(
+            image_gen=ImageGenConfig(
+                style_reference="/global/style.png",
+                vibe_strength=0.5,
+            ),
+        )
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config), \
+             patch("core.paths.get_persons_dir", return_value=tmp_path / "persons"):
+            _handle_generate_character_assets(
+                mock_mod,
+                {
+                    "person_dir": "/tmp/new_person",
+                    "prompt": "1girl",
+                    "supervisor_name": "sakura",
+                },
+            )
+
+        call_args = mock_mod.ImageGenPipeline.call_args
+        config_arg = call_args[1]["config"]
+        # Supervisor image should override global style_reference
+        assert config_arg.style_reference == str(fullbody)
+        # Other fields remain unchanged
+        assert config_arg.vibe_strength == 0.5
+
+    def test_supervisor_name_popped_from_args(self, tmp_path):
+        """supervisor_name should be consumed and not passed to generate_all."""
+        from core.config.models import AnimaWorksConfig
+
+        mock_config = AnimaWorksConfig()
+        mock_mod = MagicMock()
+        mock_pipeline = MagicMock()
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {}
+        mock_pipeline.generate_all.return_value = mock_result
+        mock_mod.ImageGenPipeline.return_value = mock_pipeline
+
+        with patch("core.config.models.load_config", return_value=mock_config), \
+             patch("core.paths.get_persons_dir", return_value=tmp_path / "persons"):
+            _handle_generate_character_assets(
+                mock_mod,
+                {
+                    "person_dir": "/tmp/new_person",
+                    "prompt": "1girl",
+                    "supervisor_name": "sakura",
+                },
+            )
+
+        # supervisor_name should not appear in generate_all kwargs
+        gen_kwargs = mock_pipeline.generate_all.call_args
+        assert "supervisor_name" not in gen_kwargs.kwargs
