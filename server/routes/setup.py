@@ -65,10 +65,17 @@ class PersonSetup(BaseModel):
     name: str
 
 
+class UserSetup(BaseModel):
+    username: str
+    display_name: str = ""
+    bio: str = ""
+
+
 class SetupCompleteRequest(BaseModel):
     locale: str = "ja"
     credentials: dict[str, dict[str, str]] = {}
     person: PersonSetup | None = None
+    user: UserSetup | None = None
 
 
 # ── Router factory ─────────────────────────────────────────
@@ -182,6 +189,49 @@ def create_setup_router() -> APIRouter:
 
         # Update app state so the middleware switches behaviour immediately
         request.app.state.setup_complete = True
+
+        # Create auth config with owner info
+        if body.user:
+            from core.auth.manager import save_auth
+            from core.auth.models import AuthConfig, AuthUser
+
+            owner = AuthUser(
+                username=body.user.username,
+                display_name=body.user.display_name,
+                bio=body.user.bio,
+            )
+            auth_config = AuthConfig(owner=owner)
+            save_auth(auth_config)
+            logger.info("Created auth config for owner '%s'", body.user.username)
+
+            # Create initial user profile in shared/users/
+            from core.paths import get_shared_dir
+
+            user_profile_dir = get_shared_dir() / "users" / body.user.username
+            user_profile_dir.mkdir(parents=True, exist_ok=True)
+            profile_path = user_profile_dir / "index.md"
+            if not profile_path.exists():
+                profile_lines = [f"# {body.user.display_name or body.user.username}\n"]
+                if body.user.bio:
+                    profile_lines.append(f"\n{body.user.bio}\n")
+                profile_path.write_text("".join(profile_lines), encoding="utf-8")
+                logger.info("Created user profile for '%s'", body.user.username)
+
+        # Re-scan persons and start processes
+        persons_dir = request.app.state.persons_dir
+        new_person_names: list[str] = []
+        if persons_dir.exists():
+            for person_dir in sorted(persons_dir.iterdir()):
+                if person_dir.is_dir() and (person_dir / "identity.md").exists():
+                    new_person_names.append(person_dir.name)
+        request.app.state.person_names = new_person_names
+
+        if new_person_names:
+            try:
+                await request.app.state.supervisor.start_all(new_person_names)
+                logger.info("Started %d person(s) after setup", len(new_person_names))
+            except Exception:
+                logger.error("Failed to start persons after setup", exc_info=True)
 
         logger.info("Setup completed successfully")
         return {"status": "ok", "message": "Setup complete. Reload to access the dashboard."}

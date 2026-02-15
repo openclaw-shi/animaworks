@@ -18,6 +18,8 @@ export function populateConfirm(data) {
   if (!confirmPanel) return;
 
   const locale = data.language?.locale || "ja";
+  const userName = data.userinfo?.username || "-";
+  const userDisplayName = data.userinfo?.display_name || "";
   const provider = data.environment?.provider || "-";
   const leaderName = data.leader?.name || "-";
   const imageKeys = data.environment?.image_keys || {};
@@ -52,8 +54,22 @@ export function populateConfirm(data) {
       </div>
 
       <div class="confirm-section">
-        <div class="confirm-section-title">${t("confirm.provider")}
+        <div class="confirm-section-title">${t("confirm.userinfo")}
           <button class="btn-edit-step" data-step="1">${t("confirm.edit")}</button>
+        </div>
+        <div class="confirm-row">
+          <span class="confirm-key">${t("confirm.username")}</span>
+          <span class="confirm-value">${userName}</span>
+        </div>
+        ${userDisplayName ? `<div class="confirm-row">
+          <span class="confirm-key">${t("confirm.displayname")}</span>
+          <span class="confirm-value">${userDisplayName}</span>
+        </div>` : ""}
+      </div>
+
+      <div class="confirm-section">
+        <div class="confirm-section-title">${t("confirm.provider")}
+          <button class="btn-edit-step" data-step="2">${t("confirm.edit")}</button>
         </div>
         <div class="confirm-row">
           <span class="confirm-key">${t("confirm.provider")}</span>
@@ -64,7 +80,7 @@ export function populateConfirm(data) {
 
       <div class="confirm-section">
         <div class="confirm-section-title">${t("confirm.leader")}
-          <button class="btn-edit-step" data-step="2">${t("confirm.edit")}</button>
+          <button class="btn-edit-step" data-step="3">${t("confirm.edit")}</button>
         </div>
         <div class="confirm-row">
           <span class="confirm-key">${t("confirm.leader")}</span>
@@ -91,6 +107,11 @@ export async function completeSetup(data) {
     locale: data.language?.locale || "ja",
     credentials: {},
     person: { name: data.leader?.name },
+    user: data.userinfo ? {
+      username: data.userinfo.username,
+      display_name: data.userinfo.display_name || "",
+      bio: data.userinfo.bio || "",
+    } : undefined,
   };
 
   // Add credentials from environment step
@@ -116,6 +137,11 @@ export async function completeSetup(data) {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || t("confirm.error"));
+    }
+
+    // Persist username to localStorage so the dashboard auto-logs in
+    if (data.userinfo?.username) {
+      localStorage.setItem("animaworks_user", data.userinfo.username);
     }
 
     // Show success screen

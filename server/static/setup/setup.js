@@ -2,6 +2,7 @@
 
 import { initLanguageStep, getLanguageData } from "./steps/language.js";
 import { initEnvironmentStep, getEnvironmentData, validateEnvironment } from "./steps/environment.js";
+import { initUserInfoStep, getUserInfoData, validateUserInfo } from "./steps/userinfo.js";
 import { initLeaderStep, getLeaderData, validateLeader } from "./steps/leader.js";
 import { initConfirmStep, populateConfirm, completeSetup } from "./steps/confirm.js";
 
@@ -9,7 +10,7 @@ import { initConfirmStep, populateConfirm, completeSetup } from "./steps/confirm
 
 const state = {
   currentStep: 0,
-  totalSteps: 4,
+  totalSteps: 5,
   locale: "ja",
   translations: {},
 };
@@ -95,9 +96,12 @@ async function goNext() {
 
   // Validate current step
   if (step === 1) {
-    const valid = validateEnvironment();
+    const valid = validateUserInfo();
     if (!valid) return;
   } else if (step === 2) {
+    const valid = validateEnvironment();
+    if (!valid) return;
+  } else if (step === 3) {
     const valid = validateLeader();
     if (!valid) return;
   }
@@ -116,7 +120,7 @@ async function goNext() {
   state.currentStep = Math.min(step + 1, state.totalSteps - 1);
 
   // Prepare next step data
-  if (state.currentStep === 3) {
+  if (state.currentStep === 4) {
     populateConfirm(gatherAllData());
   }
 
@@ -138,6 +142,7 @@ export function goToStep(step) {
 function gatherAllData() {
   return {
     language: getLanguageData(),
+    userinfo: getUserInfoData(),
     environment: getEnvironmentData(),
     leader: getLeaderData(),
   };
@@ -149,6 +154,7 @@ async function init() {
   // Create step panels
   stepContent.innerHTML = `
     <div class="step-panel active" id="stepLanguage"></div>
+    <div class="step-panel" id="stepUserInfo"></div>
     <div class="step-panel" id="stepEnvironment"></div>
     <div class="step-panel" id="stepLeader"></div>
     <div class="step-panel" id="stepConfirm"></div>
@@ -159,6 +165,7 @@ async function init() {
 
   // Initialize step modules
   initLanguageStep(document.getElementById("stepLanguage"));
+  initUserInfoStep(document.getElementById("stepUserInfo"));
   initEnvironmentStep(document.getElementById("stepEnvironment"));
   initLeaderStep(document.getElementById("stepLeader"));
   initConfirmStep(document.getElementById("stepConfirm"));

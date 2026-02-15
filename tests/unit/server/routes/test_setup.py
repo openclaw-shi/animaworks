@@ -18,11 +18,17 @@ from server.routes.setup import (
 # ── Helper to build a minimal FastAPI app with setup router ──
 
 
-def _make_test_app(setup_complete: bool = False):
+def _make_test_app(
+    setup_complete: bool = False,
+    persons_dir: Path | None = None,
+    supervisor: object | None = None,
+):
     from fastapi import FastAPI
 
     app = FastAPI()
     app.state.setup_complete = setup_complete
+    app.state.persons_dir = persons_dir or Path("/tmp/_test_nonexistent_persons")
+    app.state.supervisor = supervisor or AsyncMock()
     router = create_setup_router()
     app.include_router(router)
     return app
@@ -518,3 +524,189 @@ class TestCompleteSetup:
         assert resp.status_code == 200
         mock_create.assert_called_once_with(Path("/tmp/test/persons"), "sakura")
         assert "sakura" in mock_config.persons
+
+    async def test_complete_with_user_info(self, tmp_path: Path):
+        """POST with user info should call save_auth and create user profile dir."""
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.persons = {}
+
+        shared_dir = tmp_path / "shared"
+        app = _make_test_app(persons_dir=tmp_path / "persons")
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config"),
+            patch("core.config.invalidate_cache"),
+            patch("core.auth.manager.save_auth") as mock_save_auth,
+            patch("core.paths.get_shared_dir", return_value=shared_dir),
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "credentials": {},
+                        "user": {
+                            "username": "taro",
+                            "display_name": "Taro",
+                            "bio": "test bio",
+                        },
+                    },
+                )
+
+        assert resp.status_code == 200
+        mock_save_auth.assert_called_once()
+        saved_config = mock_save_auth.call_args[0][0]
+        assert saved_config.owner.username == "taro"
+        assert saved_config.owner.display_name == "Taro"
+
+        # User profile directory should have been created
+        user_dir = shared_dir / "users" / "taro"
+        assert user_dir.exists()
+
+    async def test_complete_with_user_creates_profile(self, tmp_path: Path):
+        """Verify shared/users/{username}/index.md is created with correct content."""
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.persons = {}
+
+        shared_dir = tmp_path / "shared"
+        app = _make_test_app(persons_dir=tmp_path / "persons")
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config"),
+            patch("core.config.invalidate_cache"),
+            patch("core.auth.manager.save_auth"),
+            patch("core.paths.get_shared_dir", return_value=shared_dir),
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "credentials": {},
+                        "user": {
+                            "username": "taro",
+                            "display_name": "Taro",
+                            "bio": "test bio",
+                        },
+                    },
+                )
+
+        assert resp.status_code == 200
+        profile_path = shared_dir / "users" / "taro" / "index.md"
+        assert profile_path.exists()
+        content = profile_path.read_text(encoding="utf-8")
+        assert "# Taro" in content
+        assert "test bio" in content
+
+    async def test_complete_with_user_no_bio(self, tmp_path: Path):
+        """Verify profile is created without bio section when bio is empty."""
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.persons = {}
+
+        shared_dir = tmp_path / "shared"
+        app = _make_test_app(persons_dir=tmp_path / "persons")
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config"),
+            patch("core.config.invalidate_cache"),
+            patch("core.auth.manager.save_auth"),
+            patch("core.paths.get_shared_dir", return_value=shared_dir),
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "credentials": {},
+                        "user": {
+                            "username": "hanako",
+                            "display_name": "Hanako",
+                            "bio": "",
+                        },
+                    },
+                )
+
+        assert resp.status_code == 200
+        profile_path = shared_dir / "users" / "hanako" / "index.md"
+        assert profile_path.exists()
+        content = profile_path.read_text(encoding="utf-8")
+        assert "# Hanako" in content
+        # Bio section should not be present
+        assert content.strip() == "# Hanako"
+
+    async def test_complete_triggers_person_start(self, tmp_path: Path):
+        """Verify supervisor.start_all() is called after creating a person."""
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.persons = {}
+
+        # Create a person directory with identity.md so rescan picks it up
+        persons_dir = tmp_path / "persons"
+        person_dir = persons_dir / "sakura"
+        person_dir.mkdir(parents=True)
+        (person_dir / "identity.md").write_text("# Sakura", encoding="utf-8")
+
+        mock_supervisor = AsyncMock()
+        app = _make_test_app(persons_dir=persons_dir, supervisor=mock_supervisor)
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config"),
+            patch("core.config.invalidate_cache"),
+            patch("core.paths.get_persons_dir", return_value=persons_dir),
+            patch("core.person_factory.create_blank"),
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "credentials": {},
+                        "person": {"name": "sakura"},
+                    },
+                )
+
+        assert resp.status_code == 200
+        mock_supervisor.start_all.assert_called_once_with(["sakura"])
+
+    async def test_complete_without_user(self):
+        """Verify old behavior still works without user field."""
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.persons = {}
+
+        app = _make_test_app()
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config") as mock_save,
+            patch("core.config.invalidate_cache"),
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={"locale": "en", "credentials": {}},
+                )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        mock_save.assert_called_once()
+        # save_auth should NOT have been called (no user field)
+        assert mock_config.setup_complete is True

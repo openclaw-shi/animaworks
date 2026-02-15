@@ -660,6 +660,14 @@ body {
   line-height: 1.5;
 }
 
+/* --- Step 2: User Information --- */
+.userinfo-bio {
+  resize: vertical;
+  min-height: 80px;
+  max-height: 200px;
+  line-height: 1.5;
+}
+
 /* --- Step 3: Leader Creation --- */
 .leader-name-input {
   margin-top: 20px;

@@ -604,3 +604,242 @@ class TestSetupComplete:
                 json={"locale": "en"},
             )
             assert resp.status_code == 403
+
+
+# ── 4. Setup with User Info & Person Auto-start ─────────
+
+
+class TestSetupWithUserInfo:
+    """Test POST /api/setup/complete with user info and person auto-start."""
+
+    @pytest.mark.asyncio
+    async def test_complete_setup_with_user_info(self, data_dir: Path):
+        """Complete setup with user info creates auth.json with owner."""
+        _write_config(data_dir, setup_complete=False)
+        app = _create_app(data_dir)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/setup/complete",
+                json={
+                    "locale": "ja",
+                    "user": {
+                        "username": "taro",
+                        "display_name": "Taro Yamada",
+                        "bio": "A software engineer who loves AI.",
+                    },
+                },
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["status"] == "ok"
+
+        # Verify auth.json was created
+        auth_path = data_dir / "auth.json"
+        assert auth_path.exists(), "auth.json should be created"
+
+        auth_data = json.loads(auth_path.read_text("utf-8"))
+        assert auth_data["auth_mode"] == "local_trust"
+        assert auth_data["owner"]["username"] == "taro"
+        assert auth_data["owner"]["display_name"] == "Taro Yamada"
+        assert auth_data["owner"]["bio"] == "A software engineer who loves AI."
+
+    @pytest.mark.asyncio
+    async def test_complete_setup_creates_user_profile(self, data_dir: Path):
+        """Complete setup with user info creates a user profile markdown file."""
+        _write_config(data_dir, setup_complete=False)
+        app = _create_app(data_dir)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/setup/complete",
+                json={
+                    "locale": "ja",
+                    "user": {
+                        "username": "hanako",
+                        "display_name": "Hanako Sato",
+                        "bio": "Product manager and cat lover.",
+                    },
+                },
+            )
+            assert resp.status_code == 200
+
+        # Verify user profile was created
+        profile_path = data_dir / "shared" / "users" / "hanako" / "index.md"
+        assert profile_path.exists(), "User profile index.md should be created"
+
+        content = profile_path.read_text("utf-8")
+        assert content.startswith("# Hanako Sato")
+        assert "Product manager and cat lover." in content
+
+    @pytest.mark.asyncio
+    async def test_complete_setup_user_profile_no_bio(self, data_dir: Path):
+        """User profile created without bio does not contain bio content."""
+        _write_config(data_dir, setup_complete=False)
+        app = _create_app(data_dir)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/setup/complete",
+                json={
+                    "locale": "ja",
+                    "user": {
+                        "username": "jiro",
+                        "display_name": "Jiro",
+                    },
+                },
+            )
+            assert resp.status_code == 200
+
+        # Verify profile exists but has no bio
+        profile_path = data_dir / "shared" / "users" / "jiro" / "index.md"
+        assert profile_path.exists()
+
+        content = profile_path.read_text("utf-8")
+        assert content.startswith("# Jiro")
+        # With no bio, the content should only be the heading line
+        lines = [line for line in content.strip().splitlines() if line.strip()]
+        assert len(lines) == 1, "Profile without bio should only have the heading"
+
+    @pytest.mark.asyncio
+    async def test_complete_setup_with_user_and_person(self, data_dir: Path):
+        """Complete setup with both user and person creates all artifacts."""
+        _write_config(data_dir, setup_complete=False)
+        app = _create_app(data_dir)
+
+        with patch.object(app.state.supervisor, "start_all", new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "en",
+                        "user": {
+                            "username": "alice",
+                            "display_name": "Alice",
+                            "bio": "Researcher.",
+                        },
+                        "person": {"name": "sakura"},
+                    },
+                )
+                assert resp.status_code == 200
+
+                # Verify auth.json
+                auth_path = data_dir / "auth.json"
+                assert auth_path.exists()
+                auth_data = json.loads(auth_path.read_text("utf-8"))
+                assert auth_data["owner"]["username"] == "alice"
+
+                # Verify person directory
+                person_dir = data_dir / "persons" / "sakura"
+                assert person_dir.exists()
+                assert (person_dir / "identity.md").exists()
+
+                # Verify user profile
+                profile_path = data_dir / "shared" / "users" / "alice" / "index.md"
+                assert profile_path.exists()
+
+                # Verify person_names was updated (accessible via /api/persons)
+                resp = await client.get("/api/persons")
+                assert resp.status_code != 503, "API should be accessible after setup"
+
+    @pytest.mark.asyncio
+    async def test_complete_setup_person_autostart(self, data_dir: Path):
+        """After setup with a person, person_names includes the new person."""
+        _write_config(data_dir, setup_complete=False)
+        app = _create_app(data_dir)
+
+        with patch.object(
+            app.state.supervisor, "start_all", new_callable=AsyncMock
+        ) as mock_start:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "person": {"name": "kaede"},
+                    },
+                )
+                assert resp.status_code == 200
+
+            # Verify person_names state was updated
+            assert "kaede" in app.state.person_names
+
+            # Verify start_all was called with the new person name
+            mock_start.assert_awaited_once()
+            call_args = mock_start.call_args[0][0]
+            assert "kaede" in call_args
+
+    @pytest.mark.asyncio
+    async def test_full_wizard_flow_with_user_info(self, data_dir: Path):
+        """End-to-end wizard flow including user info, person, and route switching."""
+        _write_config(data_dir, setup_complete=False)
+        app = _create_app(data_dir)
+
+        with patch.object(app.state.supervisor, "start_all", new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                # Step 1: Detect locale
+                resp = await client.get(
+                    "/api/setup/detect-locale",
+                    headers={"Accept-Language": "en-US,en;q=0.9"},
+                )
+                assert resp.status_code == 200
+                assert resp.json()["detected"] == "en"
+
+                # Step 2: Complete setup with locale, credentials, person, and user
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "en",
+                        "credentials": {
+                            "anthropic": {"api_key": "sk-ant-test-full"},
+                        },
+                        "person": {"name": "miku"},
+                        "user": {
+                            "username": "bob",
+                            "display_name": "Bob Smith",
+                            "bio": "Team lead.",
+                        },
+                    },
+                )
+                assert resp.status_code == 200
+                assert resp.json()["status"] == "ok"
+
+                # Step 3: Verify config.json
+                invalidate_cache()
+                config_raw = json.loads(
+                    (data_dir / "config.json").read_text("utf-8")
+                )
+                assert config_raw["setup_complete"] is True
+                assert config_raw["locale"] == "en"
+
+                # Step 4: Verify auth.json
+                auth_path = data_dir / "auth.json"
+                assert auth_path.exists()
+                auth_data = json.loads(auth_path.read_text("utf-8"))
+                assert auth_data["owner"]["username"] == "bob"
+                assert auth_data["owner"]["display_name"] == "Bob Smith"
+                assert auth_data["auth_mode"] == "local_trust"
+
+                # Step 5: Verify person directory
+                assert (data_dir / "persons" / "miku").is_dir()
+                assert "miku" in config_raw["persons"]
+
+                # Step 6: Verify user profile
+                profile_path = data_dir / "shared" / "users" / "bob" / "index.md"
+                assert profile_path.exists()
+                profile_content = profile_path.read_text("utf-8")
+                assert profile_content.startswith("# Bob Smith")
+                assert "Team lead." in profile_content
+
+                # Step 7: Verify route switching — setup blocked, API accessible
+                resp = await client.get("/api/setup/environment")
+                assert resp.status_code == 403
+
+                resp = await client.get("/api/persons")
+                assert resp.status_code != 503
