@@ -144,7 +144,8 @@ class TestStreamErrorCodes:
         events = _parse_sse_events(resp.text)
         error_events = [e for e in events if e["event"] == "error"]
         assert len(error_events) >= 1
-        assert error_events[0]["data"]["code"] == "STREAM_ERROR"
+        # ValueError is now caught specifically as IPC_ERROR (more descriptive)
+        assert error_events[0]["data"]["code"] == "IPC_ERROR"
 
     async def test_stream_timeout_has_code(self):
         async def _raise_timeout(*args, **kwargs):
