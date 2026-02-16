@@ -266,8 +266,14 @@ class ConsolidationEngine:
   内容: (ファイル全体の内容をMarkdown形式で記述)
 
 注意事項:
-- 些細な会話や定型的なやり取りは知識化不要です
-- 一般化できる教訓やパターンのみを抽出してください
+- 以下の情報は必ず抽出してください:
+  - 具体的な設定値・APIキー・認証情報の格納場所
+  - ユーザーやシステムの識別情報（ID、名前、役割）
+  - 手順・ワークフロー・プロセスの記録
+  - チーム構成・役割分担・指揮系統
+  - 技術的な判断とその理由
+- 完全に同一内容の繰り返しのみスキップしてください
+- 挨拶のみの会話や実質的な情報を含まないやり取りは知識化不要です
 - 既存ファイルがない場合は、すべて新規ファイルとして提案してください
 - ファイル名はトピックを表すわかりやすい名前にしてください（英数字とハイフン推奨）
 """
@@ -283,6 +289,10 @@ class ConsolidationEngine:
             )
 
             result = response.choices[0].message.content or ""
+            logger.info(
+                "Consolidation LLM response for %s (%d chars): %.500s",
+                self.person_name, len(result), result,
+            )
             return result
 
         except Exception as e:
@@ -306,6 +316,10 @@ class ConsolidationEngine:
         files_updated: list[str] = []
 
         if not consolidation_result.strip():
+            logger.warning(
+                "Empty consolidation LLM response for %s",
+                self.person_name,
+            )
             return files_created, files_updated
 
         # Parse updates to existing files
@@ -385,6 +399,14 @@ class ConsolidationEngine:
                         "Skipping knowledge file creation (already exists): %s",
                         filename
                     )
+
+        if not files_created and not files_updated:
+            logger.warning(
+                "No knowledge files extracted from consolidation for %s "
+                "(response length=%d chars). "
+                "LLM may have judged episodes as non-extractable.",
+                self.person_name, len(consolidation_result),
+            )
 
         return files_created, files_updated
 
