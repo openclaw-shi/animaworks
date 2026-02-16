@@ -3,7 +3,7 @@
 Validates the iPad-specific viewport improvements including:
 - viewport-fit=cover meta tag
 - 100svh height with --vh-fallback CSS variable
-- Timeline repositioned as left sidebar on iPad viewports (769px-1024px)
+- Timeline repositioned at the top of the office panel on iPad viewports (769px-1024px)
 - Safe area inset padding on timeline and conversation input
 - JS fallback for viewport height when svh is unsupported
 
@@ -292,22 +292,21 @@ class TestViewportHeight:
 # ── TestTimelineiPadSidebar ──────────────────────────────────
 
 
-class TestTimelineiPadSidebar:
-    """Verify timeline repositioning as left sidebar on iPad viewports.
+class TestTimelineiPadTop:
+    """Verify timeline repositioning at the top on iPad viewports.
 
     On iPad viewports (769px-1024px), the timeline should move from
-    position: absolute at the bottom to a left sidebar with position: static
-    and width: 240px. It should also support collapse/expand toggling.
+    position: absolute at the bottom to position: static at the top
+    of the office panel (above the 3D canvas). Collapse hides the body.
     """
 
-    def test_timeline_is_left_sidebar_on_ipad(
+    def test_timeline_is_top_on_ipad(
         self, ipad_portrait_page: Page, static_server: str
     ) -> None:
-        """On iPad portrait, .ws-timeline should be a left sidebar (position: static)."""
+        """On iPad portrait, .ws-timeline should be at the top (position: static)."""
         ipad_portrait_page.goto(f"{static_server}/workspace/")
         ipad_portrait_page.wait_for_load_state("domcontentloaded")
         _dismiss_login(ipad_portrait_page)
-        # Allow time for JS to build the timeline DOM
         ipad_portrait_page.wait_for_timeout(500)
 
         timeline = ipad_portrait_page.locator(".ws-timeline").first
@@ -320,13 +319,14 @@ class TestTimelineiPadSidebar:
             f"Timeline position should be 'static' on iPad, got '{position}'"
         )
 
-        # Check bounding rect: should be on the left side with ~240px width
+        # Check bounding rect: should be near the top, full width
         rect = timeline.evaluate("el => el.getBoundingClientRect().toJSON()")
-        assert rect["x"] < 50, (
-            f"Timeline should be on the left side (x={rect['x']})"
+        assert rect["y"] < 120, (
+            f"Timeline should be near the top (y={rect['y']})"
         )
-        assert abs(rect["width"] - 240) <= 10, (
-            f"Timeline width should be approximately 240px, got {rect['width']}px"
+        # Width should span the full office panel width (not 240px sidebar)
+        assert rect["width"] > 400, (
+            f"Timeline width should be full-width, got {rect['width']}px"
         )
 
     def test_timeline_is_bottom_on_desktop(
@@ -336,7 +336,6 @@ class TestTimelineiPadSidebar:
         desktop_page.goto(f"{static_server}/workspace/")
         desktop_page.wait_for_load_state("domcontentloaded")
         _dismiss_login(desktop_page)
-        # Allow time for JS to build the timeline DOM
         desktop_page.wait_for_timeout(500)
 
         timeline = desktop_page.locator(".ws-timeline").first
@@ -351,7 +350,7 @@ class TestTimelineiPadSidebar:
     def test_timeline_collapse_toggle(
         self, ipad_portrait_page: Page, static_server: str
     ) -> None:
-        """On iPad, clicking the toggle button should collapse the timeline to ~48px."""
+        """On iPad, clicking the toggle should add 'collapsed' class and hide body."""
         ipad_portrait_page.goto(f"{static_server}/workspace/")
         ipad_portrait_page.wait_for_load_state("domcontentloaded")
         _dismiss_login(ipad_portrait_page)
@@ -365,28 +364,26 @@ class TestTimelineiPadSidebar:
         if toggle_btn.count() == 0:
             pytest.skip(".timeline-toggle-btn not found")
 
-        # Click the toggle button to collapse
         toggle_btn.click()
         ipad_portrait_page.wait_for_timeout(400)
 
-        # Verify collapsed class is applied
         has_collapsed = timeline.evaluate(
             "el => el.classList.contains('collapsed')"
         )
         assert has_collapsed, "Timeline should have 'collapsed' class after toggle click"
 
-        # Verify width is approximately 48px
-        width = timeline.evaluate(
-            "el => el.getBoundingClientRect().width"
+        # Body should be hidden
+        body_display = ipad_portrait_page.locator(".ws-timeline-body").first.evaluate(
+            "el => getComputedStyle(el).display"
         )
-        assert abs(width - 48) <= 10, (
-            f"Collapsed timeline width should be approximately 48px, got {width}px"
+        assert body_display == "none", (
+            f"Timeline body should be hidden when collapsed, got display={body_display}"
         )
 
     def test_timeline_expand_after_collapse(
         self, ipad_portrait_page: Page, static_server: str
     ) -> None:
-        """On iPad, collapsing then expanding the timeline should restore ~240px width."""
+        """On iPad, collapsing then expanding should restore the timeline body."""
         ipad_portrait_page.goto(f"{static_server}/workspace/")
         ipad_portrait_page.wait_for_load_state("domcontentloaded")
         _dismiss_login(ipad_portrait_page)
@@ -400,34 +397,21 @@ class TestTimelineiPadSidebar:
         if toggle_btn.count() == 0:
             pytest.skip(".timeline-toggle-btn not found")
 
-        # First click: collapse
+        # Collapse
+        toggle_btn.click()
+        ipad_portrait_page.wait_for_timeout(400)
+        assert timeline.evaluate("el => el.classList.contains('collapsed')"), \
+            "Timeline should be collapsed after first toggle"
+
+        # Expand
         toggle_btn.click()
         ipad_portrait_page.wait_for_timeout(400)
 
-        # Verify collapsed
-        has_collapsed = timeline.evaluate(
-            "el => el.classList.contains('collapsed')"
-        )
-        assert has_collapsed, "Timeline should be collapsed after first toggle"
-
-        # Second click: expand
-        toggle_btn.click()
-        ipad_portrait_page.wait_for_timeout(400)
-
-        # Verify expanded (collapsed class removed)
         has_collapsed_after = timeline.evaluate(
             "el => el.classList.contains('collapsed')"
         )
         assert not has_collapsed_after, (
             "Timeline should not have 'collapsed' class after second toggle"
-        )
-
-        # Verify width is back to approximately 240px
-        width = timeline.evaluate(
-            "el => el.getBoundingClientRect().width"
-        )
-        assert abs(width - 240) <= 10, (
-            f"Expanded timeline width should be approximately 240px, got {width}px"
         )
 
 

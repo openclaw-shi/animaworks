@@ -831,15 +831,13 @@ function initViewportHeightFallback() {
   window.addEventListener('resize', setVh);
 }
 
-/** Toggle timeline sidebar collapse on iPad. */
+/** Toggle timeline collapse on iPad-width viewports. */
 function initTimelineCollapseToggle() {
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.timeline-toggle-btn');
     if (!btn) return;
     const timeline = btn.closest('.ws-timeline');
-    if (!timeline) return;
-    // Only collapse on iPad-width viewports
-    if (window.innerWidth >= 769 && window.innerWidth <= 1024) {
+    if (timeline) {
       timeline.classList.toggle('collapsed');
     }
   });
