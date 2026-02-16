@@ -143,6 +143,10 @@ class ProcessSupervisor:
             logger.warning("Process already exists: %s", anima_name)
             return
 
+        if anima_name in self._restarting:
+            logger.debug("Skipping start_anima for %s (restart in progress)", anima_name)
+            return
+
         socket_dir = self.run_dir / "sockets"
         socket_dir.mkdir(parents=True, exist_ok=True)
         socket_path = socket_dir / f"{anima_name}.sock"
@@ -633,6 +637,9 @@ class ProcessSupervisor:
         # enabled + not running → start
         for name, enabled in on_disk.items():
             if enabled and name not in running:
+                if name in self._restarting:
+                    logger.debug("Reconciliation: skipping %s (restart in progress)", name)
+                    continue
                 logger.info("Reconciliation: starting anima %s", name)
                 try:
                     await self.start_anima(name)

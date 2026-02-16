@@ -404,7 +404,24 @@ def create_chat_router() -> APIRouter:
                             # Raw text chunk fallback
                             full_response += ipc_response.chunk
                             yield _format_sse("text_delta", {"text": ipc_response.chunk})
+                        continue
 
+                    # Fallback: non-streaming IPC response (result without done flag)
+                    if ipc_response.result:
+                        result = ipc_response.result
+                        full_response = result.get("response", "")
+                        cycle_result = result.get("cycle_result", {})
+                        summary = cycle_result.get("summary", full_response)
+                        clean_text, emotion = extract_emotion(summary)
+                        cycle_result["summary"] = clean_text
+                        cycle_result["emotion"] = emotion
+                        full_response = clean_text
+                        yield _format_sse("done", cycle_result or {"summary": clean_text, "emotion": emotion})
+                        break
+
+            except ValueError as e:
+                logger.error("IPC stream error for anima=%s: %s", name, e)
+                yield _format_sse("error", {"code": "IPC_ERROR", "message": str(e)})
             except KeyError:
                 logger.error("Anima not found during stream: %s", name)
                 yield _format_sse("error", {"code": "ANIMA_NOT_FOUND", "message": f"Anima not found: {name}"})

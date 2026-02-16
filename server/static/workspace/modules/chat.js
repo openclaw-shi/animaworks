@@ -62,6 +62,7 @@ function renderAllMessages() {
 
 let _chatRafPending = false;
 let _chatLatestStreamingMsg = null;
+let _isSseStreaming = false;
 
 function scheduleStreamingUpdate(msg) {
   _chatLatestStreamingMsg = msg;
@@ -215,6 +216,7 @@ export async function sendMessage(text) {
 
   // Disable input during streaming
   setInputEnabled(false);
+  _isSseStreaming = true;
 
   try {
     const response = await sendChatStream(selectedAnima, trimmed, currentUser || "human");
@@ -294,6 +296,7 @@ export async function sendMessage(text) {
     setState({ chatMessages: [...getState().chatMessages] });
     renderAllMessages();
   } finally {
+    _isSseStreaming = false;
     setInputEnabled(true);
     if (inputEl) inputEl.focus();
   }
@@ -305,8 +308,8 @@ export async function sendMessage(text) {
 export function addMessage(role, text) {
   const { chatMessages } = getState();
 
-  // Skip if currently streaming (SSE handles display)
-  if (chatMessages.some((m) => m.streaming)) return;
+  // Skip if SSE streaming is active (SSE handles display)
+  if (_isSseStreaming) return;
 
   // Avoid duplicating the last message
   const last = chatMessages[chatMessages.length - 1];
