@@ -97,12 +97,16 @@ async def lifespan(app: FastAPI):
         msg_log_scheduler.start()
         app.state.msg_log_scheduler = msg_log_scheduler
 
+        # ── WebSocket heartbeat ────────────────────────────────
+        await app.state.ws_manager.start_heartbeat()
+
         logger.info("Server started with process isolation")
     else:
         logger.info("Server started in setup mode (setup not yet complete)")
     yield
     # Shutdown all processes
     if app.state.setup_complete:
+        await app.state.ws_manager.stop_heartbeat()
         await app.state.supervisor.shutdown_all()
         if hasattr(app.state, "msg_log_scheduler"):
             app.state.msg_log_scheduler.shutdown(wait=False)

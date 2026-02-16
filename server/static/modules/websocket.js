@@ -8,7 +8,10 @@ import { renderChat } from "./chat.js";
 
 let ws = null;
 let wsReconnectTimer = null;
-const WS_RECONNECT_DELAY = 3000;
+const WS_INITIAL_DELAY = 1000;
+const WS_MAX_DELAY = 30000;
+const WS_BACKOFF_MULTIPLIER = 2;
+let wsReconnectAttempt = 0;
 
 export function connectWebSocket() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -27,6 +30,7 @@ export function connectWebSocket() {
   }
 
   ws.addEventListener("open", () => {
+    wsReconnectAttempt = 0;
     state.wsConnected = true;
     updateSystemStatus();
     console.log("WebSocket connected");
@@ -50,10 +54,16 @@ export function connectWebSocket() {
 
 function scheduleReconnect() {
   if (wsReconnectTimer) return;
+  const delay = Math.min(
+    WS_INITIAL_DELAY * Math.pow(WS_BACKOFF_MULTIPLIER, wsReconnectAttempt),
+    WS_MAX_DELAY
+  );
+  const jitter = Math.random() * 1000;
   wsReconnectTimer = setTimeout(() => {
     wsReconnectTimer = null;
+    wsReconnectAttempt++;
     connectWebSocket();
-  }, WS_RECONNECT_DELAY);
+  }, delay + jitter);
 }
 
 function handleWsMessage(raw) {
@@ -217,6 +227,12 @@ function handleWsMessage(raw) {
       break;
     }
 
+    case "ping":
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "pong" }));
+      }
+      return;
+
     default:
       if (data.name || data.person) {
         addActivity("system", data.name || data.person, JSON.stringify(data).slice(0, 120));
@@ -269,3 +285,14 @@ function showNotificationToast(personName, subject, body, priority) {
     toast.addEventListener("animationend", () => toast.remove());
   });
 }
+
+// ── Visibility Change Reconnect ─────────────────────
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      wsReconnectAttempt = 0;
+      scheduleReconnect();
+    }
+  }
+});

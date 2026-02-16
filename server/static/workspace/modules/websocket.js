@@ -3,10 +3,13 @@
 
 import { setState } from "./state.js";
 
-const WS_RECONNECT_DELAY = 3000;
+const WS_INITIAL_DELAY = 1000;
+const WS_MAX_DELAY = 30000;
+const WS_BACKOFF_MULTIPLIER = 2;
 
 let ws = null;
 let reconnectTimer = null;
+let reconnectAttempt = 0;
 const eventHandlers = new Map(); // type -> Set<callback>
 
 function getWsUrl() {
@@ -19,9 +22,16 @@ export function connect() {
     return;
   }
 
-  ws = new WebSocket(getWsUrl());
+  try {
+    ws = new WebSocket(getWsUrl());
+  } catch (err) {
+    console.error("WebSocket creation failed:", err);
+    scheduleReconnect();
+    return;
+  }
 
   ws.addEventListener("open", () => {
+    reconnectAttempt = 0;
     setState({ wsConnected: true });
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -32,6 +42,13 @@ export function connect() {
   ws.addEventListener("message", (event) => {
     try {
       const msg = JSON.parse(event.data);
+      // Respond to server ping with pong
+      if (msg.type === "ping") {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "pong" }));
+        }
+        return;
+      }
       const handlers = eventHandlers.get(msg.type);
       if (handlers) {
         handlers.forEach((fn) => fn(msg.data, msg.type));
@@ -58,10 +75,16 @@ export function connect() {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
+  const delay = Math.min(
+    WS_INITIAL_DELAY * Math.pow(WS_BACKOFF_MULTIPLIER, reconnectAttempt),
+    WS_MAX_DELAY
+  );
+  const jitter = Math.random() * 1000;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
+    reconnectAttempt++;
     connect();
-  }, WS_RECONNECT_DELAY);
+  }, delay + jitter);
 }
 
 /**
@@ -87,3 +110,14 @@ export function disconnect() {
     ws = null;
   }
 }
+
+// ── Visibility Change Reconnect ─────────────────────
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      reconnectAttempt = 0;
+      scheduleReconnect();
+    }
+  }
+});
