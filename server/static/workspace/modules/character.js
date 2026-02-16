@@ -6,6 +6,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { probeAsset, fetchAssetMetadata } from "./api.js";
 import { modelCache } from "./model-cache.js";
 
@@ -31,11 +32,11 @@ const _parsedCache = new Map();
 async function _loadGLTFCached(url) {
   if (_parsedCache.has(url)) {
     const cached = _parsedCache.get(url);
-    return { scene: cached.scene.clone(true), animations: cached.animations.map(c => c.clone()) };
+    return { scene: SkeletonUtils.clone(cached.scene), animations: cached.animations };
   }
   const gltf = await modelCache.loadGLTF(url, _gltfLoader);
   _parsedCache.set(url, gltf);
-  return { scene: gltf.scene.clone(true), animations: gltf.animations.map(c => c.clone()) };
+  return { scene: SkeletonUtils.clone(gltf.scene), animations: gltf.animations };
 }
 
 // ── Constants ──────────────────────
