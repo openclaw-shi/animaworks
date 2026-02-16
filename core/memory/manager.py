@@ -59,6 +59,10 @@ class MemoryManager:
         Called lazily by ``_get_indexer()`` on first access.
         Uses process-level singletons for ChromaVectorStore and embedding
         model to avoid costly repeated initialization.
+
+        Also ensures the ``shared_common_knowledge`` collection is indexed
+        from ``~/.animaworks/common_knowledge/``.  The hash-based dedup in
+        :meth:`MemoryIndexer.index_file` makes repeated calls a no-op.
         """
         self._indexer_initialized = True
         try:
@@ -69,10 +73,44 @@ class MemoryManager:
             person_name = self.person_dir.name
             self._indexer = MemoryIndexer(vector_store, person_name, self.person_dir)
             logger.debug("RAG indexer initialized for person=%s", person_name)
+
+            # Ensure shared_common_knowledge collection exists
+            self._ensure_shared_knowledge_indexed(vector_store)
         except ImportError:
             logger.debug("RAG dependencies not installed, indexing disabled")
         except Exception as e:
             logger.warning("Failed to initialize RAG indexer: %s", e)
+
+    def _ensure_shared_knowledge_indexed(self, vector_store) -> None:
+        """Index common_knowledge/ into ``shared_common_knowledge`` collection.
+
+        Uses the existing hash-based dedup so repeated calls (once per
+        person process) are effectively no-ops after the first indexing.
+        """
+        ck_dir = self.common_knowledge_dir
+        if not ck_dir.is_dir() or not any(ck_dir.rglob("*.md")):
+            logger.debug("No common_knowledge files found, skipping shared indexing")
+            return
+
+        try:
+            from core.memory.rag import MemoryIndexer
+            from core.paths import get_data_dir
+
+            data_dir = get_data_dir()
+            shared_indexer = MemoryIndexer(
+                vector_store,
+                person_name="shared",
+                person_dir=data_dir,
+                collection_prefix="shared",
+                embedding_model=self._indexer.embedding_model if self._indexer else None,
+            )
+            indexed = shared_indexer.index_directory(ck_dir, "common_knowledge")
+            if indexed > 0:
+                logger.info(
+                    "Indexed %d chunks into shared_common_knowledge", indexed,
+                )
+        except Exception as e:
+            logger.warning("Failed to index shared common_knowledge: %s", e)
 
     def _get_indexer(self):
         """Return the RAG indexer, initializing it on first call."""

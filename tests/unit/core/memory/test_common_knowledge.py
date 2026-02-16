@@ -71,6 +71,42 @@ class TestMemoryIndexerCollectionPrefix:
         assert "knowledge" in chunk_id
         assert "test.md" in chunk_id
 
+    def test_make_chunk_id_no_path_duplication(
+        self, indexer_with_prefix, person_dir: Path,
+    ):
+        """Chunk ID must NOT contain doubled directory (e.g. knowledge/knowledge/)."""
+        test_file = person_dir / "knowledge" / "test.md"
+        test_file.write_text("content", encoding="utf-8")
+        chunk_id = indexer_with_prefix._make_chunk_id(test_file, "knowledge", 0)
+        # Expected: shared/knowledge/test.md#0
+        assert chunk_id == "shared/knowledge/test.md#0"
+        # Must not have doubled path
+        assert "knowledge/knowledge/" not in chunk_id
+
+    def test_make_chunk_id_no_path_duplication_episodes(
+        self, indexer_default_prefix, person_dir: Path,
+    ):
+        """Episode chunk IDs must not double the 'episodes' directory."""
+        episodes_dir = person_dir / "episodes"
+        episodes_dir.mkdir(exist_ok=True)
+        test_file = episodes_dir / "2026-02-16.md"
+        test_file.write_text("content", encoding="utf-8")
+        chunk_id = indexer_default_prefix._make_chunk_id(test_file, "episodes", 0)
+        assert chunk_id == "alice/episodes/2026-02-16.md#0"
+        assert "episodes/episodes/" not in chunk_id
+
+    def test_make_chunk_id_common_knowledge(
+        self, indexer_with_prefix, person_dir: Path,
+    ):
+        """common_knowledge type should produce clean IDs."""
+        ck_dir = person_dir / "common_knowledge"
+        ck_dir.mkdir(exist_ok=True)
+        test_file = ck_dir / "guide.md"
+        test_file.write_text("content", encoding="utf-8")
+        chunk_id = indexer_with_prefix._make_chunk_id(test_file, "common_knowledge", 0)
+        assert chunk_id == "shared/common_knowledge/guide.md#0"
+        assert "common_knowledge/common_knowledge/" not in chunk_id
+
     def test_make_chunk_id_default_uses_person_name(
         self, indexer_default_prefix, person_dir: Path,
     ):

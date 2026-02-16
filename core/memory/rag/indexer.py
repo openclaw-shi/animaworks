@@ -248,9 +248,9 @@ class MemoryIndexer:
         - shared_users: Whole file
         """
         if memory_type in ("knowledge", "common_knowledge"):
-            return self._chunk_by_markdown_headings(file_path, content)
+            return self._chunk_by_markdown_headings(file_path, content, memory_type)
         elif memory_type == "episodes":
-            return self._chunk_by_time_headings(file_path, content)
+            return self._chunk_by_time_headings(file_path, content, memory_type)
         else:  # procedures, skills, shared_users
             return self._chunk_whole_file(file_path, content, memory_type)
 
@@ -258,6 +258,7 @@ class MemoryIndexer:
         self,
         file_path: Path,
         content: str,
+        memory_type: str,
     ) -> list[MemoryChunk]:
         """Split by Markdown ## headings."""
         chunks: list[MemoryChunk] = []
@@ -272,9 +273,9 @@ class MemoryIndexer:
                 section_content = f"{heading}\n\n{body}"
 
                 if section_content.strip():
-                    chunk_id = self._make_chunk_id(file_path, "knowledge", i // 2)
+                    chunk_id = self._make_chunk_id(file_path, memory_type, i // 2)
                     metadata = self._extract_metadata(
-                        file_path, section_content, "knowledge", i // 2, (i // 2) + 1
+                        file_path, section_content, memory_type, i // 2, (i // 2) + 1
                     )
                     chunks.append(
                         MemoryChunk(
@@ -286,9 +287,9 @@ class MemoryIndexer:
 
         # Add content before first heading as chunk 0 if substantial
         if current_section and len(current_section) > 50:
-            chunk_id = self._make_chunk_id(file_path, "knowledge", 0)
+            chunk_id = self._make_chunk_id(file_path, memory_type, 0)
             metadata = self._extract_metadata(
-                file_path, current_section, "knowledge", 0, len(chunks) + 1
+                file_path, current_section, memory_type, 0, len(chunks) + 1
             )
             chunks.insert(
                 0,
@@ -305,6 +306,7 @@ class MemoryIndexer:
         self,
         file_path: Path,
         content: str,
+        memory_type: str,
     ) -> list[MemoryChunk]:
         """Split by time headings (## HH:MM format)."""
         chunks: list[MemoryChunk] = []
@@ -318,9 +320,9 @@ class MemoryIndexer:
                 section_content = f"{heading}\n\n{body}"
 
                 if section_content.strip():
-                    chunk_id = self._make_chunk_id(file_path, "episodes", i // 2)
+                    chunk_id = self._make_chunk_id(file_path, memory_type, i // 2)
                     metadata = self._extract_metadata(
-                        file_path, section_content, "episodes", i // 2, (i // 2) + 1
+                        file_path, section_content, memory_type, i // 2, (i // 2) + 1
                     )
                     chunks.append(
                         MemoryChunk(
@@ -356,9 +358,15 @@ class MemoryIndexer:
     # ── Helpers ─────────────────────────────────────────────────────
 
     def _make_chunk_id(self, file_path: Path, memory_type: str, index: int) -> str:
-        """Generate unique chunk ID."""
+        """Generate unique chunk ID.
+
+        Uses ``{collection_prefix}/{rel_path}#{index}`` format.
+        ``rel_path`` already contains the directory hierarchy
+        (e.g. ``knowledge/file.md``), so ``memory_type`` is intentionally
+        **not** embedded in the ID to avoid path duplication.
+        """
         rel_path = file_path.relative_to(self.person_dir)
-        return f"{self.collection_prefix}/{memory_type}/{rel_path}#{index}"
+        return f"{self.collection_prefix}/{rel_path}#{index}"
 
     def _extract_metadata(
         self,
