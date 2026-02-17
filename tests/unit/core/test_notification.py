@@ -60,7 +60,7 @@ class TestToolHandlerNotifyHumanQueues:
         notifier = _make_mock_notifier()
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Test Alert",
             "body": "Something happened",
             "priority": "high",
@@ -83,11 +83,11 @@ class TestToolHandlerNotifyHumanQueues:
         notifier = _make_mock_notifier()
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        handler.handle("notify_human", {
+        handler.handle("call_human", {
             "subject": "First",
             "body": "First notification",
         })
-        handler.handle("notify_human", {
+        handler.handle("call_human", {
             "subject": "Second",
             "body": "Second notification",
         })
@@ -106,11 +106,11 @@ class TestToolHandlerDrainNotifications:
         notifier = _make_mock_notifier()
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        handler.handle("notify_human", {
+        handler.handle("call_human", {
             "subject": "Alert",
             "body": "Body text",
         })
-        handler.handle("notify_human", {
+        handler.handle("call_human", {
             "subject": "Alert 2",
             "body": "Body text 2",
         })
@@ -139,7 +139,7 @@ class TestToolHandlerNotifyHumanNoQueueOnFailure:
         """When no notifier is configured, no notification should be queued."""
         handler = _make_tool_handler(tmp_path, notifier=None)
 
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Alert",
             "body": "Body",
         })
@@ -153,7 +153,7 @@ class TestToolHandlerNotifyHumanNoQueueOnFailure:
         notifier = _make_mock_notifier(channel_count=0)
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Alert",
             "body": "Body",
         })
@@ -168,7 +168,7 @@ class TestToolHandlerNotifyHumanNoQueueOnFailure:
         notifier.notify = AsyncMock(side_effect=RuntimeError("channel down"))
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Alert",
             "body": "Body",
         })
@@ -183,7 +183,7 @@ class TestToolHandlerNotifyHumanNoQueueOnFailure:
         notifier = _make_mock_notifier()
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "",
             "body": "Body",
         })
@@ -197,7 +197,7 @@ class TestToolHandlerNotifyHumanNoQueueOnFailure:
         notifier = _make_mock_notifier()
         handler = _make_tool_handler(tmp_path, notifier=notifier)
 
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Alert",
             "body": "",
         })
@@ -286,33 +286,39 @@ class TestWebSocketManagerBroadcastQueue:
         data = {"anima": "alice", "subject": "Alert", "body": "test"}
         await manager.broadcast_notification(data)
 
-        assert len(manager._notification_queue) == 1
-        event = manager._notification_queue[0]
-        assert event["type"] == "anima.notification"
-        assert event["data"] == data
+        assert len(manager._notification_queue) == 2
+        assert manager._notification_queue[0]["type"] == "anima.proactive_message"
+        assert manager._notification_queue[0]["data"] == data
+        assert manager._notification_queue[1]["type"] == "anima.notification"
+        assert manager._notification_queue[1]["data"] == data
 
     async def test_queue_respects_max_size(self):
-        """Queue drops oldest entries when exceeding _MAX_QUEUE_SIZE."""
+        """Queue drops oldest entries when exceeding _MAX_QUEUE_SIZE.
+
+        Each broadcast_notification queues 2 events (proactive_message + notification).
+        With MAX=50, 55 calls produce 110 events, trimmed to 50.
+        The surviving 50 events come from calls 30..54 (25 calls * 2 = 50).
+        """
         manager = WebSocketManager()
 
         for i in range(manager._MAX_QUEUE_SIZE + 5):
             await manager.broadcast_notification({"index": i})
 
         assert len(manager._notification_queue) == manager._MAX_QUEUE_SIZE
-        # Oldest should have been dropped; first in queue is index 5
-        assert manager._notification_queue[0]["data"]["index"] == 5
+        # Oldest should have been dropped; first in queue is index 30
+        assert manager._notification_queue[0]["data"]["index"] == 30
 
     async def test_queue_accumulates_multiple(self):
-        """Multiple notifications accumulate in the queue."""
+        """Multiple notifications accumulate in the queue (2 events each)."""
         manager = WebSocketManager()
 
         await manager.broadcast_notification({"subject": "first"})
         await manager.broadcast_notification({"subject": "second"})
         await manager.broadcast_notification({"subject": "third"})
 
-        assert len(manager._notification_queue) == 3
+        assert len(manager._notification_queue) == 6
         subjects = [e["data"]["subject"] for e in manager._notification_queue]
-        assert subjects == ["first", "second", "third"]
+        assert subjects == ["first", "first", "second", "second", "third", "third"]
 
 
 # ── WebSocketManager.broadcast_notification broadcasts when clients exist ─
@@ -332,14 +338,17 @@ class TestWebSocketManagerBroadcastImmediate:
         # Should NOT go to queue
         assert len(manager._notification_queue) == 0
 
-        # Should have been broadcast via send_text
-        mock_ws.send_text.assert_called_once()
-        sent = json.loads(mock_ws.send_text.call_args[0][0])
-        assert sent["type"] == "anima.notification"
-        assert sent["data"] == data
+        # Should have been broadcast via send_text (2 events: proactive_message + notification)
+        assert mock_ws.send_text.call_count == 2
+        first_sent = json.loads(mock_ws.send_text.call_args_list[0][0][0])
+        second_sent = json.loads(mock_ws.send_text.call_args_list[1][0][0])
+        assert first_sent["type"] == "anima.proactive_message"
+        assert first_sent["data"] == data
+        assert second_sent["type"] == "anima.notification"
+        assert second_sent["data"] == data
 
     async def test_broadcasts_to_multiple_clients(self):
-        """Broadcasts to all connected clients."""
+        """Broadcasts to all connected clients (2 events each)."""
         manager = WebSocketManager()
 
         ws1 = AsyncMock()
@@ -349,8 +358,8 @@ class TestWebSocketManagerBroadcastImmediate:
         data = {"anima": "bob", "subject": "Update"}
         await manager.broadcast_notification(data)
 
-        assert ws1.send_text.call_count == 1
-        assert ws2.send_text.call_count == 1
+        assert ws1.send_text.call_count == 2
+        assert ws2.send_text.call_count == 2
         assert manager._notification_queue == []
 
 
@@ -363,25 +372,34 @@ class TestWebSocketManagerFlushQueue:
         manager = WebSocketManager()
 
         # Queue some notifications while no clients connected
+        # Each broadcast_notification queues 2 events (proactive_message + notification)
         await manager.broadcast_notification({"subject": "first"})
         await manager.broadcast_notification({"subject": "second"})
-        assert len(manager._notification_queue) == 2
+        assert len(manager._notification_queue) == 4
 
         # Simulate a client connecting and flushing
         mock_ws = AsyncMock()
         await manager.flush_notification_queue(mock_ws)
 
         # All queued items should have been sent
-        assert mock_ws.send_text.call_count == 2
+        assert mock_ws.send_text.call_count == 4
 
         # Queue should be empty after flush
         assert len(manager._notification_queue) == 0
 
-        # Verify the content of flushed messages
+        # Verify the content of flushed messages (proactive, notification, proactive, notification)
         first_msg = json.loads(mock_ws.send_text.call_args_list[0][0][0])
         second_msg = json.loads(mock_ws.send_text.call_args_list[1][0][0])
+        third_msg = json.loads(mock_ws.send_text.call_args_list[2][0][0])
+        fourth_msg = json.loads(mock_ws.send_text.call_args_list[3][0][0])
+        assert first_msg["type"] == "anima.proactive_message"
         assert first_msg["data"]["subject"] == "first"
-        assert second_msg["data"]["subject"] == "second"
+        assert second_msg["type"] == "anima.notification"
+        assert second_msg["data"]["subject"] == "first"
+        assert third_msg["type"] == "anima.proactive_message"
+        assert third_msg["data"]["subject"] == "second"
+        assert fourth_msg["type"] == "anima.notification"
+        assert fourth_msg["data"]["subject"] == "second"
 
     async def test_flush_empty_queue_is_noop(self):
         """Flushing an empty queue should be a no-op."""
@@ -394,26 +412,27 @@ class TestWebSocketManagerFlushQueue:
         """If send_text fails during flush, the remaining events are dropped."""
         manager = WebSocketManager()
 
+        # 3 broadcast_notification calls = 6 queued events
         await manager.broadcast_notification({"subject": "first"})
         await manager.broadcast_notification({"subject": "second"})
         await manager.broadcast_notification({"subject": "third"})
 
         mock_ws = AsyncMock()
-        # Fail on the second send
-        mock_ws.send_text.side_effect = [None, Exception("connection closed"), None]
+        # Fail on the second send_text call
+        mock_ws.send_text.side_effect = [None, Exception("connection closed"), None, None, None, None]
 
         await manager.flush_notification_queue(mock_ws)
 
-        # Should have attempted at least 2 sends (first success, second failure, then break)
+        # Should have attempted 2 sends (first success, second failure, then break)
         assert mock_ws.send_text.call_count == 2
 
     async def test_connect_triggers_flush(self):
         """WebSocketManager.connect() should automatically flush queued notifications."""
         manager = WebSocketManager()
 
-        # Queue a notification
+        # Queue a notification (2 events: proactive_message + notification)
         await manager.broadcast_notification({"subject": "queued"})
-        assert len(manager._notification_queue) == 1
+        assert len(manager._notification_queue) == 2
 
         # Mock the WebSocket with proper accept()
         mock_ws = AsyncMock()
@@ -425,8 +444,11 @@ class TestWebSocketManagerFlushQueue:
 
         # Queued notification should have been flushed
         assert len(manager._notification_queue) == 0
-        # send_text called once for the flushed notification
-        assert mock_ws.send_text.call_count == 1
-        sent = json.loads(mock_ws.send_text.call_args[0][0])
-        assert sent["type"] == "anima.notification"
-        assert sent["data"]["subject"] == "queued"
+        # send_text called twice for the flushed events (proactive_message + notification)
+        assert mock_ws.send_text.call_count == 2
+        first_sent = json.loads(mock_ws.send_text.call_args_list[0][0][0])
+        second_sent = json.loads(mock_ws.send_text.call_args_list[1][0][0])
+        assert first_sent["type"] == "anima.proactive_message"
+        assert first_sent["data"]["subject"] == "queued"
+        assert second_sent["type"] == "anima.notification"
+        assert second_sent["data"]["subject"] == "queued"

@@ -87,7 +87,7 @@ class TestNotificationE2EFlow:
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_client
 
-            result = handler.handle("notify_human", {
+            result = handler.handle("call_human", {
                 "subject": "E2E Test Alert",
                 "body": "This is a full end-to-end test",
                 "priority": "high",
@@ -155,7 +155,7 @@ class TestNotificationE2EFlow:
                 mock_client.__aexit__ = AsyncMock(return_value=False)
                 cls.return_value = mock_client
 
-            result = handler.handle("notify_human", {
+            result = handler.handle("call_human", {
                 "subject": "Multi-channel Test",
                 "body": "Sent to all channels",
                 "priority": "urgent",
@@ -216,8 +216,8 @@ class TestNotificationPromptIntegration:
         memory = MemoryManager(anima_dir)
         prompt = build_system_prompt(memory)
 
-        assert "notify_human" in prompt
-        assert "人間への報告" in prompt
+        assert "call_human" in prompt
+        assert "人間への連絡" in prompt
 
     def test_supervised_anima_no_notification_guidance(self, data_dir, make_anima):
         """Anima with supervisor does NOT get notification guidance."""
@@ -248,7 +248,7 @@ class TestNotificationPromptIntegration:
         prompt = build_system_prompt(memory)
 
         # Supervised anima should not have the human notification section
-        assert "人間への報告" not in prompt
+        assert "人間への連絡" not in prompt
 
     def test_notification_disabled_no_guidance(self, data_dir, make_anima):
         """Top-level Anima with notification disabled gets no guidance."""
@@ -264,7 +264,7 @@ class TestNotificationPromptIntegration:
         memory = MemoryManager(anima_dir)
         prompt = build_system_prompt(memory)
 
-        assert "人間への報告" not in prompt
+        assert "人間への連絡" not in prompt
 
 
 class TestNotificationToolSchema:
@@ -275,7 +275,7 @@ class TestNotificationToolSchema:
 
         assert len(NOTIFICATION_TOOLS) == 1
         schema = NOTIFICATION_TOOLS[0]
-        assert schema["name"] == "notify_human"
+        assert schema["name"] == "call_human"
         assert "subject" in schema["parameters"]["properties"]
         assert "body" in schema["parameters"]["properties"]
         assert "priority" in schema["parameters"]["properties"]
@@ -287,11 +287,11 @@ class TestNotificationToolSchema:
 
         tools = build_tool_list(include_notification_tools=True)
         names = [t["name"] for t in tools]
-        assert "notify_human" in names
+        assert "call_human" in names
 
     def test_build_tool_list_excludes_notification_by_default(self):
         from core.tooling.schemas import build_tool_list
 
         tools = build_tool_list()
         names = [t["name"] for t in tools]
-        assert "notify_human" not in names
+        assert "call_human" not in names

@@ -127,13 +127,21 @@ class WebSocketManager:
     # ── Notifications ───────────────────────────────────────
 
     async def broadcast_notification(self, data: dict) -> None:
-        """Broadcast a notification event. Queue if no clients connected."""
-        event = {"type": "anima.notification", "data": data}
+        """Broadcast a call_human event as both proactive_message and notification.
+
+        The proactive_message event is displayed in the chat conversation,
+        while the notification event triggers toast/activity log in the UI.
+        Both are queued when no clients are connected.
+        """
+        proactive_event = {"type": "anima.proactive_message", "data": data}
+        notification_event = {"type": "anima.notification", "data": data}
         if self.active_connections:
-            await self.broadcast(event)
+            await self.broadcast(proactive_event)
+            await self.broadcast(notification_event)
         else:
-            self._notification_queue.append(event)
-            if len(self._notification_queue) > self._MAX_QUEUE_SIZE:
+            self._notification_queue.append(proactive_event)
+            self._notification_queue.append(notification_event)
+            while len(self._notification_queue) > self._MAX_QUEUE_SIZE:
                 self._notification_queue.pop(0)  # drop oldest
 
     async def flush_notification_queue(self, websocket: WebSocket) -> None:

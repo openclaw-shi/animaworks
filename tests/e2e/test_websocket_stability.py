@@ -295,9 +295,11 @@ class TestWebSocketNotificationQueueCap:
 
         assert len(ws_manager._notification_queue) == max_size
 
-        # The oldest 5 should have been dropped; first remaining is #5
+        # Each broadcast_notification queues 2 events (proactive_message + notification).
+        # First 25 calls fill the queue to 50. Each subsequent call adds 2 and trims 2,
+        # so 30 more calls drop the 30 oldest pairs. First remaining is pair for #30.
         first_queued = ws_manager._notification_queue[0]
-        assert first_queued["data"]["subject"] == "Notification 5"
+        assert first_queued["data"]["subject"] == "Notification 30"
 
         # The newest should be the last one enqueued
         last_queued = ws_manager._notification_queue[-1]

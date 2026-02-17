@@ -1,4 +1,4 @@
-"""Tests for notify_human integration in ToolHandler."""
+"""Tests for call_human integration in ToolHandler."""
 from __future__ import annotations
 
 import json
@@ -98,11 +98,11 @@ def handler_without_notifier(
 # ── Tests ─────────────────────────────────────────────────────
 
 
-class TestNotifyHumanHandler:
-    def test_notify_human_success(
+class TestCallHumanHandler:
+    def test_call_human_success(
         self, handler_with_notifier: ToolHandler, stub_channel: StubChannel,
     ):
-        result = handler_with_notifier.handle("notify_human", {
+        result = handler_with_notifier.handle("call_human", {
             "subject": "Test Alert",
             "body": "Something happened",
             "priority": "high",
@@ -115,10 +115,10 @@ class TestNotifyHumanHandler:
         assert stub_channel.calls[0]["priority"] == "high"
         assert stub_channel.calls[0]["anima_name"] == "test-anima"
 
-    def test_notify_human_default_priority(
+    def test_call_human_default_priority(
         self, handler_with_notifier: ToolHandler, stub_channel: StubChannel,
     ):
-        result = handler_with_notifier.handle("notify_human", {
+        result = handler_with_notifier.handle("call_human", {
             "subject": "Info",
             "body": "FYI",
         })
@@ -126,10 +126,10 @@ class TestNotifyHumanHandler:
         assert parsed["status"] == "sent"
         assert stub_channel.calls[0]["priority"] == "normal"
 
-    def test_notify_human_no_notifier(
+    def test_call_human_no_notifier(
         self, handler_without_notifier: ToolHandler,
     ):
-        result = handler_without_notifier.handle("notify_human", {
+        result = handler_without_notifier.handle("call_human", {
             "subject": "Test",
             "body": "Body",
         })
@@ -137,7 +137,7 @@ class TestNotifyHumanHandler:
         assert parsed["status"] == "error"
         assert parsed["error_type"] == "NotConfigured"
 
-    def test_notify_human_no_channels(
+    def test_call_human_no_channels(
         self, anima_dir: Path, memory: MagicMock,
     ):
         empty_notifier = HumanNotifier([])
@@ -146,7 +146,7 @@ class TestNotifyHumanHandler:
             memory=memory,
             human_notifier=empty_notifier,
         )
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Test",
             "body": "Body",
         })
@@ -154,27 +154,27 @@ class TestNotifyHumanHandler:
         assert parsed["status"] == "error"
         assert parsed["error_type"] == "NotConfigured"
 
-    def test_notify_human_missing_subject(
+    def test_call_human_missing_subject(
         self, handler_with_notifier: ToolHandler,
     ):
-        result = handler_with_notifier.handle("notify_human", {
+        result = handler_with_notifier.handle("call_human", {
             "body": "Body only",
         })
         parsed = json.loads(result)
         assert parsed["status"] == "error"
         assert parsed["error_type"] == "InvalidArguments"
 
-    def test_notify_human_missing_body(
+    def test_call_human_missing_body(
         self, handler_with_notifier: ToolHandler,
     ):
-        result = handler_with_notifier.handle("notify_human", {
+        result = handler_with_notifier.handle("call_human", {
             "subject": "Subject only",
         })
         parsed = json.loads(result)
         assert parsed["status"] == "error"
         assert parsed["error_type"] == "InvalidArguments"
 
-    def test_notify_human_channel_partial_failure(
+    def test_call_human_channel_partial_failure(
         self, anima_dir: Path, memory: MagicMock,
     ):
         ok_ch = StubChannel()
@@ -185,7 +185,7 @@ class TestNotifyHumanHandler:
             memory=memory,
             human_notifier=notifier,
         )
-        result = handler.handle("notify_human", {
+        result = handler.handle("call_human", {
             "subject": "Test",
             "body": "Body",
         })

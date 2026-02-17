@@ -218,26 +218,36 @@ function handleWsMessage(raw) {
       break;
     }
 
+    case "anima.proactive_message": {
+      // Proactive message from call_human — insert into chat conversation
+      const pmAnimaName = data.anima || data.name;
+      const pmSubject = data.subject || "";
+      const pmBody = data.body || "";
+      const pmPriority = data.priority || "normal";
+      if (pmAnimaName) {
+        if (!state.chatHistories[pmAnimaName]) {
+          state.chatHistories[pmAnimaName] = [];
+        }
+        const pmText = pmSubject ? `**${pmSubject}**\n${pmBody}` : pmBody;
+        state.chatHistories[pmAnimaName].push({
+          role: "assistant",
+          text: pmText,
+          proactive: true,
+          priority: pmPriority,
+        });
+        if (pmAnimaName === state.selectedAnima) {
+          renderChat();
+        }
+      }
+      break;
+    }
+
     case "anima.notification": {
       const animaName = data.anima || data.name;
       const subject = data.subject || "";
       const body = data.body || "";
       const priority = data.priority || "normal";
       if (animaName) {
-        // Add to chat history as assistant notification message
-        if (!state.chatHistories[animaName]) {
-          state.chatHistories[animaName] = [];
-        }
-        const notifText = subject ? `**${subject}**\n${body}` : body;
-        state.chatHistories[animaName].push({
-          role: "assistant",
-          text: notifText,
-          notification: true,
-          priority: priority,
-        });
-        if (animaName === state.selectedAnima) {
-          renderChat();
-        }
         // Show toast notification
         showNotificationToast(animaName, subject, body, priority);
         // Add to activity log

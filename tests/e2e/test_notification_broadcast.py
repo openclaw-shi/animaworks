@@ -19,10 +19,10 @@ from server.websocket import WebSocketManager
 
 class TestNotificationSentEventInStream:
     """Verify that process_message_stream yields notification_sent events
-    when the agent uses notify_human during a cycle."""
+    when the agent uses call_human during a cycle."""
 
     async def test_notification_sent_appears_in_stream(self, data_dir, make_anima):
-        """When notify_human is called during streaming, notification_sent events
+        """When call_human is called during streaming, notification_sent events
         should appear in the process_message_stream output."""
         anima_dir = make_anima("stream-notif-test")
         shared_dir = data_dir / "shared"
@@ -173,7 +173,8 @@ class TestWebSocketNotificationQueueLifecycle:
             "timestamp": "2026-02-16T10:05:00",
         })
 
-        assert len(manager._notification_queue) == 2
+        # Each broadcast_notification produces 2 events: proactive_message + notification
+        assert len(manager._notification_queue) == 4
 
         # Phase 2: Client connects
         mock_ws = AsyncMock()
@@ -183,26 +184,34 @@ class TestWebSocketNotificationQueueLifecycle:
         assert len(manager._notification_queue) == 0
         assert mock_ws.accept.call_count == 1
 
-        # Verify flushed content
-        assert mock_ws.send_text.call_count == 2
+        # Verify flushed content (2 events per broadcast_notification × 2 calls = 4)
+        assert mock_ws.send_text.call_count == 4
 
         msg1 = json.loads(mock_ws.send_text.call_args_list[0][0][0])
         msg2 = json.loads(mock_ws.send_text.call_args_list[1][0][0])
+        msg3 = json.loads(mock_ws.send_text.call_args_list[2][0][0])
+        msg4 = json.loads(mock_ws.send_text.call_args_list[3][0][0])
 
-        assert msg1["type"] == "anima.notification"
+        assert msg1["type"] == "anima.proactive_message"
         assert msg1["data"]["subject"] == "Offline Alert 1"
 
         assert msg2["type"] == "anima.notification"
-        assert msg2["data"]["subject"] == "Offline Alert 2"
+        assert msg2["data"]["subject"] == "Offline Alert 1"
+
+        assert msg3["type"] == "anima.proactive_message"
+        assert msg3["data"]["subject"] == "Offline Alert 2"
+
+        assert msg4["type"] == "anima.notification"
+        assert msg4["data"]["subject"] == "Offline Alert 2"
 
     async def test_new_notifications_broadcast_after_connect(self):
         """After a client connects (and flush completes), new notifications
         are broadcast immediately rather than queued."""
         manager = WebSocketManager()
 
-        # Queue one notification offline
+        # Queue one notification offline (produces 2 events)
         await manager.broadcast_notification({"subject": "offline"})
-        assert len(manager._notification_queue) == 1
+        assert len(manager._notification_queue) == 2
 
         # Connect a client
         mock_ws = AsyncMock()
@@ -214,14 +223,17 @@ class TestWebSocketNotificationQueueLifecycle:
         # Reset send_text tracking for clarity
         mock_ws.send_text.reset_mock()
 
-        # New notification should broadcast immediately, not queue
+        # New notification should broadcast immediately (2 events), not queue
         await manager.broadcast_notification({"subject": "online"})
         assert len(manager._notification_queue) == 0
-        assert mock_ws.send_text.call_count == 1
+        assert mock_ws.send_text.call_count == 2
 
-        sent = json.loads(mock_ws.send_text.call_args[0][0])
-        assert sent["type"] == "anima.notification"
-        assert sent["data"]["subject"] == "online"
+        sent1 = json.loads(mock_ws.send_text.call_args_list[0][0][0])
+        sent2 = json.loads(mock_ws.send_text.call_args_list[1][0][0])
+        assert sent1["type"] == "anima.proactive_message"
+        assert sent1["data"]["subject"] == "online"
+        assert sent2["type"] == "anima.notification"
+        assert sent2["data"]["subject"] == "online"
 
     async def test_queue_persists_across_disconnect_reconnect(self):
         """If a client disconnects and notifications arrive before
@@ -237,23 +249,27 @@ class TestWebSocketNotificationQueueLifecycle:
         manager.disconnect(ws1)
         assert len(manager.active_connections) == 0
 
-        # Phase 3: Notifications arrive while disconnected
+        # Phase 3: Notifications arrive while disconnected (2 events queued)
         await manager.broadcast_notification({"subject": "while-disconnected"})
-        assert len(manager._notification_queue) == 1
+        assert len(manager._notification_queue) == 2
 
         # Phase 4: New client connects
         ws2 = AsyncMock()
         await manager.connect(ws2)
 
-        # Queued notification should be flushed to ws2
+        # Queued notifications should be flushed to ws2
         assert len(manager._notification_queue) == 0
-        # ws2 receives the queued notification (1 send_text call from flush)
-        assert ws2.send_text.call_count == 1
-        flushed = json.loads(ws2.send_text.call_args[0][0])
-        assert flushed["data"]["subject"] == "while-disconnected"
+        # ws2 receives 2 events (proactive_message + notification) from flush
+        assert ws2.send_text.call_count == 2
+        flushed1 = json.loads(ws2.send_text.call_args_list[0][0][0])
+        flushed2 = json.loads(ws2.send_text.call_args_list[1][0][0])
+        assert flushed1["type"] == "anima.proactive_message"
+        assert flushed1["data"]["subject"] == "while-disconnected"
+        assert flushed2["type"] == "anima.notification"
+        assert flushed2["data"]["subject"] == "while-disconnected"
 
     async def test_full_pipeline_stream_to_websocket(self, data_dir, make_anima):
-        """Full pipeline: agent notify_human -> stream event -> WebSocket broadcast.
+        """Full pipeline: agent call_human -> stream event -> WebSocket broadcast.
 
         This tests the integration between DigitalAnima stream events and
         the WebSocket manager, simulating what the server chat route does.
@@ -307,9 +323,12 @@ class TestWebSocketNotificationQueueLifecycle:
                     # This is what _handle_chunk + emit_notification does
                     await ws_manager.broadcast_notification(chunk["data"])
 
-            # Verify the notification was broadcast to the WebSocket client
-            assert mock_ws.send_text.call_count == 1
-            broadcast_msg = json.loads(mock_ws.send_text.call_args[0][0])
-            assert broadcast_msg["type"] == "anima.notification"
-            assert broadcast_msg["data"]["subject"] == "Pipeline Test"
-            assert broadcast_msg["data"]["anima"] == "pipeline-test"
+            # Verify both events were broadcast to the WebSocket client
+            assert mock_ws.send_text.call_count == 2
+            proactive_msg = json.loads(mock_ws.send_text.call_args_list[0][0][0])
+            notif_msg = json.loads(mock_ws.send_text.call_args_list[1][0][0])
+            assert proactive_msg["type"] == "anima.proactive_message"
+            assert proactive_msg["data"]["subject"] == "Pipeline Test"
+            assert proactive_msg["data"]["anima"] == "pipeline-test"
+            assert notif_msg["type"] == "anima.notification"
+            assert notif_msg["data"]["subject"] == "Pipeline Test"

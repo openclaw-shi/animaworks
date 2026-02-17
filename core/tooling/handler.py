@@ -202,8 +202,8 @@ class ToolHandler:
             elif name == "list_directory":
                 result = self._handle_list_directory(args)
             # Human notification
-            elif name == "notify_human":
-                result = self._handle_notify_human(args)
+            elif name == "call_human":
+                result = self._handle_call_human(args)
             # Admin tools
             elif name == "create_anima":
                 result = self._handle_create_anima(args)
@@ -356,7 +356,7 @@ class ToolHandler:
 
     # ── Human notification handler ────────────────────────────
 
-    def _handle_notify_human(self, args: dict[str, Any]) -> str:
+    def _handle_call_human(self, args: dict[str, Any]) -> str:
         if not self._human_notifier:
             return _error_result(
                 "NotConfigured",
@@ -402,14 +402,15 @@ class ToolHandler:
         except Exception as e:
             return _error_result("NotificationError", f"Failed to send notification: {e}")
 
-        # Queue notification for Web UI broadcast (picked up by stream/IPC)
-        self._pending_notifications.append({
+        # Queue proactive message for Web UI chat display + notification broadcast
+        notif_data = {
             "anima": self._anima_name,
             "subject": subject,
             "body": body,
             "priority": priority,
             "timestamp": datetime.now().isoformat(),
-        })
+        }
+        self._pending_notifications.append(notif_data)
 
         import json as _json
         return _json.dumps(

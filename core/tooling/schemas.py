@@ -199,10 +199,11 @@ SEARCH_TOOLS: list[dict[str, Any]] = [
 
 NOTIFICATION_TOOLS: list[dict[str, Any]] = [
     {
-        "name": "notify_human",
+        "name": "call_human",
         "description": (
-            "人間の管理者に通知を送信します。"
+            "人間の管理者に連絡します。"
             "重要な報告、問題のエスカレーション、判断が必要な事項がある場合に使用してください。"
+            "チャット画面と外部通知チャネル（Slack等）の両方に届きます。"
         ),
         "parameters": {
             "type": "object",
@@ -380,7 +381,7 @@ def build_tool_list(
         include_file_tools: Include file/command operation tools (for A2 mode).
         include_search_tools: Include search_code/list_directory tools.
         include_discovery_tools: Include discover_tools tool.
-        include_notification_tools: Include notify_human tool (for top-level Animas).
+        include_notification_tools: Include call_human tool (for top-level Animas).
         include_admin_tools: Include admin tools (create_anima etc.).
         include_tool_management: Include refresh_tools/share_tool tools.
         external_schemas: Additional tool schemas in canonical format.
