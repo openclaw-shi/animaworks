@@ -65,12 +65,12 @@ def cmd_anima_status(args: argparse.Namespace) -> None:
         if args.anima:
             # Specific anima
             response = requests.get(
-                f"{gateway_url}/api/animas/{args.anima}/status",
+                f"{gateway_url}/api/animas/{args.anima}",
                 timeout=10.0
             )
             response.raise_for_status()
-            status = response.json()
-            _print_anima_status(args.anima, status)
+            data = response.json()
+            _print_anima_status(args.anima, data.get("status", {}))
         else:
             # All animas
             response = requests.get(
@@ -88,12 +88,12 @@ def cmd_anima_status(args: argparse.Namespace) -> None:
                 # Get individual status
                 try:
                     status_resp = requests.get(
-                        f"{gateway_url}/api/animas/{name}/status",
+                        f"{gateway_url}/api/animas/{name}",
                         timeout=5.0
                     )
                     status_resp.raise_for_status()
-                    status = status_resp.json()
-                    _print_anima_status(name, status)
+                    data = status_resp.json()
+                    _print_anima_status(name, data.get("status", {}))
                 except Exception as e:
                     print(f"\n{name}:")
                     print(f"  Status: ERROR ({e})")
