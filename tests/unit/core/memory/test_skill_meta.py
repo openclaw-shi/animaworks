@@ -13,8 +13,16 @@ from pathlib import Path
 import pytest
 
 from core.schemas import SkillMeta
-from core.memory.manager import MemoryManager, match_skills_by_description
+from core.memory.manager import (
+    MemoryManager,
+    match_skills_by_description,
+    _extract_bracket_keywords,
+    _extract_comma_keywords,
+    _match_tier1,
+    _match_tier2,
+)
 from core.prompt.builder import _classify_message_for_skill_budget, _build_skill_body
+from core.tooling.handler import _validate_skill_format
 
 
 # ── _extract_skill_meta ──────────────────────────────────
@@ -269,3 +277,222 @@ class TestBuildSkillBody:
         body = _build_skill_body(skill_file)
 
         assert body == "# Plain Skill\n\nJust instructions."
+
+
+# ── Tier 1: Comma/delimiter keyword matching ────────────
+
+
+class TestMatchTier1CommaKeywords:
+    """Tests for Tier 1 comma/delimiter keyword matching fallback."""
+
+    def test_comma_separated_keywords_match(self, tmp_path):
+        """Skills with comma-separated keywords (no brackets) match via Tier 1 fallback."""
+        # Create skill with comma-separated description (no「」)
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(name="deploy", description="デプロイ手順、リリース、本番反映", path=p, is_common=False)
+        result = match_skills_by_description("デプロイ手順を教えて", [skill])
+        assert len(result) == 1
+
+    def test_period_separated_keywords_match(self, tmp_path):
+        """Period-separated segments also work."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(name="test", description="テスト実行。品質管理。CI設定", path=p, is_common=False)
+        result = match_skills_by_description("テスト実行をしたい", [skill])
+        assert len(result) == 1
+
+    def test_bracket_keywords_take_precedence(self, tmp_path):
+        """When both brackets and commas exist, brackets are used (not commas)."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(name="cron", description="「cron設定」「定期実行」、スケジュール管理", path=p, is_common=False)
+        # Match via bracket keyword
+        result = match_skills_by_description("cron設定して", [skill])
+        assert len(result) == 1
+        # "スケジュール管理" alone shouldn't match because bracket keywords were used
+        result2 = match_skills_by_description("スケジュール管理をお願い", [skill])
+        assert len(result2) == 0  # bracket keywords don't include "スケジュール管理"
+
+
+# ── Tier 2: Description vocabulary matching ─────────────
+
+
+class TestMatchTier2VocabularyMatch:
+    """Tests for Tier 2 description vocabulary matching."""
+
+    def test_english_description_matches_with_two_words(self, tmp_path):
+        """English descriptions without brackets match when >=2 words overlap."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(
+            name="document-creator",
+            description="Comprehensive document creation, editing, and analysis",
+            path=p, is_common=False,
+        )
+        # "document" and "creation" both appear
+        result = match_skills_by_description("document creation needed", [skill])
+        assert len(result) == 1
+
+    def test_single_word_overlap_no_match(self, tmp_path):
+        """Single word overlap is not enough for Tier 2 (to avoid false positives)."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(
+            name="document-creator",
+            description="Comprehensive document creation, editing, and analysis",
+            path=p, is_common=False,
+        )
+        result = match_skills_by_description("give me a document", [skill])
+        # Only "document" matches, not enough
+        assert len(result) == 0
+
+    def test_japanese_description_vocabulary_match(self, tmp_path):
+        """Japanese descriptions without brackets can match via Tier 2.
+
+        Space-separated Japanese terms produce multiple \\w{3,} tokens that
+        can individually appear in the message. Tier 1 is skipped because
+        the single comma-segment (the whole description) is not a substring
+        of the message.
+        """
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(
+            name="data-analysis",
+            description="データ分析 手順書作成 レポート出力",
+            path=p, is_common=False,
+        )
+        # "データ分析" and "手順書作成" both appear as substrings in the message
+        result = match_skills_by_description("データ分析の手順書作成をお願いします", [skill])
+        assert len(result) == 1
+
+
+# ── Deduplication across tiers ──────────────────────────
+
+
+class TestMatchDeduplication:
+    """Tests for deduplication across tiers."""
+
+    def test_skill_matched_by_tier1_not_duplicated(self, tmp_path):
+        """A skill matched by Tier 1 should not appear again from Tier 2."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(
+            name="deploy",
+            description="デプロイ手順「deploy」「デプロイ」を提供する",
+            path=p, is_common=False,
+        )
+        result = match_skills_by_description("deployの手順を教えて", [skill])
+        assert len(result) == 1  # Not duplicated
+
+
+# ── Retriever parameter (Tier 3) ────────────────────────
+
+
+class TestMatchRetrieverParam:
+    """Tests for the retriever parameter (Tier 3)."""
+
+    def test_no_retriever_skips_tier3(self, tmp_path):
+        """When retriever is None, Tier 3 is skipped gracefully."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(
+            name="unknown",
+            description="何かのスキル",
+            path=p, is_common=False,
+        )
+        # No brackets, no comma keywords long enough, single vocab word -> no match
+        result = match_skills_by_description("全く関係ない話", [skill], retriever=None)
+        assert result == []
+
+    def test_invalid_retriever_type_skips_tier3(self, tmp_path):
+        """When retriever is not a MemoryRetriever, Tier 3 is skipped."""
+        p = tmp_path / "skill.md"
+        p.write_text("dummy")
+        skill = SkillMeta(
+            name="unknown",
+            description="何かのスキル",
+            path=p, is_common=False,
+        )
+        result = match_skills_by_description(
+            "全く関係ない話", [skill], retriever="not-a-retriever", anima_name="test"
+        )
+        assert result == []
+
+
+# ── _validate_skill_format ──────────────────────────────
+
+
+class TestValidateSkillFormat:
+    """Tests for _validate_skill_format() in handler.py."""
+
+    def test_valid_skill_returns_empty(self):
+        content = "---\nname: my-skill\ndescription: テスト「keyword」\n---\n\n# My Skill\n"
+        assert _validate_skill_format(content) == ""
+
+    def test_missing_frontmatter(self):
+        content = "# My Skill\n\nNo frontmatter."
+        result = _validate_skill_format(content)
+        assert "フロントマター" in result
+
+    def test_missing_name_field(self):
+        content = "---\ndescription: テスト「keyword」\n---\n\n# Skill\n"
+        result = _validate_skill_format(content)
+        assert "name" in result
+
+    def test_missing_description_field(self):
+        content = "---\nname: my-skill\n---\n\n# Skill\n"
+        result = _validate_skill_format(content)
+        assert "description" in result
+
+    def test_no_bracket_keywords_warns(self):
+        content = "---\nname: my-skill\ndescription: スキルの説明です\n---\n\n# Skill\n"
+        result = _validate_skill_format(content)
+        assert "キーワード" in result
+
+    def test_legacy_section_warns(self):
+        content = "---\nname: my-skill\ndescription: テスト「keyword」\n---\n\n## 概要\n\nLegacy content\n"
+        result = _validate_skill_format(content)
+        assert "旧形式" in result
+
+    def test_valid_with_multiline_description(self):
+        content = (
+            "---\n"
+            "name: my-skill\n"
+            "description: >-\n"
+            "  テストスキル。\n"
+            "  「キーワード1」「キーワード2」\n"
+            "---\n\n"
+            "# My Skill\n"
+        )
+        assert _validate_skill_format(content) == ""
+
+
+# ── Helper functions ────────────────────────────────────
+
+
+class TestHelperFunctions:
+    """Tests for matching helper functions."""
+
+    def test_extract_bracket_keywords(self):
+        assert _extract_bracket_keywords("「abc」「def」") == ["abc", "def"]
+        assert _extract_bracket_keywords("no brackets here") == []
+
+    def test_extract_comma_keywords(self):
+        result = _extract_comma_keywords("デプロイ手順、リリース、本番反映")
+        assert "デプロイ手順" in result
+        assert "リリース" in result
+
+    def test_extract_comma_keywords_filters_short(self):
+        result = _extract_comma_keywords("a、bc、defghi")
+        assert "a" not in result  # too short
+        assert "bc" in result
+        assert "defghi" in result
+
+    def test_match_tier1_bracket(self):
+        assert _match_tier1("「cron」管理スキル", "cronを設定して") is True
+        assert _match_tier1("「cron」管理スキル", "メール送信") is False
+
+    def test_match_tier2_multiple_words(self):
+        assert _match_tier2("comprehensive document creation editing", "document creation") is True
+        assert _match_tier2("comprehensive document creation editing", "document") is False

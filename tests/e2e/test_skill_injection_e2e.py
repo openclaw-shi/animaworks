@@ -398,3 +398,209 @@ class TestSkillInjectionE2E:
         assert "この手順に従うこと。" not in prompt
         # Skill name appears in table
         assert "cron-management" in prompt
+
+
+class TestEnhancedSkillInjectionE2E:
+    """E2E tests for enhanced 3-tier skill matching in build_system_prompt."""
+
+    def test_comma_keyword_skill_matches_and_injects(self, tmp_path: Path):
+        """Tier 1 fallback: comma-separated keywords in description trigger injection."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+
+        skill_path = tmp_path / "skills" / "deploy-guide.md"
+        _make_skill_file(
+            skill_path,
+            name="deploy-guide",
+            description="デプロイ手順、リリース手順、本番反映の方法を提供する",
+            body="## デプロイ手順\n\n1. ステージング確認\n2. 本番デプロイ実行",
+        )
+
+        memory = _make_mock_memory(anima_dir, tmp_path)
+        skill_meta = SkillMeta(
+            name="deploy-guide",
+            description="デプロイ手順、リリース手順、本番反映の方法を提供する",
+            path=skill_path,
+            is_common=False,
+        )
+        memory.list_skill_metas.return_value = [skill_meta]
+        memory.list_common_skill_metas.return_value = []
+
+        with (
+            patch("core.prompt.builder.load_prompt", return_value=""),
+            patch("core.prompt.builder._build_org_context", return_value=""),
+            patch("core.prompt.builder._discover_other_animas", return_value=[]),
+            patch("core.prompt.builder._build_messaging_section", return_value=""),
+        ):
+            prompt = build_system_prompt(memory, message="デプロイ手順を教えて")
+
+        assert "スキル: deploy-guide" in prompt
+        assert "ステージング確認" in prompt
+
+    def test_english_description_tier2_matches(self, tmp_path: Path):
+        """Tier 2: English description without brackets matches via vocabulary overlap."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+
+        skill_path = tmp_path / "skills" / "document-creator.md"
+        _make_skill_file(
+            skill_path,
+            name="document-creator",
+            description="Comprehensive document creation, editing, and analysis tool",
+            body="## Document Creation\n\nUse this to create documents.",
+        )
+
+        memory = _make_mock_memory(anima_dir, tmp_path)
+        skill_meta = SkillMeta(
+            name="document-creator",
+            description="Comprehensive document creation, editing, and analysis tool",
+            path=skill_path,
+            is_common=False,
+        )
+        memory.list_skill_metas.return_value = [skill_meta]
+        memory.list_common_skill_metas.return_value = []
+
+        with (
+            patch("core.prompt.builder.load_prompt", return_value=""),
+            patch("core.prompt.builder._build_org_context", return_value=""),
+            patch("core.prompt.builder._discover_other_animas", return_value=[]),
+            patch("core.prompt.builder._build_messaging_section", return_value=""),
+        ):
+            prompt = build_system_prompt(memory, message="I need document creation help")
+
+        assert "スキル: document-creator" in prompt
+        assert "Use this to create documents." in prompt
+
+    def test_tier1_match_prevents_tier2_duplication(self, tmp_path: Path):
+        """Skills matched by Tier 1 should not duplicate via Tier 2."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+
+        skill_path = tmp_path / "skills" / "cron.md"
+        _make_skill_file(
+            skill_path,
+            name="cron-management",
+            description=(
+                "cronジョブの設定と管理を行うスキル。"
+                "「cron設定」「定期実行」等の場面で使用。"
+            ),
+            body="## cron手順\n\n1. cron.md を確認する",
+        )
+
+        memory = _make_mock_memory(anima_dir, tmp_path)
+        skill_meta = SkillMeta(
+            name="cron-management",
+            description=(
+                "cronジョブの設定と管理を行うスキル。"
+                "「cron設定」「定期実行」等の場面で使用。"
+            ),
+            path=skill_path,
+            is_common=False,
+        )
+        memory.list_skill_metas.return_value = [skill_meta]
+        memory.list_common_skill_metas.return_value = []
+
+        with (
+            patch("core.prompt.builder.load_prompt", return_value=""),
+            patch("core.prompt.builder._build_org_context", return_value=""),
+            patch("core.prompt.builder._discover_other_animas", return_value=[]),
+            patch("core.prompt.builder._build_messaging_section", return_value=""),
+        ):
+            prompt = build_system_prompt(memory, message="cron設定をして")
+
+        # Should appear exactly once (not duplicated by Tier 2)
+        assert prompt.count("スキル: cron-management") == 1
+
+    def test_no_retriever_tier3_skipped_gracefully(self, tmp_path: Path):
+        """Without a retriever, Tier 3 is skipped and only Tier 1/2 operate."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+
+        # This skill has no bracket keywords and single-word-only description
+        skill_path = tmp_path / "skills" / "obscure.md"
+        _make_skill_file(
+            skill_path,
+            name="obscure-skill",
+            description="Very specific internal tool",
+            body="## Internal\n\nSomething.",
+        )
+
+        memory = _make_mock_memory(anima_dir, tmp_path)
+        skill_meta = SkillMeta(
+            name="obscure-skill",
+            description="Very specific internal tool",
+            path=skill_path,
+            is_common=False,
+        )
+        memory.list_skill_metas.return_value = [skill_meta]
+        memory.list_common_skill_metas.return_value = []
+
+        # No retriever → Tier 3 skipped
+        with (
+            patch("core.prompt.builder.load_prompt", return_value=""),
+            patch("core.prompt.builder._build_org_context", return_value=""),
+            patch("core.prompt.builder._discover_other_animas", return_value=[]),
+            patch("core.prompt.builder._build_messaging_section", return_value=""),
+        ):
+            prompt = build_system_prompt(memory, message="internal tool please", retriever=None)
+
+        # Tier 2 may or may not match; the key is no crash
+        # This test just verifies graceful behavior
+        assert "obscure-skill" in prompt  # at minimum in table
+
+    def test_mixed_tiers_correct_injection(self, tmp_path: Path):
+        """Multiple skills across different tiers all get injected correctly."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+
+        # Skill 1: matches via Tier 1 (bracket keywords)
+        skill1_path = tmp_path / "skills" / "cron.md"
+        _make_skill_file(
+            skill1_path,
+            name="cron-management",
+            description="cronジョブ管理。「cron設定」「定期実行」で使用。",
+            body="## cron手順\n\ncron設定の手順です。",
+        )
+        meta1 = SkillMeta(
+            name="cron-management",
+            description="cronジョブ管理。「cron設定」「定期実行」で使用。",
+            path=skill1_path,
+            is_common=False,
+        )
+
+        # Skill 2: matches via Tier 2 (English vocabulary)
+        skill2_path = tmp_path / "skills" / "scheduler.md"
+        _make_skill_file(
+            skill2_path,
+            name="scheduler-tool",
+            description="Scheduling and execution management for periodic tasks",
+            body="## Scheduler\n\nScheduler usage.",
+        )
+        meta2 = SkillMeta(
+            name="scheduler-tool",
+            description="Scheduling and execution management for periodic tasks",
+            path=skill2_path,
+            is_common=False,
+        )
+
+        memory = _make_mock_memory(anima_dir, tmp_path)
+        memory.list_skill_metas.return_value = [meta1, meta2]
+        memory.list_common_skill_metas.return_value = []
+
+        with (
+            patch("core.prompt.builder.load_prompt", return_value=""),
+            patch("core.prompt.builder._build_org_context", return_value=""),
+            patch("core.prompt.builder._discover_other_animas", return_value=[]),
+            patch("core.prompt.builder._build_messaging_section", return_value=""),
+        ):
+            prompt = build_system_prompt(
+                memory,
+                message="cron設定と scheduling execution を教えて",
+            )
+
+        # Skill 1 matched via Tier 1
+        assert "スキル: cron-management" in prompt
+        assert "cron設定の手順です" in prompt
+        # Skill 2 matched via Tier 2
+        assert "スキル: scheduler-tool" in prompt
+        assert "Scheduler usage." in prompt

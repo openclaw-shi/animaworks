@@ -27,28 +27,182 @@ def _normalize_text(text: str) -> str:
     return unicodedata.normalize("NFKC", text).lower()
 
 
+def _extract_bracket_keywords(desc_norm: str) -> list[str]:
+    """Extract keywords from 「」-delimited tokens."""
+    return re.findall(r"「(.+?)」", desc_norm)
+
+
+def _extract_comma_keywords(desc_norm: str) -> list[str]:
+    """Extract keywords by splitting on commas, periods, and newlines.
+
+    Used as fallback when no 「」 brackets are present.
+    Returns short phrases (2–20 chars) that are likely meaningful keywords.
+    """
+    segments = re.split(r"[、,。.\n]", desc_norm)
+    return [s.strip() for s in segments if 2 <= len(s.strip()) <= 20]
+
+
+def _match_tier1(desc_norm: str, message_norm: str) -> bool:
+    """Tier 1: Bracket keyword match (「」) + comma/delimiter keyword match.
+
+    Returns True if any keyword extracted from the description is a
+    substring of the message.
+    """
+    # Primary: 「」 bracket keywords
+    keywords = _extract_bracket_keywords(desc_norm)
+    if keywords:
+        return any(kw in message_norm for kw in keywords)
+    # Fallback: comma/delimiter separated keywords
+    keywords = _extract_comma_keywords(desc_norm)
+    if keywords:
+        return any(kw in message_norm for kw in keywords)
+    return False
+
+
+def _match_tier2(desc_norm: str, message_norm: str) -> bool:
+    """Tier 2: Description vocabulary match.
+
+    Extracts words (≥3 chars) from description and checks if ≥2 appear
+    in the message. This handles English descriptions and natural-language
+    style descriptions without explicit keyword delimiters.
+    """
+    # Split on whitespace and punctuation, keep meaningful tokens
+    words = re.findall(r"[\w]{3,}", desc_norm)
+    if not words:
+        return False
+    # Require at least 2 word matches to avoid false positives
+    match_count = sum(1 for w in words if w in message_norm)
+    return match_count >= 2
+
+
 def match_skills_by_description(
     message: str,
     skills: list[SkillMeta],
+    *,
+    retriever: object | None = None,
+    anima_name: str = "",
 ) -> list[SkillMeta]:
-    """Return skills whose description keywords match the message.
+    """Return skills whose description matches the message (3-tier).
 
-    Keywords are extracted from 「」-delimited tokens in the description.
-    Skills without 「」 keywords are never matched (table display only).
+    Tier 1: 「」-delimited and comma/delimiter keyword substring match.
+    Tier 2: Description vocabulary match (≥2 words overlap).
+    Tier 3: Vector search via RAG retriever (semantic similarity).
+
+    Each tier is applied only to skills not yet matched by prior tiers.
+    Results are deduplicated and returned in tier priority order.
     """
     if not message:
         return []
     message_norm = _normalize_text(message)
     matched: list[SkillMeta] = []
+    matched_names: set[str] = set()
+    remaining: list[SkillMeta] = []
+
+    # ── Tier 1: Bracket / comma keyword match ──────────────
     for skill in skills:
         if not skill.description:
+            remaining.append(skill)
             continue
         desc_norm = _normalize_text(skill.description)
-        keywords = re.findall(r"「(.+?)」", desc_norm)
-        if not keywords:
-            continue
-        if any(kw in message_norm for kw in keywords):
+        if _match_tier1(desc_norm, message_norm):
             matched.append(skill)
+            matched_names.add(skill.name)
+        else:
+            remaining.append(skill)
+
+    # ── Tier 2: Description vocabulary match ───────────────
+    still_remaining: list[SkillMeta] = []
+    for skill in remaining:
+        if not skill.description:
+            still_remaining.append(skill)
+            continue
+        desc_norm = _normalize_text(skill.description)
+        if _match_tier2(desc_norm, message_norm):
+            if skill.name not in matched_names:
+                matched.append(skill)
+                matched_names.add(skill.name)
+        else:
+            still_remaining.append(skill)
+
+    # ── Tier 3: Vector search (semantic match) ─────────────
+    if retriever is not None and anima_name and still_remaining:
+        try:
+            vector_matched = _match_tier3_vector(
+                message, still_remaining, retriever, anima_name,
+            )
+            for skill in vector_matched:
+                if skill.name not in matched_names:
+                    matched.append(skill)
+                    matched_names.add(skill.name)
+        except Exception as e:
+            logger.warning("Tier 3 vector search failed: %s", e)
+
+    return matched
+
+
+def _match_tier3_vector(
+    message: str,
+    candidates: list[SkillMeta],
+    retriever: object,
+    anima_name: str,
+    top_k: int = 3,
+    min_score: float = 0.5,
+) -> list[SkillMeta]:
+    """Tier 3: Use RAG vector search to find semantically matching skills.
+
+    Searches the skills collection and matches results back to candidate
+    SkillMeta objects by file path.
+    """
+    from core.memory.rag.retriever import MemoryRetriever
+
+    if not isinstance(retriever, MemoryRetriever):
+        return []
+
+    # Search in 'skills' memory type for personal skills
+    results = retriever.search(
+        query=message,
+        anima_name=anima_name,
+        memory_type="skills",
+        top_k=top_k,
+    )
+
+    # Also search shared common knowledge for common skills
+    try:
+        shared_results = retriever.search(
+            query=message,
+            anima_name=anima_name,
+            memory_type="common_knowledge",
+            top_k=top_k,
+            include_shared=True,
+        )
+        results.extend(shared_results)
+    except Exception:
+        pass  # shared collection may not exist
+
+    # Build path-to-skill lookup from candidates
+    candidate_by_path: dict[str, SkillMeta] = {}
+    for skill in candidates:
+        candidate_by_path[str(skill.path)] = skill
+        # Also index by filename stem for fuzzy matching
+        candidate_by_path[skill.path.stem] = skill
+        candidate_by_path[skill.name] = skill
+
+    matched: list[SkillMeta] = []
+    seen: set[str] = set()
+    for r in results:
+        if r.score < min_score:
+            continue
+        # Try to match by file_path metadata or content overlap
+        file_path = r.metadata.get("file_path", "")
+        skill = candidate_by_path.get(str(file_path))
+        if skill is None:
+            # Try stem matching from file_path
+            if file_path:
+                stem = Path(file_path).stem
+                skill = candidate_by_path.get(stem)
+        if skill and skill.name not in seen:
+            matched.append(skill)
+            seen.add(skill.name)
     return matched
 
 

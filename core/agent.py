@@ -388,6 +388,17 @@ class AgentCore:
             return self.model_config.api_key
         return os.environ.get(self.model_config.api_key_env)
 
+    def _get_retriever(self) -> object | None:
+        """Return the RAG retriever from priming engine, if available.
+
+        Used by build_system_prompt for Tier 3 vector-based skill matching.
+        Returns None if priming engine has not been initialized yet.
+        """
+        engine = getattr(self, "_priming_engine", None)
+        if engine is None:
+            return None
+        return getattr(engine, "_retriever", None)
+
     async def _run_priming(self, prompt: str, trigger: str) -> str:
         """Run priming layer to automatically retrieve relevant memories.
 
@@ -530,6 +541,7 @@ class AgentCore:
             priming_section=priming_section,
             execution_mode=mode,
             message=prompt,
+            retriever=self._get_retriever(),
         )
         logger.debug("System prompt assembled, length=%d", len(system_prompt))
         if shortterm.has_pending():
@@ -633,6 +645,7 @@ class AgentCore:
                     priming_section=priming_section,  # Reuse priming from initial session
                     execution_mode=mode,
                     message=prompt,
+                    retriever=self._get_retriever(),
                 ),
                 shortterm,
             )
@@ -724,6 +737,7 @@ class AgentCore:
             priming_section=priming_section,
             execution_mode=mode,
             message=prompt,
+            retriever=self._get_retriever(),
         )
         if shortterm.has_pending():
             system_prompt = inject_shortterm(system_prompt, shortterm)
@@ -846,6 +860,7 @@ class AgentCore:
                     priming_section=priming_section,
                     execution_mode=mode,
                     message=prompt,
+                    retriever=self._get_retriever(),
                 )
 
                 await asyncio.sleep(retry_delay)
@@ -898,6 +913,7 @@ class AgentCore:
                     priming_section=priming_section,  # Reuse priming from initial session
                     execution_mode=mode,
                     message=prompt,
+                    retriever=self._get_retriever(),
                 ),
                 shortterm,
             )

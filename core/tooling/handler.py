@@ -106,6 +106,71 @@ def _validate_episode_path(rel_path: str) -> str | None:
     )
 
 
+def _validate_skill_format(content: str) -> str:
+    """Validate skill file content format (soft validation).
+
+    Checks for YAML frontmatter with required fields and warns about
+    legacy section formats.  Returns an empty string if everything is
+    fine, or a newline-joined string of warnings/errors otherwise.
+
+    This is a *soft* validation — the caller should still write the file
+    and append the returned messages to the tool response so the LLM
+    can self-correct on subsequent calls.
+    """
+    messages: list[str] = []
+
+    # ── Check YAML frontmatter presence ──
+    if not content.startswith("---"):
+        return "スキルファイルにはYAMLフロントマター(---)が必要です。"
+
+    # ── Parse frontmatter ──
+    end_idx = content.find("---", 3)
+    if end_idx == -1:
+        return "スキルファイルにはYAMLフロントマター(---)が必要です。"
+
+    frontmatter_raw = content[3:end_idx].strip()
+    try:
+        import yaml
+        frontmatter = yaml.safe_load(frontmatter_raw)
+        if not isinstance(frontmatter, dict):
+            frontmatter = {}
+    except Exception:
+        # Fallback: simple key: value parsing
+        frontmatter = {}
+        for line in frontmatter_raw.splitlines():
+            if ":" in line:
+                key, _, val = line.partition(":")
+                frontmatter[key.strip()] = val.strip()
+
+    # ── Required fields ──
+    if "name" not in frontmatter:
+        messages.append("`name` フィールドが必要です。")
+    if "description" not in frontmatter:
+        messages.append("`description` フィールドが必要です。")
+
+    # If required fields are missing, return errors immediately
+    if messages:
+        return "\n".join(messages)
+
+    # ── Description quality check ──
+    desc = str(frontmatter.get("description", ""))
+    if "「" not in desc or "」" not in desc:
+        messages.append(
+            "descriptionに「」キーワードがありません。"
+            "自動マッチング精度が低下する可能性があります。"
+        )
+
+    # ── Legacy section detection ──
+    body = content[end_idx + 3:]
+    if "## 概要" in body or "## 発動条件" in body:
+        messages.append(
+            "旧形式のセクション(## 概要 / ## 発動条件)が検出されました。"
+            "Claude Code形式(YAMLフロントマター)への移行を推奨します。"
+        )
+
+    return "\n".join(messages)
+
+
 def _is_protected_write(anima_dir: Path, target: Path) -> str | None:
     """Check if a write target is a protected file or outside anima_dir.
 
@@ -383,6 +448,12 @@ class ToolHandler:
         if episode_warning:
             logger.warning("Non-standard episode path: %s", args["path"])
             result = f"{result}\n\n{episode_warning}"
+
+        # Validate skill file format (soft validation: warn but don't block)
+        if rel.startswith("skills/") and rel.endswith(".md"):
+            validation_msg = _validate_skill_format(args["content"])
+            if validation_msg:
+                result = f"{result}\n\n⚠️ スキルフォーマット検証:\n{validation_msg}"
 
         return result
 

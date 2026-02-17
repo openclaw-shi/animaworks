@@ -301,6 +301,7 @@ def build_system_prompt(
     priming_section: str = "",
     execution_mode: str = "a1",
     message: str = "",
+    retriever: object | None = None,
 ) -> str:
     """Construct the full system prompt from Markdown files.
 
@@ -418,7 +419,10 @@ def build_system_prompt(
         )
 
     # ── Skill injection (description-based matching) ──────
-    matched_skills = match_skills_by_description(message, all_metas)
+    anima_name = memory.anima_dir.name if hasattr(memory, "anima_dir") else ""
+    matched_skills = match_skills_by_description(
+        message, all_metas, retriever=retriever, anima_name=anima_name,
+    )
     matched_names: set[str] = set()
     msg_type = _classify_message_for_skill_budget(message)
     budget = SKILL_INJECTION_BUDGET.get(msg_type, 3000)
