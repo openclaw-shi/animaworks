@@ -220,24 +220,62 @@ class AgentCore:
         r"[-*]?\s*(\w+)\s*:\s*(OK|yes|enabled|true)\s*$",
         re.IGNORECASE,
     )
+    # Matches deny entries like "- chatwork: no", "* gmail: disabled"
+    _DENY_RE = re.compile(
+        r"[-*]?\s*(\w+)\s*:\s*(no|deny|disabled|false)\s*$",
+        re.IGNORECASE,
+    )
 
     def _init_tool_registry(self) -> list[str]:
-        """Initialize tool registry with tools allowed in permissions.md.
+        """Initialize tool registry from permissions.md (default-all).
 
-        Parses the external tools section and accepts common affirmative
-        values: ``OK``, ``yes``, ``enabled``, ``true`` (case-insensitive).
+        Strategy:
+          1. No ``外部ツール`` section present -> ALL tools (default-all)
+          2. ``- all: yes`` found -> ALL tools minus any ``- tool: no`` deny entries
+          3. Individual ``- tool: yes`` entries -> whitelist mode (backward compat)
+          4. Section present but no allow/deny entries match -> ALL tools
         """
         try:
             from core.tools import TOOL_MODULES
+            all_tools = sorted(TOOL_MODULES.keys())
             permissions = self.memory.read_permissions() if self.memory else ""
-            if "\u5916\u90e8\u30c4\u30fc\u30eb" not in permissions:
-                return []
-            allowed = []
+
+            # No 外部ツール section → default-all
+            if "外部ツール" not in permissions:
+                return all_tools
+
+            # Parse allow and deny entries
+            has_all_yes = False
+            allowed: list[str] = []
+            denied: list[str] = []
             for line in permissions.splitlines():
-                m = self._PERMISSION_RE.match(line.strip())
-                if m and m.group(1) in TOOL_MODULES:
-                    allowed.append(m.group(1))
-            return allowed
+                stripped = line.strip()
+                # Check allow entries
+                m_allow = self._PERMISSION_RE.match(stripped)
+                if m_allow:
+                    name = m_allow.group(1)
+                    if name == "all":
+                        has_all_yes = True
+                    elif name in TOOL_MODULES:
+                        allowed.append(name)
+                    continue
+                # Check deny entries
+                m_deny = self._DENY_RE.match(stripped)
+                if m_deny:
+                    name = m_deny.group(1)
+                    if name in TOOL_MODULES:
+                        denied.append(name)
+
+            # "- all: yes" → all tools minus denied
+            if has_all_yes:
+                return [t for t in all_tools if t not in denied]
+
+            # Individual allow entries → whitelist (backward compat)
+            if allowed:
+                return allowed
+
+            # Section present but no matching entries → default-all
+            return all_tools
         except Exception:
             logger.debug("Tool registry initialization skipped")
             return []
