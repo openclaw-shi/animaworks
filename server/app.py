@@ -30,6 +30,7 @@ from core.supervisor import ProcessSupervisor
 from server.routes import create_router
 from server.routes.setup import create_setup_router
 from server.websocket import WebSocketManager
+from server.stream_registry import StreamRegistry
 
 logger = logging.getLogger("animaworks.server")
 
@@ -187,6 +188,9 @@ async def lifespan(app: FastAPI):
         # ── WebSocket heartbeat ────────────────────────────────
         await app.state.ws_manager.start_heartbeat()
 
+        # ── Stream Registry cleanup ────────────────────────
+        await app.state.stream_registry.start_cleanup_loop()
+
         # ── Slack Socket Mode ─────────────────────────────────
         try:
             from server.slack_socket import SlackSocketModeManager
@@ -205,6 +209,7 @@ async def lifespan(app: FastAPI):
     # Shutdown all processes
     if app.state.setup_complete:
         await app.state.ws_manager.stop_heartbeat()
+        await app.state.stream_registry.stop_cleanup_loop()
         if getattr(app.state, "slack_socket_manager", None):
             await app.state.slack_socket_manager.stop()
         await app.state.supervisor.shutdown_all()
@@ -280,6 +285,7 @@ def create_app(animas_dir: Path, shared_dir: Path) -> FastAPI:
     app.state.animas_dir = animas_dir
     app.state.shared_dir = shared_dir
     app.state.setup_complete = config.setup_complete
+    app.state.stream_registry = StreamRegistry()
 
     # ── Global exception handler ────────────────────────────
     @app.exception_handler(Exception)

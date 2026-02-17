@@ -2,7 +2,7 @@
 
 import { state, dom, escapeHtml, renderMarkdown } from "./state.js";
 import { addActivity } from "./activity.js";
-import { streamChat } from "../shared/chat-stream.js";
+import { streamChat, fetchActiveStream, fetchStreamProgress } from "../shared/chat-stream.js";
 import { createLogger } from "../shared/logger.js";
 import { createImageInput, initLightbox, renderChatImages } from "../shared/image-input.js";
 
@@ -274,4 +274,88 @@ export function initImageInput() {
 
   // Initialize lightbox for image clicks
   initLightbox();
+}
+
+/**
+ * Resume an active SSE stream after page reload.
+ * Called when anima status is "thinking" or "processing".
+ */
+export async function resumeActiveStream(animaName) {
+  try {
+    const active = await fetchActiveStream(animaName);
+    if (!active || active.status !== "streaming") return;
+
+    const progress = await fetchStreamProgress(animaName, active.response_id);
+    if (!progress) return;
+
+    // Show accumulated text in streaming bubble
+    if (!state.chatHistories[animaName]) state.chatHistories[animaName] = [];
+    const history = state.chatHistories[animaName];
+    const streamingMsg = {
+      role: "assistant",
+      text: progress.full_text || "",
+      streaming: true,
+      activeTool: progress.active_tool || null,
+    };
+    history.push(streamingMsg);
+    renderChat();
+
+    // Resume SSE stream
+    const resumeBody = JSON.stringify({
+      message: "",
+      from_person: state.currentUser || "human",
+      resume: active.response_id,
+      last_event_id: progress.last_event_id || "",
+    });
+
+    const chatInput = dom.chatInput || document.getElementById("chatInput");
+    const chatSendBtn = dom.chatSendBtn || document.getElementById("chatSendBtn");
+    if (chatInput) chatInput.disabled = true;
+    if (chatSendBtn) chatSendBtn.disabled = true;
+
+    await streamChat(animaName, resumeBody, null, {
+      onTextDelta: (text) => {
+        streamingMsg.text += text;
+        renderStreamingBubble(streamingMsg);
+      },
+      onToolStart: (toolName) => {
+        streamingMsg.activeTool = toolName;
+        renderStreamingBubble(streamingMsg);
+      },
+      onToolEnd: () => {},
+      onReconnecting: () => {
+        streamingMsg.activeTool = "再接続中...";
+        renderStreamingBubble(streamingMsg);
+      },
+      onReconnected: () => {
+        streamingMsg.activeTool = null;
+        renderStreamingBubble(streamingMsg);
+      },
+      onError: ({ message: errorMsg }) => {
+        streamingMsg.text += `\n[エラー] ${errorMsg}`;
+        streamingMsg.streaming = false;
+        renderChat();
+      },
+      onDone: ({ summary }) => {
+        const text = summary || streamingMsg.text;
+        streamingMsg.text = text || "(空の応答)";
+        streamingMsg.streaming = false;
+        streamingMsg.activeTool = null;
+        renderChat();
+      },
+    });
+
+    if (streamingMsg.streaming) {
+      streamingMsg.streaming = false;
+      if (!streamingMsg.text) streamingMsg.text = "(空の応答)";
+      renderChat();
+    }
+  } catch (err) {
+    logger.error("Resume stream error", { anima: animaName, error: err.message });
+  } finally {
+    const chatInput = dom.chatInput || document.getElementById("chatInput");
+    const chatSendBtn = dom.chatSendBtn || document.getElementById("chatSendBtn");
+    if (chatInput) { chatInput.disabled = false; chatInput.focus(); }
+    if (chatSendBtn) chatSendBtn.disabled = false;
+  }
 }

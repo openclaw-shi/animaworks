@@ -26,6 +26,7 @@ from core.supervisor.manager import (
     RestartPolicy,
 )
 from core.supervisor.process_handle import ProcessHandle, ProcessState, ProcessStats
+from server.stream_registry import StreamRegistry
 
 
 # ── Fixtures ──────────────────────────────────────────────────
@@ -390,6 +391,7 @@ def _make_test_app_with_supervisor(supervisor: ProcessSupervisor) -> "FastAPI":
     app = FastAPI()
     app.state.ws_manager = supervisor.ws_manager
     app.state.supervisor = supervisor
+    app.state.stream_registry = StreamRegistry()
 
     router = create_chat_router()
     app.include_router(router, prefix="/api")

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from server.dependencies import get_anima
 from server.events import emit, emit_notification
+from server.stream_registry import StreamRegistry
 
 logger = logging.getLogger("animaworks.routes.chat")
 
@@ -44,6 +45,8 @@ class ChatRequest(BaseModel):
     message: str
     from_person: str = "human"
     images: list[ImageAttachment] = []
+    resume: str | None = None
+    last_event_id: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -262,6 +265,44 @@ def _handle_chunk(
     return None, ""
 
 
+def _chunk_to_event(chunk: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """Extract SSE event name and payload from a stream chunk."""
+    event_type = chunk.get("type", "unknown")
+    if event_type == "text_delta":
+        return "text_delta", {"text": chunk["text"]}
+    if event_type == "tool_start":
+        return "tool_start", {"tool_name": chunk["tool_name"], "tool_id": chunk["tool_id"]}
+    if event_type == "tool_end":
+        return "tool_end", {"tool_id": chunk["tool_id"], "tool_name": chunk.get("tool_name", "")}
+    if event_type == "chain_start":
+        return "chain_start", {"chain": chunk["chain"]}
+    if event_type == "bootstrap_start":
+        return "bootstrap", {"status": "started"}
+    if event_type == "bootstrap_complete":
+        return "bootstrap", {"status": "completed"}
+    if event_type == "bootstrap_busy":
+        return "bootstrap", {"status": "busy", "message": chunk.get("message", "初期化中です")}
+    if event_type == "heartbeat_relay_start":
+        return "heartbeat_relay_start", {"message": chunk.get("message", "処理中です")}
+    if event_type == "heartbeat_relay":
+        return "heartbeat_relay", {"text": chunk.get("text", "")}
+    if event_type == "heartbeat_relay_done":
+        return "heartbeat_relay_done", {}
+    if event_type == "cycle_done":
+        cycle_result = chunk.get("cycle_result", {})
+        response_text = cycle_result.get("summary", "")
+        clean_text, emotion = extract_emotion(response_text)
+        cycle_result["summary"] = clean_text
+        cycle_result["emotion"] = emotion
+        return "done", cycle_result
+    if event_type == "error":
+        payload = {"message": chunk.get("message", "Unknown error")}
+        if "code" in chunk:
+            payload["code"] = chunk["code"]
+        return "error", payload
+    return None
+
+
 async def _stream_events(
     anima: Any,
     name: str,
@@ -471,11 +512,24 @@ def create_chat_router() -> APIRouter:
                 },
             )
 
+        # ── StreamRegistry integration ────────────────────
+        registry: StreamRegistry = request.app.state.stream_registry
+
+        # Handle resume request
+        if body.resume:
+            last_event_id = body.last_event_id or request.headers.get("Last-Event-ID", "")
+            return _handle_resume(registry, body.resume, last_event_id, name, from_person=body.from_person)
+
+        stream = registry.register(name, from_person=body.from_person)
+
         async def _ipc_stream_events() -> AsyncIterator[str]:
             """Async generator that converts IPC stream to SSE frames."""
             full_response = ""
             try:
                 await emit(request, "anima.status", {"name": name, "status": "thinking"})
+
+                # Emit stream_start with response_id for client tracking
+                yield registry.format_sse(stream, "stream_start", {"response_id": stream.response_id})
 
                 from core.config import load_config
                 _config = load_config()
@@ -504,7 +558,7 @@ def create_chat_router() -> APIRouter:
                         cycle_result["summary"] = clean_text
                         cycle_result["emotion"] = emotion
                         full_response = clean_text
-                        yield _format_sse("done", cycle_result or {"summary": clean_text, "emotion": emotion})
+                        yield registry.format_sse(stream, "done", cycle_result or {"summary": clean_text, "emotion": emotion})
                         break
 
                     if ipc_response.chunk:
@@ -517,19 +571,21 @@ def create_chat_router() -> APIRouter:
                                 yield ": keepalive\n\n"
                                 continue
 
-                            frame, response_text = _handle_chunk(
-                                chunk_data,
-                                request=request,
-                                anima_name=name,
-                            )
+                            # Side effects (WebSocket emissions)
+                            _, response_text = _handle_chunk(chunk_data, request=request, anima_name=name)
                             if response_text:
                                 full_response = response_text
-                            if frame:
-                                yield frame
+                            # Format SSE with event ID via registry
+                            result = _chunk_to_event(chunk_data)
+                            if result:
+                                evt_name, evt_payload = result
+                                if evt_name == "done":
+                                    full_response = evt_payload.get("summary", full_response)
+                                yield registry.format_sse(stream, evt_name, evt_payload)
                         except json.JSONDecodeError:
                             # Raw text chunk fallback
                             full_response += ipc_response.chunk
-                            yield _format_sse("text_delta", {"text": ipc_response.chunk})
+                            yield registry.format_sse(stream, "text_delta", {"text": ipc_response.chunk})
                         continue
 
                     # Fallback: non-streaming IPC response (result without done flag)
@@ -542,22 +598,23 @@ def create_chat_router() -> APIRouter:
                         cycle_result["summary"] = clean_text
                         cycle_result["emotion"] = emotion
                         full_response = clean_text
-                        yield _format_sse("done", cycle_result or {"summary": clean_text, "emotion": emotion})
+                        yield registry.format_sse(stream, "done", cycle_result or {"summary": clean_text, "emotion": emotion})
                         break
 
             except ValueError as e:
                 logger.error("IPC stream error for anima=%s: %s", name, e)
-                yield _format_sse("error", {"code": "IPC_ERROR", "message": str(e)})
+                yield registry.format_sse(stream, "error", {"code": "IPC_ERROR", "message": str(e)})
             except KeyError:
                 logger.error("Anima not found during stream: %s", name)
-                yield _format_sse("error", {"code": "ANIMA_NOT_FOUND", "message": f"Anima not found: {name}"})
+                yield registry.format_sse(stream, "error", {"code": "ANIMA_NOT_FOUND", "message": f"Anima not found: {name}"})
             except TimeoutError:
                 logger.error("IPC stream timeout for anima=%s", name)
-                yield _format_sse("error", {"code": "IPC_TIMEOUT", "message": "応答がタイムアウトしました"})
+                yield registry.format_sse(stream, "error", {"code": "IPC_TIMEOUT", "message": "応答がタイムアウトしました"})
             except Exception:
                 logger.exception("IPC stream error for anima=%s", name)
-                yield _format_sse("error", {"code": "STREAM_ERROR", "message": "Internal server error"})
+                yield registry.format_sse(stream, "error", {"code": "STREAM_ERROR", "message": "Internal server error"})
             finally:
+                registry.mark_complete(stream.response_id)
                 await emit(request, "anima.status", {"name": name, "status": "idle"})
 
         return StreamingResponse(
@@ -570,4 +627,93 @@ def create_chat_router() -> APIRouter:
             },
         )
 
+    @router.get("/animas/{name}/stream/active")
+    async def get_active_stream(name: str, request: Request):
+        """Return the active (or most recent) stream for an anima."""
+        registry: StreamRegistry = request.app.state.stream_registry
+        stream = registry.get_active(name)
+        if stream is None:
+            return JSONResponse({"active": False}, status_code=200)
+        return {
+            "active": True,
+            "response_id": stream.response_id,
+            "status": stream.status,
+            "full_text": stream.full_text,
+            "active_tool": stream.active_tool,
+            "last_event_id": stream.last_event_id,
+            "event_count": stream.event_count,
+            "emotion": stream.emotion,
+        }
+
+    @router.get("/animas/{name}/stream/{response_id}/progress")
+    async def get_stream_progress(name: str, response_id: str, request: Request):
+        """Return progress of a specific stream."""
+        registry: StreamRegistry = request.app.state.stream_registry
+        stream = registry.get(response_id)
+        if stream is None or stream.anima_name != name:
+            return JSONResponse(
+                {"error": "Stream not found"}, status_code=404,
+            )
+        return {
+            "response_id": stream.response_id,
+            "anima_name": stream.anima_name,
+            "status": stream.status,
+            "full_text": stream.full_text,
+            "active_tool": stream.active_tool,
+            "last_event_id": stream.last_event_id,
+            "event_count": stream.event_count,
+            "emotion": stream.emotion,
+        }
+
     return router
+
+
+def _handle_resume(
+    registry: StreamRegistry,
+    resume_id: str,
+    last_event_id: str,
+    anima_name: str,
+    *,
+    from_person: str = "human",
+):
+    """Handle SSE stream resume request."""
+    stream = registry.get(resume_id)
+    if stream is None or stream.anima_name != anima_name or stream.from_person != from_person:
+        async def _not_found():
+            yield _format_sse("error", {"code": "STREAM_NOT_FOUND", "message": "Stream not found or access denied"})
+        return StreamingResponse(
+            _not_found(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+
+    # Parse last event ID to get sequence number
+    after_seq = -1
+    if last_event_id and ":" in last_event_id:
+        try:
+            after_seq = int(last_event_id.rsplit(":", 1)[1])
+        except (ValueError, IndexError):
+            pass
+
+    async def _replay_events():
+        from server.stream_registry import format_sse_with_id
+        current_seq = after_seq
+        for event in stream.events_after(after_seq):
+            yield format_sse_with_id(event.event, event.payload, event.event_id)
+            current_seq = event.seq
+
+        if not stream.complete:
+            while not stream.complete:
+                got_event = await stream.wait_new_event(timeout=30.0)
+                if not got_event:
+                    yield ": keepalive\n\n"
+                    continue
+                for event in stream.events_after(current_seq):
+                    yield format_sse_with_id(event.event, event.payload, event.event_id)
+                    current_seq = event.seq
+
+    return StreamingResponse(
+        _replay_events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )

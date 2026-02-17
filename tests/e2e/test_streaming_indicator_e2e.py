@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from server.stream_registry import StreamRegistry
+
 
 # ── Test Helpers ─────────────────────────────────────────────
 
@@ -28,6 +30,7 @@ def _make_test_app():
     app = FastAPI()
     app.state.ws_manager = MagicMock()
     app.state.ws_manager.broadcast = AsyncMock()
+    app.state.stream_registry = StreamRegistry()
 
     supervisor = MagicMock()
     supervisor.processes = {ANIMA_NAME: True}

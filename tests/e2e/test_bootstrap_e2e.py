@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from server.stream_registry import StreamRegistry
+
 
 def _make_test_app_with_bootstrap():
     """Build a test FastAPI app with a mock bootstrapping anima."""
@@ -22,6 +24,7 @@ def _make_test_app_with_bootstrap():
     app = FastAPI()
     app.state.ws_manager = MagicMock()
     app.state.ws_manager.broadcast = AsyncMock()
+    app.state.stream_registry = StreamRegistry()
 
     supervisor = MagicMock()
     supervisor.processes = {"alice"}
@@ -91,6 +94,7 @@ def _make_test_app_bootstrap_busy():
     app = FastAPI()
     app.state.ws_manager = MagicMock()
     app.state.ws_manager.broadcast = AsyncMock()
+    app.state.stream_registry = StreamRegistry()
 
     supervisor = MagicMock()
     supervisor.processes = {"alice"}

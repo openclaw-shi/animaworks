@@ -28,6 +28,7 @@ from core.supervisor.manager import (
     RestartPolicy,
 )
 from core.supervisor.process_handle import ProcessHandle, ProcessState
+from server.stream_registry import StreamRegistry
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -566,6 +567,7 @@ def _make_test_app(*, is_bootstrapping: bool = False):
     app = FastAPI()
     app.state.ws_manager = MagicMock()
     app.state.ws_manager.broadcast = AsyncMock()
+    app.state.stream_registry = StreamRegistry()
 
     supervisor = MagicMock()
     supervisor.processes = {"alice": MagicMock()}

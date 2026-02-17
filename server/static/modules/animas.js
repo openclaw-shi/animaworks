@@ -2,7 +2,7 @@
 
 import { state, dom, escapeHtml } from "./state.js";
 import { api } from "./api.js";
-import { renderChat } from "./chat.js";
+import { renderChat, resumeActiveStream } from "./chat.js";
 import { loadMemoryTab } from "./memory.js";
 import { hideHistoryDetail, loadSessionList } from "./history.js";
 
@@ -97,6 +97,12 @@ export async function selectAnima(name) {
 
   // Render chat history
   renderChat();
+
+  // Check if anima is currently processing — resume stream
+  const selectedAnimaObj = state.animas.find((p) => p.name === name);
+  if (selectedAnimaObj && (selectedAnimaObj.status === "thinking" || selectedAnimaObj.status === "processing")) {
+    resumeActiveStream(name);
+  }
 
   // Apply anima detail
   if (detail) {

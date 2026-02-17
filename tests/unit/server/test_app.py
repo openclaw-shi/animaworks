@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from server.stream_registry import StreamRegistry
+
 
 # ── create_app ───────────────────────────────────────────
 
@@ -177,6 +179,7 @@ class TestLifespan:
         mock_app.state.anima_names = ["alice"]
         mock_app.state.animas_dir = MagicMock()
         mock_app.state.shared_dir = MagicMock()
+        mock_app.state.stream_registry = StreamRegistry()
 
         mock_scheduler = MagicMock()
         mock_scheduler_cls.return_value = mock_scheduler

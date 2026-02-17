@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from server.stream_registry import StreamRegistry
+
 
 def _make_test_app(animas: dict | None = None, supervisor: MagicMock | None = None):
     from fastapi import FastAPI
@@ -16,6 +18,7 @@ def _make_test_app(animas: dict | None = None, supervisor: MagicMock | None = No
     app.state.animas = animas
     app.state.ws_manager = MagicMock()
     app.state.ws_manager.broadcast = AsyncMock()
+    app.state.stream_registry = StreamRegistry()
     if supervisor is not None:
         supervisor.is_bootstrapping = MagicMock(return_value=False)
         app.state.supervisor = supervisor

@@ -9,7 +9,7 @@ const logger = createLogger('sse-parser');
  * Parse SSE (Server-Sent Events) buffer into structured events.
  * Uses "\n\n" as the block delimiter (standard SSE format).
  * @param {string} buffer - Raw SSE text buffer
- * @returns {{parsed: Array<{event: string, data: object}>, remaining: string}}
+ * @returns {{parsed: Array<{id: string|null, event: string, data: object}>, remaining: string}}
  */
 export function parseConvSSE(buffer) {
   const parsed = [];
@@ -19,17 +19,20 @@ export function parseConvSSE(buffer) {
   for (const part of parts) {
     if (!part.trim()) continue;
     let eventName = "message";
+    let eventId = null;
     const dataLines = [];
     for (const line of part.split("\n")) {
       if (line.startsWith("event: ")) {
         eventName = line.slice(7).trim();
       } else if (line.startsWith("data: ")) {
         dataLines.push(line.slice(6));
+      } else if (line.startsWith("id: ")) {
+        eventId = line.slice(4).trim();
       }
     }
     if (dataLines.length > 0) {
       try {
-        parsed.push({ event: eventName, data: JSON.parse(dataLines.join("\n")) });
+        parsed.push({ id: eventId, event: eventName, data: JSON.parse(dataLines.join("\n")) });
       } catch {
         const raw = dataLines.join("\n");
         logger.warn(`JSON parse failed for event '${eventName}':`, raw.slice(0, 100));

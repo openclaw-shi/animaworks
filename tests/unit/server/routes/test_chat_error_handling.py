@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from core.supervisor.ipc import IPCResponse
+from server.stream_registry import StreamRegistry
 
 
 def _make_test_app(supervisor=None):
@@ -19,6 +20,7 @@ def _make_test_app(supervisor=None):
     app.state.animas = {}
     app.state.ws_manager = MagicMock()
     app.state.ws_manager.broadcast = AsyncMock()
+    app.state.stream_registry = StreamRegistry()
     app.state.supervisor = supervisor or MagicMock()
     router = create_chat_router()
     app.include_router(router, prefix="/api")
