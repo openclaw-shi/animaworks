@@ -136,6 +136,19 @@ def _handle_chunk(
             "message": chunk.get("message", "初期化中です"),
         }), ""
 
+    if event_type == "heartbeat_relay_start":
+        return _format_sse("heartbeat_relay_start", {
+            "message": chunk.get("message", "処理中です"),
+        }), ""
+
+    if event_type == "heartbeat_relay":
+        return _format_sse("heartbeat_relay", {
+            "text": chunk.get("text", ""),
+        }), chunk.get("text", "")
+
+    if event_type == "heartbeat_relay_done":
+        return _format_sse("heartbeat_relay_done", {}), ""
+
     if event_type == "notification_sent":
         # Broadcast notification to all WebSocket clients (with queue support)
         if request:

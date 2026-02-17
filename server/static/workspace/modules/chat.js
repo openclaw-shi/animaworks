@@ -86,7 +86,13 @@ function updateStreamingBubble(msg) {
   if (!bubble) return;
 
   let html = "";
-  if (msg.text) {
+
+  if (msg.heartbeatRelay) {
+    html += '<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>ハートビート処理中...</div>';
+    if (msg.heartbeatText) {
+      html += `<div class="heartbeat-relay-text">${escapeHtml(msg.heartbeatText)}</div>`;
+    }
+  } else if (msg.text) {
     html = renderSimpleMarkdown(msg.text);
   } else {
     html = '<span class="cursor-blink"></span>';
@@ -239,6 +245,22 @@ export async function sendMessage(text) {
       onChainStart: () => {
         // Session continuation — stream continues
       },
+      onHeartbeatRelayStart: ({ message }) => {
+        streamingMsg.heartbeatRelay = true;
+        streamingMsg.heartbeatText = "";
+        streamingMsg.text = "";
+        scheduleStreamingUpdate(streamingMsg);
+      },
+      onHeartbeatRelay: ({ text }) => {
+        streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + text;
+        scheduleStreamingUpdate(streamingMsg);
+      },
+      onHeartbeatRelayDone: () => {
+        streamingMsg.heartbeatRelay = false;
+        streamingMsg.heartbeatText = "";
+        streamingMsg.text = "";
+        scheduleStreamingUpdate(streamingMsg);
+      },
       onError: ({ message: errorMsg }) => {
         streamingMsg.text += `\n[エラー] ${errorMsg}`;
         streamingMsg.streaming = false;
@@ -255,6 +277,8 @@ export async function sendMessage(text) {
         }
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
+        streamingMsg.heartbeatRelay = false;
+        streamingMsg.heartbeatText = "";
         setState({ chatMessages: [...getState().chatMessages] });
         renderAllMessages();
       },

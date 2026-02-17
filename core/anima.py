@@ -53,6 +53,11 @@ class DigitalAnima:
         self._last_activity: datetime | None = None
         self._on_lock_released: Callable[[], None] | None = None
 
+        # Heartbeat SSE relay: allow process_message_stream to read
+        # heartbeat's streaming chunks while waiting for the lock.
+        self._heartbeat_stream_queue: asyncio.Queue | None = None
+        self._heartbeat_context: str = ""
+
         # Greet cache (5-minute cooldown)
         self._last_greet_at: float | None = None
         self._last_greet_text: str | None = None
@@ -374,6 +379,47 @@ class DigitalAnima:
         )
         self._user_waiting.set()
         try:
+            # ── Heartbeat relay: stream heartbeat output while waiting ──
+            if self._lock.locked():
+                context_msg = self._heartbeat_context or "処理中です"
+                logger.info(
+                    "[%s] process_message_stream: lock held, starting heartbeat relay",
+                    self.name,
+                )
+                yield {
+                    "type": "heartbeat_relay_start",
+                    "message": f"ハートビート処理中（{context_msg}）",
+                }
+
+                # Create a queue so run_heartbeat can push chunks to us
+                self._heartbeat_stream_queue = asyncio.Queue()
+                try:
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(
+                                self._heartbeat_stream_queue.get(), timeout=1.0,
+                            )
+                        except asyncio.TimeoutError:
+                            # Check if lock was released while we waited
+                            if not self._lock.locked():
+                                break
+                            continue
+                        if chunk is None:
+                            # Sentinel: heartbeat finished
+                            break
+                        yield {
+                            "type": "heartbeat_relay",
+                            "text": chunk.get("text", ""),
+                        }
+                finally:
+                    self._heartbeat_stream_queue = None
+
+                yield {"type": "heartbeat_relay_done"}
+                logger.info(
+                    "[%s] process_message_stream: heartbeat relay done",
+                    self.name,
+                )
+
             async with self._lock:
                 logger.info(
                     "[%s] process_message_stream START (lock acquired) from=%s",
@@ -602,13 +648,59 @@ class DigitalAnima:
                     )
                     parts.append(load_prompt("unread_messages", summary=summary))
 
+                # Set heartbeat context for relay
+                if unread_count > 0:
+                    self._heartbeat_context = (
+                        f"{', '.join(senders)}からのメッセージを確認中"
+                    )
+                else:
+                    self._heartbeat_context = "定期巡回中"
+
                 try:
                     # Reset reply tracking before the cycle
                     self.agent.reset_reply_tracking()
 
-                    result = await self.agent.run_cycle(
-                        "\n\n".join(parts), trigger="heartbeat"
-                    )
+                    prompt = "\n\n".join(parts)
+                    accumulated_text = ""
+                    result: CycleResult | None = None
+
+                    async for chunk in self.agent.run_cycle_streaming(
+                        prompt, trigger="heartbeat"
+                    ):
+                        # Relay text_delta chunks to waiting user stream
+                        if chunk.get("type") == "text_delta":
+                            queue = self._heartbeat_stream_queue
+                            if queue is not None:
+                                await queue.put(chunk)
+
+                        if chunk.get("type") == "cycle_done":
+                            cycle_result = chunk.get("cycle_result", {})
+                            result = CycleResult(
+                                trigger=cycle_result.get("trigger", "heartbeat"),
+                                action=cycle_result.get("action", "responded"),
+                                summary=cycle_result.get("summary", ""),
+                                duration_ms=cycle_result.get("duration_ms", 0),
+                                context_usage_ratio=cycle_result.get(
+                                    "context_usage_ratio", 0.0
+                                ),
+                                session_chained=cycle_result.get(
+                                    "session_chained", False
+                                ),
+                                total_turns=cycle_result.get("total_turns", 0),
+                            )
+
+                    # Send sentinel to close the relay queue
+                    queue = self._heartbeat_stream_queue
+                    if queue is not None:
+                        await queue.put(None)
+
+                    if result is None:
+                        result = CycleResult(
+                            trigger="heartbeat",
+                            action="responded",
+                            summary=accumulated_text or "(no result)",
+                        )
+
                     self._last_activity = datetime.now()
                     self._save_heartbeat_history(result)
 
@@ -639,10 +731,15 @@ class DigitalAnima:
                     return result
                 except Exception:
                     logger.exception("[%s] run_heartbeat FAILED", self.name)
+                    # Send sentinel to close the relay queue on error
+                    queue = self._heartbeat_stream_queue
+                    if queue is not None:
+                        await queue.put(None)
                     raise
                 finally:
                     self._status = "idle"
                     self._current_task = ""
+                    self._heartbeat_context = ""
         finally:
             self._notify_lock_released()
 

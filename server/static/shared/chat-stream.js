@@ -26,6 +26,9 @@ const logger = createLogger("chat-stream");
  * @param {function({message: string}): void} [callbacks.onError] - SSE error event received
  * @param {function(object): void} [callbacks.onBootstrap] - Bootstrap event (data object)
  * @param {function(): void} [callbacks.onChainStart] - Chain continuation event
+ * @param {function({message: string}): void} [callbacks.onHeartbeatRelayStart] - Heartbeat relay started
+ * @param {function({text: string}): void} [callbacks.onHeartbeatRelay] - Heartbeat relay text chunk
+ * @param {function(): void} [callbacks.onHeartbeatRelayDone] - Heartbeat relay completed
  * @returns {Promise<void>}
  * @throws {Error} On HTTP error (non-ok response) or network failure
  */
@@ -93,6 +96,18 @@ export async function streamChat(animaName, body, signal, callbacks) {
 
           case "chain_start":
             callbacks.onChainStart?.();
+            break;
+
+          case "heartbeat_relay_start":
+            callbacks.onHeartbeatRelayStart?.({ message: data.message || "" });
+            break;
+
+          case "heartbeat_relay":
+            callbacks.onHeartbeatRelay?.({ text: data.text || "" });
+            break;
+
+          case "heartbeat_relay_done":
+            callbacks.onHeartbeatRelayDone?.();
             break;
         }
       }

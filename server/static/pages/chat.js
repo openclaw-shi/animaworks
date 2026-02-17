@@ -369,7 +369,13 @@ function _renderStreamingBubble(msg) {
   if (!bubble) return;
 
   let html = "";
-  if (msg.text) {
+
+  if (msg.heartbeatRelay) {
+    html += '<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>ハートビート処理中...</div>';
+    if (msg.heartbeatText) {
+      html += `<div class="heartbeat-relay-text">${escapeHtml(msg.heartbeatText)}</div>`;
+    }
+  } else if (msg.text) {
     try { html = marked.parse(msg.text, { breaks: true }); }
     catch { html = escapeHtml(msg.text); }
   } else {
@@ -445,6 +451,23 @@ async function _sendChat(message) {
         _renderStreamingBubble(streamingMsg);
       },
       onChainStart: () => {},
+      onHeartbeatRelayStart: ({ message }) => {
+        streamingMsg.heartbeatRelay = true;
+        streamingMsg.heartbeatText = "";
+        streamingMsg.text = "";
+        _renderStreamingBubble(streamingMsg);
+        _addLocalActivity("system", name, `ハートビート中継: ${message}`);
+      },
+      onHeartbeatRelay: ({ text }) => {
+        streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + text;
+        _renderStreamingBubble(streamingMsg);
+      },
+      onHeartbeatRelayDone: () => {
+        streamingMsg.heartbeatRelay = false;
+        streamingMsg.heartbeatText = "";
+        streamingMsg.text = "";
+        _renderStreamingBubble(streamingMsg);
+      },
       onError: ({ message: errorMsg }) => {
         streamingMsg.text += `\n[エラー] ${errorMsg}`;
         streamingMsg.streaming = false;
@@ -455,6 +478,8 @@ async function _sendChat(message) {
         streamingMsg.text = text || "(空の応答)";
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
+        streamingMsg.heartbeatRelay = false;
+        streamingMsg.heartbeatText = "";
         _renderChat();
         _addLocalActivity("chat", name, `応答: ${streamingMsg.text.slice(0, 100)}`);
       },
