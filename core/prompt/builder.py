@@ -12,10 +12,57 @@ from pathlib import Path
 from typing import Any
 
 from core.memory import MemoryManager
+from core.memory.manager import match_skills_by_description
 from core.paths import PROJECT_DIR, get_data_dir, load_prompt
 from core.memory.shortterm import ShortTermMemory
+from core.schemas import SkillMeta
 
 logger = logging.getLogger("animaworks.prompt_builder")
+
+# ── Skill Injection Budget ────────────────────────────────
+
+SKILL_INJECTION_BUDGET: dict[str, int] = {
+    "greeting": 1000,
+    "question": 3000,
+    "request": 5000,
+    "heartbeat": 2000,
+}
+
+
+def _classify_message_for_skill_budget(message: str) -> str:
+    """Classify message type for skill injection budget."""
+    if not message:
+        return "question"  # default
+    msg_lower = message.lower()
+
+    greeting_patterns = [
+        "こんにちは", "おはよう", "こんばんは", "よろしく",
+        "hello", "hi ", "hey", "good morning", "good evening",
+    ]
+    if any(p in msg_lower for p in greeting_patterns) and len(message) < 50:
+        return "greeting"
+
+    if len(message) > 100:
+        return "request"
+
+    question_patterns = [
+        "?", "？", "教えて", "どう", "なぜ", "いつ", "どこ", "誰",
+        "what", "why", "when", "where", "who", "how", "can you",
+    ]
+    if any(p in msg_lower for p in question_patterns):
+        return "question"
+
+    return "request"
+
+
+def _build_skill_body(path: Path) -> str:
+    """Read a skill file and return its body (after frontmatter)."""
+    text = path.read_text(encoding="utf-8")
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2].strip()
+    return text.strip()
 
 # ── Emotion Instruction ───────────────────────────────────
 
@@ -253,6 +300,7 @@ def build_system_prompt(
     personal_tools: dict[str, str] | None = None,
     priming_section: str = "",
     execution_mode: str = "a1",
+    message: str = "",
 ) -> str:
     """Construct the full system prompt from Markdown files.
 
@@ -339,10 +387,11 @@ def build_system_prompt(
     knowledge_list = ", ".join(memory.list_knowledge_files()) or "(なし)"
     episode_list = ", ".join(memory.list_episode_files()[:7]) or "(なし)"
     procedure_list = ", ".join(memory.list_procedure_files()) or "(なし)"
-    skill_summaries = memory.list_skill_summaries()
-    common_skill_summaries = memory.list_common_skill_summaries()
-    all_skill_names = [s[0] for s in skill_summaries] + [
-        f"{s[0]}(共通)" for s in common_skill_summaries
+    skill_metas = memory.list_skill_metas()
+    common_skill_metas = memory.list_common_skill_metas()
+    all_metas = skill_metas + common_skill_metas
+    all_skill_names = [m.name for m in skill_metas] + [
+        f"{m.name}(共通)" for m in common_skill_metas
     ]
     skill_names = ", ".join(all_skill_names) or "(なし)"
 
@@ -368,10 +417,36 @@ def build_system_prompt(
             "目次: `common_knowledge/00_index.md`"
         )
 
-    # Personal skills
-    if skill_summaries:
+    # ── Skill injection (description-based matching) ──────
+    matched_skills = match_skills_by_description(message, all_metas)
+    matched_names: set[str] = set()
+    msg_type = _classify_message_for_skill_budget(message)
+    budget = SKILL_INJECTION_BUDGET.get(msg_type, 3000)
+    used_tokens = 0
+
+    # Inject matched skill full text (within budget)
+    for skill in matched_skills:
+        body = _build_skill_body(skill.path)
+        # Rough token estimate: 1 char ≈ 1 token for CJK text
+        body_len = len(body)
+        if used_tokens + body_len > budget:
+            break
+        label = f"(共通スキル)" if skill.is_common else "(個人スキル)"
+        parts.append(
+            f"## スキル: {skill.name} {label}\n\n"
+            f"以下のスキルがこのメッセージに該当します。手順に従って実行してください。\n\n"
+            f"{body}"
+        )
+        matched_names.add(skill.name)
+        used_tokens += body_len
+
+    # Non-matched personal skills → table
+    unmatched_personal = [
+        m for m in skill_metas if m.name not in matched_names
+    ]
+    if unmatched_personal:
         skill_lines = "\n".join(
-            f"| {name} | {desc} |" for name, desc in skill_summaries
+            f"| {m.name} | {m.description} |" for m in unmatched_personal
         )
         parts.append(load_prompt(
             "skills_guide",
@@ -379,10 +454,13 @@ def build_system_prompt(
             skill_lines=skill_lines,
         ))
 
-    # Common skills (shared across all animas)
-    if common_skill_summaries:
+    # Non-matched common skills → table
+    unmatched_common = [
+        m for m in common_skill_metas if m.name not in matched_names
+    ]
+    if unmatched_common:
         common_skill_lines = "\n".join(
-            f"| {name} | {desc} |" for name, desc in common_skill_summaries
+            f"| {m.name} | {m.description} |" for m in unmatched_common
         )
         common_skills_dir = memory.common_skills_dir
         parts.append(
@@ -393,30 +471,29 @@ def build_system_prompt(
         )
 
     # Commander hiring guardrail: force create_anima tool/CLI usage
-    if skill_summaries:
-        has_newstaff = any(name == "newstaff" for name, _ in skill_summaries)
-        if has_newstaff:
-            if execution_mode == "a1":
-                parts.append(
-                    "## 雇用ルール\n\n"
-                    "新しいAnimaを雇用する際は、以下の手順に従ってください。\n"
-                    "手動で identity.md 等のファイルを個別に作成してはいけません。\n\n"
-                    "1. キャラクターシートを1ファイルのMarkdownとして作成する\n"
-                    "   - 必須セクション: `## 基本情報`, `## 人格`, `## 役割・行動方針`\n"
-                    "2. Bashで以下のコマンドを実行する:\n"
-                    "   ```\n"
-                    "   animaworks create-anima --from-md <キャラクターシートのパス>"
-                    " --supervisor $(basename $ANIMAWORKS_ANIMA_DIR)\n"
-                    "   ```\n"
-                    "3. サーバーのReconciliationが自動的に新Animaを検出・起動します"
-                )
-            else:
-                parts.append(
-                    "## 雇用ルール\n\n"
-                    "新しいAnimaを雇用する際は、必ず `create_anima` ツールを使用してください。\n"
-                    "手動で identity.md 等のファイルを個別に作成してはいけません。\n"
-                    "キャラクターシートを1ファイルで作成し、create_anima に渡してください。"
-                )
+    has_newstaff = any(m.name == "newstaff" for m in skill_metas)
+    if has_newstaff:
+        if execution_mode == "a1":
+            parts.append(
+                "## 雇用ルール\n\n"
+                "新しいAnimaを雇用する際は、以下の手順に従ってください。\n"
+                "手動で identity.md 等のファイルを個別に作成してはいけません。\n\n"
+                "1. キャラクターシートを1ファイルのMarkdownとして作成する\n"
+                "   - 必須セクション: `## 基本情報`, `## 人格`, `## 役割・行動方針`\n"
+                "2. Bashで以下のコマンドを実行する:\n"
+                "   ```\n"
+                "   animaworks create-anima --from-md <キャラクターシートのパス>"
+                " --supervisor $(basename $ANIMAWORKS_ANIMA_DIR)\n"
+                "   ```\n"
+                "3. サーバーのReconciliationが自動的に新Animaを検出・起動します"
+            )
+        else:
+            parts.append(
+                "## 雇用ルール\n\n"
+                "新しいAnimaを雇用する際は、必ず `create_anima` ツールを使用してください。\n"
+                "手動で identity.md 等のファイルを個別に作成してはいけません。\n"
+                "キャラクターシートを1ファイルで作成し、create_anima に渡してください。"
+            )
 
     # Inject dynamically generated external tools guide (filtered by registry)
     if permissions and "外部ツール" in permissions and (tool_registry or personal_tools):

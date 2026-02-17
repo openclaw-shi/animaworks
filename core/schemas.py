@@ -7,11 +7,24 @@ from __future__ import annotations
 # See LICENSES/AGPL-3.0.txt for the full license text.
 
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+# ── Skill Metadata ────────────────────────────────────────
+
+@dataclass
+class SkillMeta:
+    """Metadata extracted from a skill file's YAML frontmatter."""
+
+    name: str           # frontmatter の name（なければファイル名 stem）
+    description: str    # frontmatter の description（なければ空文字列）
+    path: Path          # ファイルパス
+    is_common: bool     # common_skills/ に配置されているか
 
 
 # ── Emotion Constants ─────────────────────────────────────

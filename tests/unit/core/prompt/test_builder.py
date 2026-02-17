@@ -14,6 +14,7 @@ from core.prompt.builder import (
     build_system_prompt,
     inject_shortterm,
 )
+from core.schemas import SkillMeta
 
 
 # ── _discover_other_animas ───────────────────────────────
@@ -139,6 +140,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -167,6 +170,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -194,6 +199,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = [("coding", "Write code")]
         memory.list_common_skill_summaries.return_value = [("deploy", "Deploy apps")]
+        memory.list_skill_metas.return_value = [SkillMeta(name="coding", description="Write code", path=Path("/tmp/test/skills/coding.md"), is_common=False)]
+        memory.list_common_skill_metas.return_value = [SkillMeta(name="deploy", description="Deploy apps", path=Path("/tmp/test/common_skills/deploy.md"), is_common=True)]
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -227,6 +234,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -254,6 +263,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -284,6 +295,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -316,6 +329,8 @@ class TestBuildSystemPrompt:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -464,6 +479,8 @@ class TestHiringContextPlacement:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -512,6 +529,8 @@ class TestHiringContextPlacement:
         memory.list_procedure_files.return_value = []
         memory.list_skill_summaries.return_value = []
         memory.list_common_skill_summaries.return_value = []
+        memory.list_skill_metas.return_value = []
+        memory.list_common_skill_metas.return_value = []
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 

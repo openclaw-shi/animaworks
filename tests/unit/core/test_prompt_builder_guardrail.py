@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.prompt.builder import build_system_prompt
+from core.schemas import SkillMeta
 
 
 def _make_mock_memory(
@@ -41,6 +42,16 @@ def _make_mock_memory(
     memory.list_procedure_files.return_value = []
     memory.list_skill_summaries.return_value = skill_summaries
     memory.list_common_skill_summaries.return_value = []
+    memory.list_skill_metas.return_value = [
+        SkillMeta(
+            name=name,
+            description=desc,
+            path=Path(f"/tmp/test/skills/{name}.md"),
+            is_common=False,
+        )
+        for name, desc in skill_summaries
+    ]
+    memory.list_common_skill_metas.return_value = []
     memory.common_skills_dir = tmp_path / "common_skills"
     memory.common_skills_dir.mkdir(parents=True, exist_ok=True)
     memory.list_shared_users.return_value = []

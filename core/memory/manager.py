@@ -10,13 +10,46 @@ from __future__ import annotations
 import logging
 import os
 import re
+import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from core.paths import get_common_knowledge_dir, get_common_skills_dir, get_company_dir, get_shared_dir
-from core.schemas import ModelConfig
+from core.schemas import ModelConfig, SkillMeta
 
 logger = logging.getLogger("animaworks.memory")
+
+
+# ── Skill matching ────────────────────────────────────────
+
+def _normalize_text(text: str) -> str:
+    """NFKC normalization + lowercase for keyword matching."""
+    return unicodedata.normalize("NFKC", text).lower()
+
+
+def match_skills_by_description(
+    message: str,
+    skills: list[SkillMeta],
+) -> list[SkillMeta]:
+    """Return skills whose description keywords match the message.
+
+    Keywords are extracted from 「」-delimited tokens in the description.
+    Skills without 「」 keywords are never matched (table display only).
+    """
+    if not message:
+        return []
+    message_norm = _normalize_text(message)
+    matched: list[SkillMeta] = []
+    for skill in skills:
+        if not skill.description:
+            continue
+        desc_norm = _normalize_text(skill.description)
+        keywords = re.findall(r"「(.+?)」", desc_norm)
+        if not keywords:
+            continue
+        if any(kw in message_norm for kw in keywords):
+            matched.append(skill)
+    return matched
 
 
 class MemoryManager:
@@ -283,37 +316,84 @@ class MemoryManager:
         return [f.stem for f in sorted(self.skills_dir.glob("*.md"))]
 
     @staticmethod
-    def _extract_skill_summary(path: Path) -> str:
-        """Extract the first line of the 概要 section from a skill file."""
-        text = path.read_text(encoding="utf-8")
-        in_overview = False
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped == "## 概要":
-                in_overview = True
-                continue
-            if in_overview:
-                if stripped.startswith("#"):
-                    break
-                if stripped:
-                    return stripped
-        return ""
+    def _extract_skill_meta(path: Path, *, is_common: bool = False) -> "SkillMeta":
+        """Extract SkillMeta from a skill file's YAML frontmatter.
 
-    def list_skill_summaries(self) -> list[tuple[str, str]]:
-        """Return (filename_stem, first_line_of_概要) for each personal skill."""
+        Supports Claude Code format (name + description frontmatter only).
+        Falls back to filename stem and empty description if no frontmatter.
+        """
+        from core.schemas import SkillMeta
+
+        text = path.read_text(encoding="utf-8")
+        name = path.stem
+        description = ""
+
+        # Parse YAML frontmatter (--- delimited)
+        if text.startswith("---"):
+            parts = text.split("---", 2)
+            if len(parts) >= 3:
+                import yaml
+                try:
+                    fm = yaml.safe_load(parts[1])
+                    if isinstance(fm, dict):
+                        name = fm.get("name", name)
+                        description = fm.get("description", "")
+                        if description:
+                            description = str(description).strip()
+                except Exception:
+                    pass
+
+        # Fallback: extract from ## 概要 section (legacy format)
+        if not description:
+            in_overview = False
+            for line in text.splitlines():
+                stripped = line.strip()
+                if stripped == "## 概要":
+                    in_overview = True
+                    continue
+                if in_overview:
+                    if stripped.startswith("#"):
+                        break
+                    if stripped:
+                        description = stripped
+                        break
+
+        return SkillMeta(
+            name=name,
+            description=description,
+            path=path,
+            is_common=is_common,
+        )
+
+    def list_skill_metas(self) -> list["SkillMeta"]:
+        """Return SkillMeta for each personal skill."""
         return [
-            (f.stem, self._extract_skill_summary(f))
+            self._extract_skill_meta(f, is_common=False)
             for f in sorted(self.skills_dir.glob("*.md"))
         ]
 
-    def list_common_skill_summaries(self) -> list[tuple[str, str]]:
-        """Return (filename_stem, first_line_of_概要) for each common skill."""
+    def list_common_skill_metas(self) -> list["SkillMeta"]:
+        """Return SkillMeta for each common skill."""
         if not self.common_skills_dir.is_dir():
             return []
         return [
-            (f.stem, self._extract_skill_summary(f))
+            self._extract_skill_meta(f, is_common=True)
             for f in sorted(self.common_skills_dir.glob("*.md"))
         ]
+
+    def list_skill_summaries(self) -> list[tuple[str, str]]:
+        """Return (name, description) for each personal skill.
+
+        Compatibility wrapper around list_skill_metas().
+        """
+        return [(m.name, m.description) for m in self.list_skill_metas()]
+
+    def list_common_skill_summaries(self) -> list[tuple[str, str]]:
+        """Return (name, description) for each common skill.
+
+        Compatibility wrapper around list_common_skill_metas().
+        """
+        return [(m.name, m.description) for m in self.list_common_skill_metas()]
 
     # ── Cron log ──────────────────────────────────────────
 

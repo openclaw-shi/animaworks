@@ -294,6 +294,7 @@ class LiteLLMExecutor(BaseExecutor):
                         tool_registry=self._tool_registry,
                         personal_tools=self._personal_tools,
                         execution_mode="a2",
+                        message=prompt,
                     ),
                     max_chains=self._model_config.max_chains,
                     chain_count=chain_count,
