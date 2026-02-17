@@ -58,11 +58,11 @@ class DigitalAnima:
         self._heartbeat_stream_queue: asyncio.Queue | None = None
         self._heartbeat_context: str = ""
 
-        # Greet cache (5-minute cooldown)
+        # Greet cache (1-hour cooldown)
         self._last_greet_at: float | None = None
         self._last_greet_text: str | None = None
         self._last_greet_emotion: str = "neutral"
-        self._GREET_COOLDOWN = 300  # seconds
+        self._GREET_COOLDOWN = 3600  # seconds
 
         # Wire background task completion callback
         self._ws_broadcast: Callable[[dict], Any] | None = None

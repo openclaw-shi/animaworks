@@ -281,7 +281,7 @@ def create_chat_router() -> APIRouter:
     async def greet(name: str, request: Request):
         """Generate a greeting when user clicks the character.
 
-        Returns cached response if called within the 5-minute cooldown.
+        Returns cached response if called within the 1-hour cooldown.
         Non-streaming, returns a single JSON response.
         """
         supervisor = request.app.state.supervisor

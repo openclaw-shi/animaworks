@@ -8,7 +8,7 @@ import { initLogin, getCurrentUser, logout } from "./login.js";
 import { initAnima, loadAnimas, selectAnima, renderAnimaSelector, renderStatus } from "./anima.js";
 import { initMemory, loadMemoryTab } from "./memory.js";
 import { initSession, loadSessions } from "./session.js";
-import { escapeHtml, renderSimpleMarkdown } from "./utils.js";
+import { escapeHtml, renderSimpleMarkdown, smartTimestamp } from "./utils.js";
 import { initOffice, getDesks, highlightDesk, setCharacterClickHandler, getScene, registerClickTarget, setCharacterUpdateHook, getObstacles, getFloorDimensions } from "./office3d.js";
 import { initCharacters, createCharacter, removeCharacter, updateCharacterState, updateAllCharacters, getCharacterGroup, getCharacterHome, setAppearance } from "./character.js";
 import { initBustup, setCharacter, setExpression, setTalking, onClick as onBustupClick, setLive2dAppearance } from "./live2d.js";
@@ -310,20 +310,33 @@ function closeConversation() {
 // ── Greeting on Character Click ──────────────────────
 
 let _greetingInFlight = false;
+const _GREET_COOLDOWN_MS = 3600 * 1000; // 1 hour — matches server-side cooldown
+const _lastGreetTime = {}; // { animaName: timestamp_ms }
 
 async function triggerGreeting(animaName) {
   if (_greetingInFlight) return;
+
+  // Frontend cooldown: skip if greeted within the last hour
+  const lastTs = _lastGreetTime[animaName];
+  if (lastTs && Date.now() - lastTs < _GREET_COOLDOWN_MS) return;
+
   _greetingInFlight = true;
   try {
     const data = await greetAnima(animaName);
     if (!data.response) return;
 
+    // If server returned cached response, skip display
+    if (data.cached) return;
+
+    _lastGreetTime[animaName] = Date.now();
+    const now = new Date().toISOString();
+
     // Add visit marker + greeting message to chat
     const { chatMessages } = getState();
     const newMessages = [
       ...chatMessages,
-      { role: "system", text: "デスクを訪問しました" },
-      { role: "assistant", text: data.response },
+      { role: "system", text: "デスクを訪問しました", timestamp: now },
+      { role: "assistant", text: data.response, timestamp: now },
     ];
     setState({ chatMessages: newMessages });
     renderConvMessages();
@@ -343,11 +356,14 @@ async function triggerGreeting(animaName) {
 // ── Chat Rendering in Conversation Panel ──────────────────────
 
 function renderConvBubble(msg) {
+  const ts = msg.timestamp ? smartTimestamp(msg.timestamp) : "";
+  const tsHtml = ts ? `<span class="chat-ts">${escapeHtml(ts)}</span>` : "";
+
   if (msg.role === "system") {
-    return `<div class="chat-visit-marker">${escapeHtml(msg.text)}</div>`;
+    return `<div class="chat-visit-marker">${escapeHtml(msg.text)}${tsHtml}</div>`;
   }
   if (msg.role === "user") {
-    return `<div class="chat-bubble user">${escapeHtml(msg.text)}</div>`;
+    return `<div class="chat-bubble user">${escapeHtml(msg.text)}${tsHtml}</div>`;
   }
   const streamClass = msg.streaming ? " streaming" : "";
   let content = "";
@@ -359,7 +375,7 @@ function renderConvBubble(msg) {
   const toolHtml = msg.activeTool
     ? `<div class="tool-indicator"><span class="tool-spinner"></span>${escapeHtml(msg.activeTool)} を実行中...</div>`
     : "";
-  return `<div class="chat-bubble assistant${streamClass}">${content}${toolHtml}</div>`;
+  return `<div class="chat-bubble assistant${streamClass}">${content}${toolHtml}${tsHtml}</div>`;
 }
 
 function renderConvMessages() {
@@ -381,6 +397,7 @@ async function loadAndRenderConvMessages(animaName) {
       const messages = data.turns.map((t) => ({
         role: t.role === "human" ? "user" : t.role === "system" ? "system" : "assistant",
         text: t.content || "",
+        timestamp: t.timestamp || "",
       }));
       setState({ chatMessages: messages });
     } else {
@@ -409,8 +426,9 @@ async function sendConversationMessage() {
 
   // Add user message + streaming assistant placeholder
   const { chatMessages } = getState();
-  const userMsg = { role: "user", text };
-  const streamingMsg = { role: "assistant", text: "", streaming: true, activeTool: null };
+  const sendTs = new Date().toISOString();
+  const userMsg = { role: "user", text, timestamp: sendTs };
+  const streamingMsg = { role: "assistant", text: "", streaming: true, activeTool: null, timestamp: sendTs };
   setState({ chatMessages: [...chatMessages, userMsg, streamingMsg] });
   renderConvMessages();
 

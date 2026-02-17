@@ -109,6 +109,29 @@ export function timeStr(isoOrTs) {
 }
 
 /**
+ * Format a timestamp with smart granularity:
+ *  - Same day:      "HH:MM"
+ *  - Same year:     "MM/DD HH:MM"
+ *  - Previous year: "YYYY/MM/DD HH:MM"
+ */
+export function smartTimestamp(isoOrTs) {
+  if (!isoOrTs) return "";
+  const d = new Date(isoOrTs);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const time = d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return time;
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  if (d.getFullYear() === now.getFullYear()) return `${mm}/${dd} ${time}`;
+  return `${d.getFullYear()}/${mm}/${dd} ${time}`;
+}
+
+/**
  * Strip .md extension from filename for display.
  */
 export function stripMdExtension(filename) {

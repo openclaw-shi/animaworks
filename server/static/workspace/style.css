@@ -512,6 +512,26 @@ html, body {
   margin-left: 8px;
 }
 
+/* ── Chat Timestamp ────────────────────── */
+
+.chat-ts {
+  display: block;
+  font-size: 0.65rem;
+  color: #9ca3af;
+  margin-top: 4px;
+  text-align: right;
+}
+
+.chat-bubble.user .chat-ts {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.chat-visit-marker .chat-ts {
+  display: inline;
+  margin-top: 0;
+  margin-left: 6px;
+}
+
 /* ── Chat Bubbles ────────────────────── */
 
 .chat-bubble {
