@@ -32,8 +32,9 @@ def cmd_create_anima(args: argparse.Namespace) -> None:
 
     if args.from_md:
         md_path = Path(args.from_md).resolve()
+        role = getattr(args, "role", None)
         anima_dir = create_from_md(
-            animas_dir, md_path, name=args.name, supervisor=supervisor,
+            animas_dir, md_path, name=args.name, supervisor=supervisor, role=role,
         )
         _register_anima_in_config(data_dir, anima_dir.name)
         print(f"Created anima '{anima_dir.name}' from {md_path.name}")

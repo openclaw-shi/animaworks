@@ -358,14 +358,54 @@ def save_config(config: AnimaWorksConfig, path: Path | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _load_status_json(anima_dir: Path) -> dict[str, Any]:
+    """Load ModelConfig-relevant fields from anima's status.json.
+
+    Returns a dict with field names matching AnimaModelConfig fields.
+    Missing or invalid files return an empty dict.
+    """
+    status_path = anima_dir / "status.json"
+    if not status_path.is_file():
+        return {}
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        logger.debug("Failed to read status.json from %s", anima_dir)
+        return {}
+
+    # Map status.json fields to AnimaModelConfig field names
+    result: dict[str, Any] = {}
+    field_mapping = {
+        "model": "model",
+        "context_threshold": "context_threshold",
+        "max_turns": "max_turns",
+        "max_chains": "max_chains",
+        "conversation_history_threshold": "conversation_history_threshold",
+        "credential": "credential",
+        "execution_mode": "execution_mode",
+        "supervisor": "supervisor",
+    }
+    for status_key, config_key in field_mapping.items():
+        if status_key in data and data[status_key] not in (None, ""):
+            result[config_key] = data[status_key]
+    return result
+
+
 def resolve_anima_config(
     config: AnimaWorksConfig,
     anima_name: str,
+    anima_dir: Path | None = None,
 ) -> tuple[AnimaDefaults, CredentialConfig]:
-    """Merge per-anima overrides with *anima_defaults* and resolve the credential.
+    """Merge per-anima overrides with status.json and *anima_defaults*.
 
-    For each field in :class:`AnimaModelConfig`, the anima's value is used
-    when it is not ``None``; otherwise the corresponding default is used.
+    Resolution uses a 3-layer priority (strongest first):
+
+      1. ``config.json`` per-anima override (admin override)
+      2. ``status.json`` in *anima_dir* (role-template values)
+      3. ``config.json`` anima_defaults (global defaults)
+
+    When *anima_dir* is ``None``, layer 2 is skipped and the original
+    2-layer merge is used for backward compatibility.
 
     Returns:
         A ``(resolved_defaults, credential)`` tuple.
@@ -377,13 +417,19 @@ def resolve_anima_config(
     anima_entry = config.animas.get(anima_name, AnimaModelConfig())
     defaults = config.anima_defaults
 
-    # Build a dict with resolved values: anima override wins when not None.
+    # Layer 2: status.json values
+    status_values = _load_status_json(anima_dir) if anima_dir else {}
+
+    # Merge: config_override >> status_values >> defaults
     resolved: dict[str, Any] = {}
     for field_name in AnimaModelConfig.model_fields:
         anima_value = getattr(anima_entry, field_name)
-        resolved[field_name] = (
-            anima_value if anima_value is not None else getattr(defaults, field_name)
-        )
+        if anima_value is not None:
+            resolved[field_name] = anima_value
+        elif field_name in status_values and status_values[field_name] is not None:
+            resolved[field_name] = status_values[field_name]
+        else:
+            resolved[field_name] = getattr(defaults, field_name)
 
     resolved_defaults = AnimaDefaults.model_validate(resolved)
 
@@ -516,7 +562,7 @@ def load_model_config(anima_dir: Path) -> "ModelConfig":
 
     config = load_config(config_path)
     anima_name = anima_dir.name
-    resolved, credential = resolve_anima_config(config, anima_name)
+    resolved, credential = resolve_anima_config(config, anima_name, anima_dir=anima_dir)
 
     cred_name = resolved.credential
     api_key_env = f"{cred_name.upper()}_API_KEY"

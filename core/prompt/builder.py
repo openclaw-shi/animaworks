@@ -297,6 +297,11 @@ def build_system_prompt(
     if injection:
         parts.append(injection)
 
+    # Role-specific specialty prompt (injected between injection and permissions)
+    specialty = memory.read_specialty_prompt()
+    if specialty:
+        parts.append(specialty)
+
     permissions = memory.read_permissions()
     if permissions:
         parts.append(permissions)

@@ -326,6 +326,15 @@ ADMIN_TOOLS: list[dict[str, Any]] = [
                         "then to the calling person."
                     ),
                 },
+                "role": {
+                    "type": "string",
+                    "enum": ["engineer", "researcher", "manager", "writer", "ops", "general"],
+                    "description": (
+                        "Role template to apply. Determines specialty prompt, "
+                        "default model, and execution parameters. "
+                        "Default: general."
+                    ),
+                },
             },
             "required": [],
         },

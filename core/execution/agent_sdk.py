@@ -58,6 +58,7 @@ _PROTECTED_FILES = frozenset({
     "permissions.md",
     "identity.md",
     "bootstrap.md",
+    "specialty_prompt.md",
 })
 
 # Commands that can write files (checked for path traversal).

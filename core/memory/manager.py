@@ -132,6 +132,10 @@ class MemoryManager:
     def read_injection(self) -> str:
         return self._read(self.anima_dir / "injection.md")
 
+    def read_specialty_prompt(self) -> str:
+        """Read the role-specific specialty prompt."""
+        return self._read(self.anima_dir / "specialty_prompt.md")
+
     def read_permissions(self) -> str:
         return self._read(self.anima_dir / "permissions.md")
 
@@ -160,7 +164,7 @@ class MemoryManager:
         if config_path.exists():
             config = load_config(config_path)
             anima_name = self.anima_dir.name
-            resolved, credential = resolve_anima_config(config, anima_name)
+            resolved, credential = resolve_anima_config(config, anima_name, anima_dir=self.anima_dir)
             # Derive env var name from credential name (e.g. "anthropic" -> "ANTHROPIC_API_KEY")
             cred_name = resolved.credential
             api_key_env = f"{cred_name.upper()}_API_KEY"

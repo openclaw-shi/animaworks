@@ -77,6 +77,11 @@ def cli_main() -> None:
         "--supervisor", default=None,
         help="Supervisor anima name (overrides character sheet)",
     )
+    p_create.add_argument(
+        "--role", default=None,
+        choices=["engineer", "researcher", "manager", "writer", "ops", "general"],
+        help="Role template to apply (default: general)",
+    )
     p_create.set_defaults(func=_lazy_create_anima)
 
     # ── Start ─────────────────────────────────────────────

@@ -155,7 +155,7 @@ def create_animas_router() -> APIRouter:
         from core.config.models import load_config, resolve_anima_config
 
         config = load_config()
-        resolved, credential = resolve_anima_config(config, name)
+        resolved, credential = resolve_anima_config(config, name, anima_dir=anima_dir)
 
         return {
             "anima": name,

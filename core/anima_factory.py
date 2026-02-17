@@ -14,6 +14,7 @@ import logging
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 from core.paths import TEMPLATES_DIR
 
@@ -22,6 +23,8 @@ logger = logging.getLogger("animaworks.anima_factory")
 ANIMA_TEMPLATES_DIR = TEMPLATES_DIR / "anima_templates"
 BLANK_TEMPLATE_DIR = ANIMA_TEMPLATES_DIR / "_blank"
 BOOTSTRAP_TEMPLATE = TEMPLATES_DIR / "bootstrap.md"
+ROLES_DIR = TEMPLATES_DIR / "roles"
+VALID_ROLES = frozenset({"engineer", "researcher", "manager", "writer", "ops", "general"})
 
 # Subdirectories every anima needs at runtime
 _RUNTIME_SUBDIRS = [
@@ -132,6 +135,7 @@ def create_from_md(
     *,
     content: str | None = None,
     supervisor: str | None = None,
+    role: str | None = None,
 ) -> Path:
     """Create an anima from an MD character-sheet file or content string.
 
@@ -185,10 +189,14 @@ def create_from_md(
     try:
         (anima_dir / "character_sheet.md").write_text(md_content, encoding="utf-8")
         _apply_defaults_from_sheet(anima_dir, md_content)
+        # Apply role template defaults
+        resolved_role = role or "general"
+        _apply_role_defaults(anima_dir, resolved_role)
         _create_status_json(
             anima_dir,
             _parse_character_sheet_info(md_content),
             supervisor_override=supervisor,
+            role=resolved_role,
         )
     except Exception:
         logger.error(
@@ -330,18 +338,31 @@ def _create_status_json(
     info: dict[str, str],
     *,
     supervisor_override: str | None = None,
+    role: str = "general",
 ) -> None:
     """Create status.json in *anima_dir* from parsed character-sheet info.
 
     The JSON contains supervisor, role, execution mode, model, and credential
-    extracted from the ``基本情報`` table.
+    extracted from the ``基本情報`` table.  Role defaults from
+    ``templates/roles/<role>/defaults.json`` are merged in for model config
+    fields; character sheet values take priority.
 
     Args:
         anima_dir: Target anima directory.
         info: Dict returned by :func:`_parse_character_sheet_info`.
         supervisor_override: If given, takes priority over the value in
             *info* (the ``上司`` field from the character sheet).
+        role: Role name used to load defaults.json.
     """
+    # Load role defaults
+    role_defaults: dict[str, Any] = {}
+    defaults_path = ROLES_DIR / role / "defaults.json"
+    if defaults_path.is_file():
+        try:
+            role_defaults = json.loads(defaults_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.debug("Failed to load role defaults for %s", role)
+
     if supervisor_override:
         supervisor = supervisor_override
     else:
@@ -350,16 +371,30 @@ def _create_status_json(
 
     status = {
         "supervisor": supervisor,
-        "role": info.get("役割", "worker"),
+        "role": role,
         "execution_mode": info.get("実行モード", "autonomous"),
-        "model": info.get("モデル", ""),
-        "credential": info.get("credential", ""),
+        "enabled": True,
     }
+
+    # Merge role defaults (model config fields)
+    for key in ("model", "context_threshold", "max_turns", "max_chains",
+                "conversation_history_threshold"):
+        if key in role_defaults:
+            status[key] = role_defaults[key]
+
+    # Character sheet model/credential override role defaults if specified
+    sheet_model = info.get("モデル", "")
+    if sheet_model:
+        status["model"] = sheet_model
+    sheet_cred = info.get("credential", "")
+    if sheet_cred:
+        status["credential"] = sheet_cred
+
     (anima_dir / "status.json").write_text(
         json.dumps(status, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    logger.debug("Created status.json in %s", anima_dir)
+    logger.debug("Created status.json in %s (role=%s)", anima_dir, role)
 
 
 def _extract_section_content(md_content: str, heading: str) -> str | None:
@@ -427,6 +462,44 @@ def _apply_defaults_from_sheet(anima_dir: Path, md_content: str) -> None:
             permissions + "\n", encoding="utf-8"
         )
         logger.debug("Wrote permissions.md from character sheet for %s", anima_dir.name)
+
+
+def _apply_role_defaults(anima_dir: Path, role: str) -> None:
+    """Apply role template files to the anima directory.
+
+    Copies permissions.md and specialty_prompt.md from the role template,
+    and merges defaults.json values into status.json.
+
+    Args:
+        anima_dir: Target anima directory.
+        role: Role name (must be in VALID_ROLES).
+    """
+    if role not in VALID_ROLES:
+        logger.warning("Unknown role '%s', falling back to 'general'", role)
+        role = "general"
+
+    role_dir = ROLES_DIR / role
+    if not role_dir.exists():
+        logger.warning("Role template directory not found: %s", role_dir)
+        return
+
+    # Copy permissions.md (overwrite blank template)
+    perm_src = role_dir / "permissions.md"
+    if perm_src.exists():
+        perm_content = perm_src.read_text(encoding="utf-8")
+        # Replace {name} placeholder
+        if "{name}" in perm_content:
+            perm_content = perm_content.replace("{name}", anima_dir.name)
+        (anima_dir / "permissions.md").write_text(perm_content, encoding="utf-8")
+
+    # Copy specialty_prompt.md
+    spec_src = role_dir / "specialty_prompt.md"
+    if spec_src.exists():
+        (anima_dir / "specialty_prompt.md").write_text(
+            spec_src.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+
+    logger.debug("Applied role '%s' defaults to %s", role, anima_dir.name)
 
 
 # ── Runtime Helpers ──────────
