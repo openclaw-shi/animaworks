@@ -11,7 +11,7 @@
 /**
  * @typedef {Object} TimelineEvent
  * @property {string}  id         — unique ID (timestamp-based)
- * @property {string}  type       — "message" | "heartbeat" | "cron" | "chat" | "status"
+ * @property {string}  type       — "message" | "board" | "heartbeat" | "cron" | "chat" | "status"
  * @property {string[]} animas   — related Anima names
  * @property {string}  timestamp  — ISO 8601
  * @property {string}  summary    — display text
@@ -24,6 +24,7 @@ import { showMessage as showMessagePopup } from "./message-popup.js";
 
 const TYPE_ICONS = {
   message:   "\uD83D\uDCE9",  // 📩
+  board:     "\uD83D\uDCCB",  // 📋
   heartbeat: "\uD83D\uDC97",  // 💗
   cron:      "\u23F0",         // ⏰
   chat:      "\uD83D\uDCAC",  // 💬
@@ -132,6 +133,7 @@ function _buildDOM(officePanel) {
   const filterDefs = [
     { label: "All",  value: "all" },
     { label: "\uD83D\uDCE9", value: "message" },   // 📩
+    { label: "\uD83D\uDCCB", value: "board" },      // 📋
     { label: "\uD83D\uDC97", value: "heartbeat" },  // 💗
     { label: "\u23F0",        value: "cron" },       // ⏰
     { label: "\uD83D\uDCAC", value: "chat" },       // 💬
@@ -296,6 +298,15 @@ function _replayEvent(event, el) {
       break;
 
     case "chat":
+      if (_highlightDesk && animas.length >= 1) {
+        _highlightDesk(animas[0]);
+        setTimeout(() => {
+          if (_clearHighlight) _clearHighlight();
+        }, 3000);
+      }
+      break;
+
+    case "board":
       if (_highlightDesk && animas.length >= 1) {
         _highlightDesk(animas[0]);
         setTimeout(() => {

@@ -43,6 +43,7 @@ export function navigateTo(hash) {
 function registerRoutes() {
   routes["/"] = () => import("../pages/home.js");
   routes["/chat"] = () => import("../pages/chat.js");
+  routes["/board"] = () => import("../pages/board.js");
   routes["/setup"] = () => import("../pages/setup.js");
   routes["/users"] = () => import("../pages/users.js");
   routes["/animas"] = () => import("../pages/animas.js");

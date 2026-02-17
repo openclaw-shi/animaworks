@@ -54,9 +54,11 @@ function cacheDom() {
   dom.rightTabs = document.getElementById("wsRightTabs");
   dom.tabState = document.getElementById("wsTabState");
   dom.tabActivity = document.getElementById("wsTabActivity");
+  dom.tabBoard = document.getElementById("wsTabBoard");
   dom.tabHistory = document.getElementById("wsTabHistory");
   dom.paneState = document.getElementById("wsPaneState");
   dom.paneActivity = document.getElementById("wsPaneActivity");
+  dom.paneBoard = document.getElementById("wsPaneBoard");
   dom.paneHistory = document.getElementById("wsPaneHistory");
   dom.memoryPanel = document.getElementById("wsMemoryPanel");
   dom.logoutBtn = document.getElementById("wsLogoutBtn");
@@ -124,16 +126,19 @@ function addActivity(type, animaName, summary) {
 function activateRightTab(tab) {
   setState({ activeRightTab: tab });
 
-  [dom.tabState, dom.tabActivity, dom.tabHistory].forEach((btn) => {
+  [dom.tabState, dom.tabActivity, dom.tabBoard, dom.tabHistory].forEach((btn) => {
     btn?.classList.toggle("active", btn.dataset.tab === tab);
   });
 
-  [dom.paneState, dom.paneActivity, dom.paneHistory].forEach((pane) => {
+  [dom.paneState, dom.paneActivity, dom.paneBoard, dom.paneHistory].forEach((pane) => {
     if (pane) pane.style.display = pane.dataset.pane === tab ? "" : "none";
   });
 
   if (tab === "history") {
     loadSessions();
+  }
+  if (tab === "board") {
+    initBoardTab();
   }
 }
 
@@ -555,6 +560,196 @@ function updateStreamingBubble(msg) {
   dom.convMessages.scrollTop = dom.convMessages.scrollHeight;
 }
 
+// ── Board Tab ──────────────────────
+
+let _boardInitialized = false;
+let _boardChannels = [];
+let _boardDMs = [];
+let _boardSelectedChannel = null;
+let _boardSelectedType = null; // "channel" | "dm"
+
+async function initBoardTab() {
+  if (!dom.paneBoard) return;
+
+  if (!_boardInitialized) {
+    _boardInitialized = true;
+    dom.paneBoard.innerHTML = `
+      <div class="ws-board-tab">
+        <div class="ws-board-dropdown">
+          <select class="ws-board-select" id="wsBoardSelect">
+            <option value="">読み込み中...</option>
+          </select>
+        </div>
+        <div class="ws-board-messages" id="wsBoardMessages">
+          <div class="loading-placeholder">チャンネルを選択してください</div>
+        </div>
+        <div class="ws-board-input" id="wsBoardInputArea">
+          <textarea class="ws-board-input-field" id="wsBoardInput" placeholder="メッセージを入力..." rows="1"></textarea>
+          <button class="ws-board-send-btn" id="wsBoardSend">送信</button>
+        </div>
+      </div>`;
+
+    const select = document.getElementById("wsBoardSelect");
+    const sendBtn = document.getElementById("wsBoardSend");
+    const input = document.getElementById("wsBoardInput");
+
+    select?.addEventListener("change", () => {
+      const val = select.value;
+      if (!val) return;
+      const [type, name] = val.split(":", 2);
+      _boardSelectedType = type;
+      _boardSelectedChannel = name;
+      loadBoardMessages();
+    });
+
+    sendBtn?.addEventListener("click", sendBoardMessage);
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        sendBoardMessage();
+      }
+    });
+  }
+
+  await loadBoardChannelList();
+}
+
+async function loadBoardChannelList() {
+  const select = document.getElementById("wsBoardSelect");
+  if (!select) return;
+
+  try {
+    const [chRes, dmRes] = await Promise.all([
+      fetch("/api/channels"),
+      fetch("/api/dm"),
+    ]);
+
+    _boardChannels = chRes.ok ? await chRes.json() : [];
+    _boardDMs = dmRes.ok ? await dmRes.json() : [];
+
+    let html = '<option value="">-- チャンネルを選択 --</option>';
+
+    if (_boardChannels.length > 0) {
+      html += '<optgroup label="Channels">';
+      for (const ch of _boardChannels) {
+        const count = ch.message_count || 0;
+        html += `<option value="channel:${escapeHtml(ch.name)}">#${escapeHtml(ch.name)} (${count})</option>`;
+      }
+      html += "</optgroup>";
+    }
+
+    if (_boardDMs.length > 0) {
+      html += '<optgroup label="DM">';
+      for (const dm of _boardDMs) {
+        const pair = dm.pair || dm.participants?.join(" & ") || "?";
+        const count = dm.message_count || 0;
+        html += `<option value="dm:${escapeHtml(pair)}">${escapeHtml(pair)} (${count})</option>`;
+      }
+      html += "</optgroup>";
+    }
+
+    if (_boardChannels.length === 0 && _boardDMs.length === 0) {
+      html = '<option value="">チャンネルがありません</option>';
+    }
+
+    select.innerHTML = html;
+
+    // Restore selection if previously selected
+    if (_boardSelectedChannel && _boardSelectedType) {
+      select.value = `${_boardSelectedType}:${_boardSelectedChannel}`;
+    }
+  } catch (err) {
+    logger.error("Failed to load board channels", { error: err.message });
+    select.innerHTML = '<option value="">読み込み失敗</option>';
+  }
+}
+
+async function loadBoardMessages() {
+  const messagesEl = document.getElementById("wsBoardMessages");
+  if (!messagesEl || !_boardSelectedChannel) return;
+
+  messagesEl.innerHTML = '<div class="loading-placeholder">読み込み中...</div>';
+
+  try {
+    let url;
+    if (_boardSelectedType === "channel") {
+      url = `/api/channels/${encodeURIComponent(_boardSelectedChannel)}?limit=50&offset=0`;
+    } else {
+      url = `/api/dm/${encodeURIComponent(_boardSelectedChannel)}?limit=50`;
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      messagesEl.innerHTML = '<div class="loading-placeholder">読み込み失敗</div>';
+      return;
+    }
+
+    const data = await res.json();
+    const messages = data.messages || [];
+
+    if (messages.length === 0) {
+      messagesEl.innerHTML = '<div class="loading-placeholder">メッセージはまだありません</div>';
+      return;
+    }
+
+    messagesEl.innerHTML = messages.map(renderBoardMessage).join("");
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  } catch (err) {
+    logger.error("Failed to load board messages", { error: err.message });
+    messagesEl.innerHTML = '<div class="loading-placeholder">読み込み失敗</div>';
+  }
+}
+
+function renderBoardMessage(msg) {
+  const ts = msg.ts ? smartTimestamp(msg.ts) : "";
+  const from = escapeHtml(msg.from || "?");
+  const text = escapeHtml(msg.text || "");
+  const humanBadge = msg.source === "human" ? ' <span class="ws-board-human-badge">[human]</span>' : "";
+  return `<div class="ws-board-msg">
+    <span class="ws-board-msg-time">${escapeHtml(ts)}</span>
+    <span class="ws-board-msg-from">[${from}]${humanBadge}</span>
+    <span class="ws-board-msg-text">${text}</span>
+  </div>`;
+}
+
+function appendBoardMessage(msg) {
+  const messagesEl = document.getElementById("wsBoardMessages");
+  if (!messagesEl) return;
+
+  // Remove placeholder if present
+  const placeholder = messagesEl.querySelector(".loading-placeholder");
+  if (placeholder) placeholder.remove();
+
+  const div = document.createElement("div");
+  div.innerHTML = renderBoardMessage(msg);
+  const el = div.firstElementChild;
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+async function sendBoardMessage() {
+  const input = document.getElementById("wsBoardInput");
+  const text = input?.value?.trim();
+  if (!text || !_boardSelectedChannel || _boardSelectedType !== "channel") return;
+
+  const userName = getCurrentUser() || "guest";
+  input.value = "";
+
+  try {
+    const res = await fetch(`/api/channels/${encodeURIComponent(_boardSelectedChannel)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, from_name: userName }),
+    });
+    if (!res.ok) {
+      logger.error("Failed to send board message", { status: res.status });
+    }
+    // The message will appear via WebSocket board.post event
+  } catch (err) {
+    logger.error("Failed to send board message", { error: err.message });
+  }
+}
+
 // ── System Status ──────────────────────
 
 async function loadSystemStatus() {
@@ -660,6 +855,41 @@ function setupWebSocket() {
       animas: [data.name],
       timestamp: new Date().toISOString(),
       summary: data.summary || `cron: ${data.job || ""}`,
+    });
+  }));
+
+  // ── board.post — shared channel message ──
+  wsUnsubscribers.push(onEvent("board.post", (data) => {
+    const from = data.from || "?";
+    const channel = data.channel || "?";
+    const text = data.text || "";
+
+    // Update Board tab if matching channel is selected
+    if (_boardSelectedType === "channel" && _boardSelectedChannel === channel) {
+      appendBoardMessage({
+        ts: data.ts || new Date().toISOString(),
+        from,
+        text,
+        source: data.source || "",
+      });
+    }
+
+    // Add to activity feed
+    addActivity("chat", from, `[#${channel}] ${text}`);
+
+    // Add to timeline
+    addTimelineEvent({
+      id: Date.now().toString(),
+      type: "board",
+      animas: [from],
+      timestamp: data.ts || new Date().toISOString(),
+      summary: `#${channel}: ${from} — ${text}`,
+      metadata: {
+        channel,
+        from,
+        text,
+        source: data.source || "",
+      },
     });
   }));
 
@@ -928,7 +1158,7 @@ async function startDashboard() {
   initSession(dom.paneHistory);
 
   // Bind right-panel tabs
-  [dom.tabState, dom.tabActivity, dom.tabHistory].forEach((btn) => {
+  [dom.tabState, dom.tabActivity, dom.tabBoard, dom.tabHistory].forEach((btn) => {
     btn?.addEventListener("click", () => activateRightTab(btn.dataset.tab));
   });
 

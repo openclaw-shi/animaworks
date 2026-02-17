@@ -6,6 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from server.routes.assets import create_assets_router
+from server.routes.channels import create_channels_router
 from server.routes.chat import create_chat_router
 from server.routes.config_routes import create_config_router
 from server.routes.internal import create_internal_router
@@ -23,6 +24,7 @@ def create_router() -> APIRouter:
     api = APIRouter(prefix="/api")
 
     api.include_router(create_animas_router())
+    api.include_router(create_channels_router())
     api.include_router(create_chat_router())
     api.include_router(create_memory_router())
     api.include_router(create_sessions_router())

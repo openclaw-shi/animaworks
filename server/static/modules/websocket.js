@@ -266,6 +266,19 @@ function handleWsMessage(raw) {
       break;
     }
 
+    case "board.post": {
+      // Delegate to board page handler if registered
+      if (typeof window.__boardWsHandler === "function") {
+        window.__boardWsHandler(data);
+      }
+      const boardFrom = data.from || "unknown";
+      const boardChannel = data.channel || "";
+      if (boardChannel) {
+        addActivity("message", boardFrom, `#${boardChannel}: ${(data.text || "").slice(0, 80)}`);
+      }
+      break;
+    }
+
     case "ping":
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "pong" }));
