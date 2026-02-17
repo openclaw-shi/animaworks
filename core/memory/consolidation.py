@@ -141,6 +141,11 @@ class ConsolidationEngine:
     def _collect_recent_episodes(self, hours: int = 24) -> list[dict[str, str]]:
         """Collect episode entries from the past N hours.
 
+        Supports both standard (YYYY-MM-DD.md) and suffixed
+        (YYYY-MM-DD_xxx.md) episode filenames.  Files without
+        ``## HH:MM — Title`` headers are treated as single entries
+        using the file's mtime for timestamp.
+
         Args:
             hours: Number of hours to look back
 
@@ -153,46 +158,68 @@ class ConsolidationEngine:
         # Check today and yesterday's episode files
         for day_offset in range(2):
             target_date = datetime.now().date() - timedelta(days=day_offset)
-            episode_file = self.episodes_dir / f"{target_date}.md"
+            episode_files = sorted(self.episodes_dir.glob(f"{target_date}*.md"))
 
-            if not episode_file.exists():
-                continue
+            for episode_file in episode_files:
+                content = episode_file.read_text(encoding="utf-8")
 
-            content = episode_file.read_text(encoding="utf-8")
+                # Parse episode entries (format: ## HH:MM — Title)
+                found_entries = list(re.finditer(
+                    r"^## (\d{2}:\d{2})\s*—\s*(.+?)(?=^##|\Z)",
+                    content,
+                    re.MULTILINE | re.DOTALL,
+                ))
 
-            # Parse episode entries (format: ## HH:MM — Title)
-            for match in re.finditer(
-                r"^## (\d{2}:\d{2})\s*—\s*(.+?)(?=^##|\Z)",
-                content,
-                re.MULTILINE | re.DOTALL
-            ):
-                time_str = match.group(1)
-                entry_content = match.group(2).strip()
+                if found_entries:
+                    for match in found_entries:
+                        time_str = match.group(1)
+                        entry_content = match.group(2).strip()
 
-                # Parse timestamp
-                try:
-                    entry_dt = datetime.strptime(
-                        f"{target_date} {time_str}",
-                        "%Y-%m-%d %H:%M"
+                        # Parse timestamp
+                        try:
+                            entry_dt = datetime.strptime(
+                                f"{target_date} {time_str}",
+                                "%Y-%m-%d %H:%M",
+                            )
+
+                            # Only include if within time window
+                            if entry_dt >= cutoff:
+                                entries.append({
+                                    "date": str(target_date),
+                                    "time": time_str,
+                                    "content": entry_content,
+                                })
+                        except ValueError:
+                            logger.warning(
+                                "Failed to parse episode timestamp: %s %s",
+                                target_date, time_str,
+                            )
+                else:
+                    # Fallback: treat entire file as a single entry using mtime
+                    file_mtime = datetime.fromtimestamp(
+                        episode_file.stat().st_mtime,
                     )
-
-                    # Only include if within time window
-                    if entry_dt >= cutoff:
+                    if file_mtime >= cutoff:
                         entries.append({
                             "date": str(target_date),
-                            "time": time_str,
-                            "content": entry_content,
+                            "time": file_mtime.strftime("%H:%M"),
+                            "content": content.strip(),
                         })
-                except ValueError:
-                    logger.warning(
-                        "Failed to parse episode timestamp: %s %s",
-                        target_date, time_str
-                    )
+
+        # Deduplicate by content prefix (first 200 chars)
+        seen: set[str] = set()
+        unique_entries: list[dict[str, str]] = []
+        for entry in entries:
+            dedup_key = entry["content"][:200].strip()
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                unique_entries.append(entry)
+        entries = unique_entries
 
         # Sort by datetime (newest first)
         entries.sort(
             key=lambda e: datetime.strptime(f"{e['date']} {e['time']}", "%Y-%m-%d %H:%M"),
-            reverse=True
+            reverse=True,
         )
 
         return entries

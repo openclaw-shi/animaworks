@@ -10,6 +10,7 @@ from __future__ import annotations
 """Tests for memory consolidation engine."""
 
 import asyncio
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -427,6 +428,191 @@ chatwork-guidelines.md
 
         assert result["skipped"] is False
         assert result["episodes_compressed"] == 1
+
+
+class TestEpisodeCollectionGlobAndFallback:
+    """Test glob-based episode file discovery, mtime fallback, and deduplication."""
+
+    def test_collect_suffixed_episode_files(self, consolidation_engine):
+        """Suffixed files with ## HH:MM headers are discovered and parsed."""
+        today = datetime.now().date()
+        episode_file = (
+            consolidation_engine.episodes_dir / f"{today}_heartbeat_check.md"
+        )
+        episode_file.write_text(
+            "# Heartbeat Check\n\n"
+            "## 11:00 — サーバー監視\n\n"
+            "**要点**: CPU使用率は正常\n\n"
+            "## 11:30 — メモリチェック\n\n"
+            "**要点**: メモリ使用量は50%以下\n",
+            encoding="utf-8",
+        )
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 2
+        times = {e["time"] for e in entries}
+        assert "11:00" in times
+        assert "11:30" in times
+        assert entries[0]["time"] == "11:30"  # newest first
+        assert entries[1]["time"] == "11:00"
+
+    def test_collect_suffixed_only_no_standard(self, consolidation_engine):
+        """Collection works when only suffixed files exist (no YYYY-MM-DD.md)."""
+        today = datetime.now().date()
+        # No standard file — only suffixed
+        suffixed = consolidation_engine.episodes_dir / f"{today}_cron_run.md"
+        suffixed.write_text(
+            "## 08:00 — Cronバッチ処理\n\n"
+            "**要点**: 全ジョブ成功\n",
+            encoding="utf-8",
+        )
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 1
+        assert entries[0]["time"] == "08:00"
+        assert "Cronバッチ処理" in entries[0]["content"]
+
+    def test_collect_mixed_standard_and_suffixed(self, consolidation_engine):
+        """Both standard and suffixed files are collected together."""
+        today = datetime.now().date()
+
+        # Standard file
+        standard = consolidation_engine.episodes_dir / f"{today}.md"
+        standard.write_text(
+            "## 09:00 — 朝会\n\n"
+            "**要点**: 進捗共有\n",
+            encoding="utf-8",
+        )
+
+        # Suffixed file
+        suffixed = consolidation_engine.episodes_dir / f"{today}_heartbeat.md"
+        suffixed.write_text(
+            "## 12:00 — 定期巡回\n\n"
+            "**要点**: 異常なし\n",
+            encoding="utf-8",
+        )
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 2
+        times = {e["time"] for e in entries}
+        assert "09:00" in times
+        assert "12:00" in times
+
+    def test_fallback_no_time_headers(self, consolidation_engine):
+        """Files without ## HH:MM headers use mtime; entire content is one entry."""
+        today = datetime.now().date()
+        episode_file = (
+            consolidation_engine.episodes_dir / f"{today}_raw_notes.md"
+        )
+        raw_content = "手動メモ: 今日は特に問題なし。全システム正常稼働中。"
+        episode_file.write_text(raw_content, encoding="utf-8")
+
+        # Set mtime to a recent time (within the cutoff window)
+        recent_ts = (datetime.now() - timedelta(hours=1)).timestamp()
+        os.utime(episode_file, (recent_ts, recent_ts))
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 1
+        assert entries[0]["content"] == raw_content
+        assert entries[0]["date"] == str(today)
+        # The time should come from the file mtime
+        expected_time = datetime.fromtimestamp(recent_ts).strftime("%H:%M")
+        assert entries[0]["time"] == expected_time
+
+    def test_fallback_mtime_respects_cutoff(self, consolidation_engine):
+        """Files whose mtime falls outside the cutoff window are excluded."""
+        today = datetime.now().date()
+        episode_file = (
+            consolidation_engine.episodes_dir / f"{today}_old_notes.md"
+        )
+        episode_file.write_text(
+            "古いメモ: これは昨日の内容",
+            encoding="utf-8",
+        )
+
+        # Set mtime to 48 hours ago — outside the default 24h window
+        old_ts = (datetime.now() - timedelta(hours=48)).timestamp()
+        os.utime(episode_file, (old_ts, old_ts))
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 0
+
+    def test_dedup_identical_content(self, consolidation_engine):
+        """Duplicate entries (same first 200 chars) are deduplicated to one."""
+        today = datetime.now().date()
+        shared_body = "重複テスト内容: " + "A" * 200
+
+        # Standard file
+        standard = consolidation_engine.episodes_dir / f"{today}.md"
+        standard.write_text(
+            f"## 10:00 — イベントA\n\n{shared_body}\n",
+            encoding="utf-8",
+        )
+
+        # Suffixed file with identical entry body
+        suffixed = consolidation_engine.episodes_dir / f"{today}_copy.md"
+        suffixed.write_text(
+            f"## 10:00 — イベントA\n\n{shared_body}\n",
+            encoding="utf-8",
+        )
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        # Only one entry should survive deduplication
+        assert len(entries) == 1
+
+    def test_dedup_different_content(self, consolidation_engine):
+        """Entries with different content (first 200 chars) are both kept."""
+        today = datetime.now().date()
+
+        # Standard file
+        standard = consolidation_engine.episodes_dir / f"{today}.md"
+        standard.write_text(
+            "## 10:00 — イベントA\n\n"
+            "内容A: これはイベントAの詳細です。\n",
+            encoding="utf-8",
+        )
+
+        # Suffixed file with different body
+        suffixed = consolidation_engine.episodes_dir / f"{today}_other.md"
+        suffixed.write_text(
+            "## 10:30 — イベントB\n\n"
+            "内容B: これはイベントBの詳細です。\n",
+            encoding="utf-8",
+        )
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 2
+        contents = {e["content"] for e in entries}
+        assert any("イベントA" in c for c in contents)
+        assert any("イベントB" in c for c in contents)
+
+    def test_collect_multiple_suffixed_files(self, consolidation_engine):
+        """Multiple suffixed files for the same date are all collected."""
+        today = datetime.now().date()
+
+        files_data = [
+            (f"{today}_heartbeat.md", "## 08:00 — ハートビート1\n\nチェック完了\n"),
+            (f"{today}_cron.md", "## 09:00 — Cronジョブ\n\nバッチ成功\n"),
+            (f"{today}_alert.md", "## 10:00 — アラート対応\n\nアラート解消\n"),
+        ]
+
+        for filename, content in files_data:
+            (consolidation_engine.episodes_dir / filename).write_text(
+                content, encoding="utf-8"
+            )
+
+        entries = consolidation_engine._collect_recent_episodes(hours=24)
+
+        assert len(entries) == 3
+        times = sorted(e["time"] for e in entries)
+        assert times == ["08:00", "09:00", "10:00"]
 
 
 if __name__ == "__main__":
