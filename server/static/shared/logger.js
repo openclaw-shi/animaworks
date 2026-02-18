@@ -10,6 +10,17 @@ const FLUSH_INTERVAL = 5000;
 const MAX_BUFFER_SIZE = 100;
 const SERVER_ENDPOINT = '/api/system/frontend-logs';
 
+// URL parameter override: ?log=debug (persists to localStorage)
+try {
+  const _urlLog = new URLSearchParams(location.search).get('log');
+  if (_urlLog) {
+    const _lvl = _urlLog.toUpperCase();
+    if (_lvl in LOG_LEVELS) {
+      localStorage.setItem('animaworks_log_level', _lvl);
+    }
+  }
+} catch { /* ignore */ }
+
 let _buffer = [];
 let _flushTimer = null;
 let _sessionId = null;
