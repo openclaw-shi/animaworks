@@ -89,7 +89,7 @@ class AnimaRunner:
 
         # Rate-limit state for inbox watcher
         self._pending_trigger: bool = False
-        self._deferred_inbox: bool = False
+        self._deferred_timer: asyncio.Handle | None = None
         self._last_msg_heartbeat_end: float = 0.0
         self._pair_heartbeat_times: dict[tuple[str, str], list[float]] = {}
 
@@ -916,11 +916,51 @@ class AnimaRunner:
             self._pair_heartbeat_times.setdefault(key, []).append(now)
 
     async def _on_anima_lock_released(self) -> None:
-        """Check deferred inbox after the anima's lock is released."""
-        if not self._deferred_inbox:
-            return
-        self._deferred_inbox = False
+        """Check deferred inbox after the anima's lock is released.
 
+        If unread messages exist, schedule a deferred trigger to ensure
+        they are processed even when cooldown is still active.
+        """
+        if not self.anima:
+            return
+        if not self.anima.messenger.has_unread():
+            return
+        if self._pending_trigger:
+            return
+        # Instead of giving up when in cooldown, schedule deferred trigger
+        self._schedule_deferred_trigger()
+
+    def _schedule_deferred_trigger(self) -> None:
+        """Schedule a deferred heartbeat trigger after cooldown expires.
+
+        Only one timer is maintained.  If a timer is already pending,
+        the call is a no-op (the existing timer will fire and re-check
+        the inbox).
+        """
+        if self._deferred_timer is not None:
+            return  # already scheduled
+        remaining = _MSG_HEARTBEAT_COOLDOWN_S - (
+            time.monotonic() - self._last_msg_heartbeat_end
+        )
+        # If not in cooldown (e.g. lock-only), use a short retry delay
+        delay = max(remaining, 2.0)
+        loop = asyncio.get_running_loop()
+        self._deferred_timer = loop.call_later(
+            delay,
+            lambda: asyncio.create_task(self._try_deferred_trigger()),
+        )
+        logger.debug(
+            "Deferred trigger scheduled for %s in %.1fs",
+            self.anima_name, delay,
+        )
+
+    async def _try_deferred_trigger(self) -> None:
+        """Attempt to trigger a deferred heartbeat.
+
+        Re-schedules itself if the anima is still blocked by cooldown
+        or lock, ensuring messages are never forgotten.
+        """
+        self._deferred_timer = None
         if not self.anima:
             return
         if not self.anima.messenger.has_unread():
@@ -928,8 +968,11 @@ class AnimaRunner:
         if self._pending_trigger:
             return
         if self._is_in_cooldown():
+            self._schedule_deferred_trigger()
             return
-
+        if self.anima._lock.locked():
+            self._schedule_deferred_trigger()
+            return
         self._pending_trigger = True
         asyncio.create_task(self._message_triggered_heartbeat())
 
@@ -1108,10 +1151,11 @@ class AnimaRunner:
                     await asyncio.sleep(2.0)
                     continue
                 if self._is_in_cooldown():
+                    self._schedule_deferred_trigger()
                     await asyncio.sleep(2.0)
                     continue
                 if self.anima._lock.locked():
-                    self._deferred_inbox = True
+                    self._schedule_deferred_trigger()
                     await asyncio.sleep(2.0)
                     continue
 
@@ -1131,6 +1175,11 @@ class AnimaRunner:
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
+        # Cancel deferred trigger timer
+        if self._deferred_timer is not None:
+            self._deferred_timer.cancel()
+            self._deferred_timer = None
+
         # Stop inbox watcher
         if self.inbox_watcher_task:
             self.inbox_watcher_task.cancel()

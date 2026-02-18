@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
@@ -24,6 +25,13 @@ def _validate_name(name: str, kind: str = "name") -> None:
     """Validate a channel or peer name to prevent path traversal."""
     if not _SAFE_NAME_RE.match(name):
         raise ValueError(f"Invalid {kind}: {name!r}")
+
+
+@dataclass
+class InboxItem:
+    """Message paired with its file path for selective archiving."""
+    msg: Message
+    path: Path
 
 
 class Messenger:
@@ -210,6 +218,37 @@ class Messenger:
             except Exception as e:
                 logger.error("Failed to parse message %s: %s", f, e)
         return messages
+
+    def receive_with_paths(self) -> list[InboxItem]:
+        """Read all unread messages, returning Message + file path pairs.
+
+        Unlike receive(), the caller is responsible for archiving
+        via archive_paths() after processing.  Messages that arrive
+        while the caller is working will remain in the inbox.
+        """
+        items: list[InboxItem] = []
+        for f in sorted(self.inbox_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                items.append(InboxItem(msg=Message(**data), path=f))
+            except Exception:
+                logger.warning("Failed to read inbox file: %s", f, exc_info=True)
+        return items
+
+    def archive_paths(self, items: list[InboxItem]) -> int:
+        """Archive only the specified inbox items to processed/.
+
+        Files that no longer exist (e.g. already archived) are silently
+        skipped.
+        """
+        processed_dir = self.inbox_dir / "processed"
+        processed_dir.mkdir(exist_ok=True)
+        count = 0
+        for item in items:
+            if item.path.exists():
+                item.path.rename(processed_dir / item.path.name)
+                count += 1
+        return count
 
     def receive_and_archive(self) -> list[Message]:
         messages = self.receive()

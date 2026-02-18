@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from core.messenger import Messenger
+from core.messenger import InboxItem, Messenger
 from core.schemas import Message
 
 
@@ -319,3 +319,128 @@ class TestSendNoDmLog:
         await messenger.send_async("bob", "async msg")
         log_dir = shared_dir / "dm_logs"
         assert not log_dir.exists()
+
+
+# ── receive_with_paths ───────────────────────────────────
+
+
+class TestReceiveWithPaths:
+    def test_empty_inbox_returns_empty_list(self, messenger):
+        items = messenger.receive_with_paths()
+        assert items == []
+
+    def test_returns_inbox_items_with_paths(self, shared_dir, messenger):
+        bob = Messenger(shared_dir, "bob")
+        bob.send("alice", "Hello from bob 1")
+        bob.send("alice", "Hello from bob 2")
+
+        items = messenger.receive_with_paths()
+
+        assert len(items) == 2
+        for item in items:
+            assert isinstance(item, InboxItem)
+            assert isinstance(item.msg, Message)
+            assert isinstance(item.path, Path)
+            assert item.path.exists()
+            assert item.msg.from_person == "bob"
+
+    def test_items_sorted_by_filename(self, shared_dir, messenger):
+        inbox = shared_dir / "inbox" / "alice"
+        for i, content in enumerate(["first", "second", "third"]):
+            msg = Message(from_person="bob", to_person="alice", content=content)
+            (inbox / f"msg_{i:03d}.json").write_text(
+                msg.model_dump_json(indent=2), encoding="utf-8",
+            )
+
+        items = messenger.receive_with_paths()
+
+        assert len(items) == 3
+        assert items[0].msg.content == "first"
+        assert items[1].msg.content == "second"
+        assert items[2].msg.content == "third"
+
+    def test_skips_malformed_json(self, shared_dir, messenger):
+        inbox = shared_dir / "inbox" / "alice"
+        (inbox / "bad.json").write_text("not valid json", encoding="utf-8")
+
+        items = messenger.receive_with_paths()
+
+        assert items == []
+
+    def test_does_not_archive_messages(self, shared_dir, messenger):
+        bob = Messenger(shared_dir, "bob")
+        bob.send("alice", "persistent message")
+
+        messenger.receive_with_paths()
+
+        assert messenger.has_unread() is True
+
+
+# ── archive_paths ────────────────────────────────────────
+
+
+class TestArchivePaths:
+    def test_archives_specified_items_only(self, shared_dir, messenger):
+        bob = Messenger(shared_dir, "bob")
+        bob.send("alice", "msg1")
+        bob.send("alice", "msg2")
+        bob.send("alice", "msg3")
+
+        items = messenger.receive_with_paths()
+        assert len(items) == 3
+
+        count = messenger.archive_paths(items[0:2])
+
+        assert count == 2
+        # Third message should still be in inbox
+        remaining = messenger.receive_with_paths()
+        assert len(remaining) == 1
+        assert remaining[0].msg.content == items[2].msg.content
+        # First two should be in processed/
+        processed = shared_dir / "inbox" / "alice" / "processed"
+        assert len(list(processed.glob("*.json"))) == 2
+
+    def test_archives_nothing_when_empty(self, messenger):
+        count = messenger.archive_paths([])
+        assert count == 0
+
+    def test_skips_already_archived(self, shared_dir, messenger):
+        bob = Messenger(shared_dir, "bob")
+        bob.send("alice", "will be moved manually")
+
+        items = messenger.receive_with_paths()
+        assert len(items) == 1
+
+        # Manually move the file to processed/ before calling archive_paths
+        processed = shared_dir / "inbox" / "alice" / "processed"
+        processed.mkdir(exist_ok=True)
+        items[0].path.rename(processed / items[0].path.name)
+
+        count = messenger.archive_paths(items)
+        assert count == 0
+
+    def test_new_messages_survive_archive(self, shared_dir, messenger):
+        bob = Messenger(shared_dir, "bob")
+        bob.send("alice", "msg1")
+        bob.send("alice", "msg2")
+
+        items = messenger.receive_with_paths()
+        assert len(items) == 2
+
+        # Send a 3rd message AFTER receive_with_paths()
+        bob.send("alice", "msg3")
+
+        messenger.archive_paths(items)
+
+        # The 3rd message should still be in inbox
+        assert messenger.unread_count() == 1
+
+    def test_creates_processed_dir(self, shared_dir, messenger):
+        bob = Messenger(shared_dir, "bob")
+        bob.send("alice", "trigger processed dir creation")
+
+        items = messenger.receive_with_paths()
+        messenger.archive_paths(items)
+
+        processed = shared_dir / "inbox" / "alice" / "processed"
+        assert processed.is_dir()

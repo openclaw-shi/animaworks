@@ -361,22 +361,161 @@ class TestMessageTriggeredHeartbeat:
 
 
 class TestOnAnimaLockReleased:
-    async def test_triggers_heartbeat_when_deferred(self):
+    async def test_schedules_deferred_when_unread(self):
         lm = LifecycleManager()
         dp = MagicMock()
         dp.name = "alice"
         dp.messenger.has_unread.return_value = True
         lm.animas["alice"] = dp
-        lm._deferred_inbox.add("alice")
 
-        with patch.object(lm, "_message_triggered_heartbeat", new_callable=AsyncMock):
+        with patch.object(lm, "_schedule_deferred_trigger") as mock_sched:
             await lm._on_anima_lock_released("alice")
-            assert "alice" not in lm._deferred_inbox
+            mock_sched.assert_called_once_with("alice")
 
-    async def test_no_action_when_not_deferred(self):
+    async def test_no_action_when_no_unread(self):
         lm = LifecycleManager()
-        # alice not in _deferred_inbox
-        await lm._on_anima_lock_released("alice")
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = False
+        lm.animas["alice"] = dp
+
+        with patch.object(lm, "_schedule_deferred_trigger") as mock_sched:
+            await lm._on_anima_lock_released("alice")
+            mock_sched.assert_not_called()
+
+    async def test_no_action_when_pending_trigger(self):
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = True
+        lm.animas["alice"] = dp
+        lm._pending_triggers.add("alice")
+
+        with patch.object(lm, "_schedule_deferred_trigger") as mock_sched:
+            await lm._on_anima_lock_released("alice")
+            mock_sched.assert_not_called()
+
+    async def test_no_action_when_anima_not_registered(self):
+        lm = LifecycleManager()
+        await lm._on_anima_lock_released("nobody")
+
+
+class TestScheduleDeferredTrigger:
+    def test_schedules_timer(self):
+        """_schedule_deferred_trigger creates a timer in _deferred_timers."""
+        import asyncio
+        lm = LifecycleManager()
+        loop = asyncio.new_event_loop()
+        try:
+            with patch("asyncio.get_running_loop", return_value=loop):
+                lm._schedule_deferred_trigger("alice")
+            assert "alice" in lm._deferred_timers
+            # Clean up
+            lm._deferred_timers["alice"].cancel()
+        finally:
+            loop.close()
+
+    def test_noop_when_already_scheduled(self):
+        """Second call is a no-op when timer already exists."""
+        lm = LifecycleManager()
+        sentinel = MagicMock()
+        lm._deferred_timers["alice"] = sentinel
+
+        lm._schedule_deferred_trigger("alice")
+        # Timer should still be the same sentinel object
+        assert lm._deferred_timers["alice"] is sentinel
+
+    def test_unregister_cancels_timer(self):
+        """unregister_anima cancels any deferred timer."""
+        lm = LifecycleManager()
+        mock_timer = MagicMock()
+        lm._deferred_timers["alice"] = mock_timer
+
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.memory.read_heartbeat_config.return_value = ""
+        dp.memory.read_cron_config.return_value = ""
+        dp.set_on_lock_released = MagicMock()
+        lm.animas["alice"] = dp
+
+        lm.unregister_anima("alice")
+        mock_timer.cancel.assert_called_once()
+        assert "alice" not in lm._deferred_timers
+
+
+class TestTryDeferredTrigger:
+    async def test_triggers_heartbeat_when_ready(self):
+        """Fires heartbeat when not in cooldown and lock not held."""
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = True
+        dp._lock = MagicMock()
+        dp._lock.locked.return_value = False
+        lm.animas["alice"] = dp
+        # Set timer entry so pop works
+        lm._deferred_timers["alice"] = MagicMock()
+
+        with patch.object(lm, "_is_in_cooldown", return_value=False), \
+             patch.object(lm, "_message_triggered_heartbeat", new_callable=AsyncMock) as mock_hb:
+            await lm._try_deferred_trigger("alice")
+            assert "alice" in lm._pending_triggers
+
+    async def test_reschedules_when_in_cooldown(self):
+        """Re-schedules if still in cooldown."""
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = True
+        lm.animas["alice"] = dp
+        lm._deferred_timers["alice"] = MagicMock()
+
+        with patch.object(lm, "_is_in_cooldown", return_value=True), \
+             patch.object(lm, "_schedule_deferred_trigger") as mock_sched:
+            await lm._try_deferred_trigger("alice")
+            mock_sched.assert_called_once_with("alice")
+            assert "alice" not in lm._pending_triggers
+
+    async def test_reschedules_when_lock_held(self):
+        """Re-schedules if anima lock is held."""
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = True
+        dp._lock = MagicMock()
+        dp._lock.locked.return_value = True
+        lm.animas["alice"] = dp
+        lm._deferred_timers["alice"] = MagicMock()
+
+        with patch.object(lm, "_is_in_cooldown", return_value=False), \
+             patch.object(lm, "_schedule_deferred_trigger") as mock_sched:
+            await lm._try_deferred_trigger("alice")
+            mock_sched.assert_called_once_with("alice")
+
+    async def test_noop_when_no_unread(self):
+        """Does nothing if inbox is empty."""
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = False
+        lm.animas["alice"] = dp
+        lm._deferred_timers["alice"] = MagicMock()
+
+        await lm._try_deferred_trigger("alice")
+        assert "alice" not in lm._pending_triggers
+
+    async def test_noop_when_pending_trigger(self):
+        """Does nothing if trigger already pending."""
+        lm = LifecycleManager()
+        dp = MagicMock()
+        dp.name = "alice"
+        dp.messenger.has_unread.return_value = True
+        lm.animas["alice"] = dp
+        lm._deferred_timers["alice"] = MagicMock()
+        lm._pending_triggers.add("alice")
+
+        await lm._try_deferred_trigger("alice")
+        # Should not have scheduled anything new
 
 
 class TestLifecycleStartShutdown:
@@ -388,6 +527,15 @@ class TestLifecycleStartShutdown:
         lm.shutdown()
         # After shutdown, the inbox watcher task should be in cancelling state
         assert lm._inbox_watcher_task.cancelling() > 0 or lm._inbox_watcher_task.cancelled()
+
+    async def test_shutdown_cancels_deferred_timers(self):
+        lm = LifecycleManager()
+        mock_timer = MagicMock()
+        lm._deferred_timers["alice"] = mock_timer
+        lm.start()
+        lm.shutdown()
+        mock_timer.cancel.assert_called_once()
+        assert lm._deferred_timers == {}
 
 
 # ── Command-type cron execution ───────────────────────────

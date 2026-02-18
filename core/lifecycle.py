@@ -40,7 +40,7 @@ class LifecycleManager:
         self._ws_broadcast: BroadcastFn | None = None
         self._inbox_watcher_task: asyncio.Task | None = None
         self._pending_triggers: set[str] = set()
-        self._deferred_inbox: set[str] = set()
+        self._deferred_timers: dict[str, asyncio.Handle] = {}
         self._last_msg_heartbeat_end: dict[str, float] = {}
         self._pair_heartbeat_times: dict[tuple[str, str], list[float]] = {}
 
@@ -71,7 +71,9 @@ class LifecycleManager:
         """Remove an anima and all their scheduled jobs."""
         self.animas.pop(name, None)
         self._pending_triggers.discard(name)
-        self._deferred_inbox.discard(name)
+        timer = self._deferred_timers.pop(name, None)
+        if timer:
+            timer.cancel()
         # Remove all scheduler jobs belonging to this anima
         for job in self.scheduler.get_jobs():
             if job.id.startswith(f"{name}_"):
@@ -302,9 +304,10 @@ class LifecycleManager:
                 if not anima.messenger.has_unread():
                     continue
                 if self._is_in_cooldown(name):
+                    self._schedule_deferred_trigger(name)
                     continue
                 if anima._lock.locked():
-                    self._deferred_inbox.add(name)
+                    self._schedule_deferred_trigger(name)
                     continue
                 self._pending_triggers.add(name)
                 asyncio.create_task(
@@ -312,11 +315,50 @@ class LifecycleManager:
                 )
 
     async def _on_anima_lock_released(self, name: str) -> None:
-        """Check deferred inbox after an anima's lock is released."""
-        if name not in self._deferred_inbox:
-            return
-        self._deferred_inbox.discard(name)
+        """Check deferred inbox after an anima's lock is released.
 
+        If unread messages exist, schedule a deferred trigger to ensure
+        they are processed even when cooldown is still active.
+        """
+        anima = self.animas.get(name)
+        if not anima:
+            return
+        if not anima.messenger.has_unread():
+            return
+        if name in self._pending_triggers:
+            return
+        # Instead of giving up when in cooldown, schedule deferred trigger
+        self._schedule_deferred_trigger(name)
+
+    def _schedule_deferred_trigger(self, name: str) -> None:
+        """Schedule a deferred heartbeat trigger after cooldown expires.
+
+        Only one timer per anima is maintained.  If a timer is already
+        pending, the call is a no-op (the existing timer will fire and
+        re-check the inbox).
+        """
+        if name in self._deferred_timers:
+            return  # already scheduled
+        last = self._last_msg_heartbeat_end.get(name, 0.0)
+        remaining = _MSG_HEARTBEAT_COOLDOWN_S - (time.monotonic() - last)
+        # If not in cooldown (e.g. lock-only), use a short retry delay
+        delay = max(remaining, 2.0)
+        loop = asyncio.get_running_loop()
+        self._deferred_timers[name] = loop.call_later(
+            delay,
+            lambda n=name: asyncio.create_task(self._try_deferred_trigger(n)),
+        )
+        logger.debug(
+            "Deferred trigger scheduled for %s in %.1fs", name, delay,
+        )
+
+    async def _try_deferred_trigger(self, name: str) -> None:
+        """Attempt to trigger a deferred heartbeat.
+
+        Re-schedules itself if the anima is still blocked by cooldown
+        or lock, ensuring messages are never forgotten.
+        """
+        self._deferred_timers.pop(name, None)
         anima = self.animas.get(name)
         if not anima:
             return
@@ -325,8 +367,11 @@ class LifecycleManager:
         if name in self._pending_triggers:
             return
         if self._is_in_cooldown(name):
+            self._schedule_deferred_trigger(name)
             return
-
+        if anima._lock.locked():
+            self._schedule_deferred_trigger(name)
+            return
         self._pending_triggers.add(name)
         asyncio.create_task(self._message_triggered_heartbeat(name))
 
@@ -732,6 +777,9 @@ class LifecycleManager:
     def shutdown(self) -> None:
         if self._inbox_watcher_task:
             self._inbox_watcher_task.cancel()
+        for timer in self._deferred_timers.values():
+            timer.cancel()
+        self._deferred_timers.clear()
         self.scheduler.shutdown(wait=False)
         logger.info("Lifecycle manager stopped")
 
