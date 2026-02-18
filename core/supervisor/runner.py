@@ -124,6 +124,17 @@ class AnimaRunner:
                 lambda: asyncio.ensure_future(self._on_anima_lock_released())
             )
 
+            # Wire on_message_sent callback for WebSocket event emission
+            def _on_message_sent(from_name: str, to_name: str, content: str) -> None:
+                self._emit_event("anima.interaction", {
+                    "from_person": from_name,
+                    "to_person": to_name,
+                    "type": "message",
+                    "summary": content[:200],
+                })
+
+            self.anima.set_on_message_sent(_on_message_sent)
+
             # Crash recovery: check for orphaned streaming journal
             self._recover_streaming_journal()
 
