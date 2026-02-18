@@ -14,6 +14,7 @@ and direct usage data from the Anthropic SDK fallback path.
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import os
 from dataclasses import dataclass, field
@@ -52,13 +53,27 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
 
-def _resolve_context_window(model: str) -> int:
+def _resolve_context_window(
+    model: str,
+    overrides: dict[str, int] | None = None,
+) -> int:
     """Return the context window size for the given model name.
+
+    Resolution priority:
+      1. ``overrides`` (config-driven, fnmatch wildcard)
+      2. ``MODEL_CONTEXT_WINDOWS`` (hardcoded, prefix match)
+      3. ``_DEFAULT_CONTEXT_WINDOW`` (128K fallback)
 
     Strips the ``provider/`` prefix (e.g. ``openai/gpt-4o`` -> ``gpt-4o``)
     before matching.
     """
     bare = model.split("/", 1)[-1] if "/" in model else model
+    # Phase 1: config overrides (fnmatch wildcard)
+    if overrides:
+        for pattern, size in overrides.items():
+            if fnmatch.fnmatch(model, pattern) or fnmatch.fnmatch(bare, pattern):
+                return size
+    # Phase 2: hardcoded defaults (prefix match)
     for prefix, size in MODEL_CONTEXT_WINDOWS.items():
         if bare.startswith(prefix):
             return size
@@ -76,6 +91,7 @@ class ContextTracker:
 
     model: str = "claude-sonnet-4-20250514"
     threshold: float = 0.50
+    context_window_overrides: dict[str, int] = field(default_factory=dict)
 
     # Internal state
     _last_ratio: float = field(default=0.0, init=False, repr=False)
@@ -85,7 +101,9 @@ class ContextTracker:
 
     @property
     def context_window(self) -> int:
-        return _resolve_context_window(self.model)
+        return _resolve_context_window(
+            self.model, self.context_window_overrides or None
+        )
 
     @property
     def usage_ratio(self) -> float:

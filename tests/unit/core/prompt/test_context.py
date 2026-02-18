@@ -48,6 +48,61 @@ class TestResolveContextWindow:
             assert _resolve_context_window(prefix) == expected
 
 
+# ── _resolve_context_window with overrides ──────────────
+
+
+class TestResolveContextWindowOverrides:
+    """Config-driven overrides take priority over hardcoded defaults."""
+
+    def test_override_takes_priority(self):
+        """Config override should win over hardcoded MODEL_CONTEXT_WINDOWS."""
+        overrides = {"claude-sonnet-4*": 100_000}
+        assert _resolve_context_window("claude-sonnet-4-20250514", overrides) == 100_000
+
+    def test_override_with_provider_prefix(self):
+        """Override should match both full model name and bare name."""
+        overrides = {"openai/glm-4*": 16_384}
+        assert _resolve_context_window("openai/glm-4.7-flash", overrides) == 16_384
+
+    def test_override_bare_pattern_matches_provider_model(self):
+        """A bare pattern (no provider/) should match after prefix stripping."""
+        overrides = {"glm-4*": 16_384}
+        assert _resolve_context_window("openai/glm-4.7-flash", overrides) == 16_384
+
+    def test_fallback_to_hardcoded_when_no_override_match(self):
+        """When overrides don't match, fall back to hardcoded defaults."""
+        overrides = {"some-custom-model*": 4096}
+        assert _resolve_context_window("claude-sonnet-4-20250514", overrides) == 200_000
+
+    def test_fallback_to_default_when_nothing_matches(self):
+        """When neither overrides nor hardcoded match, use _DEFAULT_CONTEXT_WINDOW."""
+        overrides = {"some-custom-model*": 4096}
+        assert _resolve_context_window("totally-unknown-model", overrides) == _DEFAULT_CONTEXT_WINDOW
+
+    def test_empty_overrides_dict(self):
+        """Empty overrides dict should behave like no overrides."""
+        assert _resolve_context_window("claude-sonnet-4-20250514", {}) == 200_000
+
+    def test_none_overrides(self):
+        """None overrides should behave like no overrides."""
+        assert _resolve_context_window("claude-sonnet-4-20250514", None) == 200_000
+
+    def test_exact_match_override(self):
+        """Exact model name in overrides should match."""
+        overrides = {"gpt-4o": 256_000}
+        assert _resolve_context_window("gpt-4o", overrides) == 256_000
+
+    def test_wildcard_star(self):
+        """Wildcard * should match multiple characters."""
+        overrides = {"ollama/*": 8192}
+        assert _resolve_context_window("ollama/my-custom-model", overrides) == 8192
+
+    def test_first_matching_pattern_wins(self):
+        """When multiple overrides match, the first one (dict insertion order) wins."""
+        overrides = {"glm-4*": 16_384, "glm-*": 32_000}
+        assert _resolve_context_window("glm-4.7-flash", overrides) == 16_384
+
+
 # ── ContextTracker init ───────────────────────────────────
 
 
@@ -56,17 +111,39 @@ class TestContextTrackerInit:
         ct = ContextTracker()
         assert ct.model == "claude-sonnet-4-20250514"
         assert ct.threshold == 0.50
+        assert ct.context_window_overrides == {}
 
     def test_custom(self):
         ct = ContextTracker(model="gpt-4o", threshold=0.70)
         assert ct.model == "gpt-4o"
         assert ct.threshold == 0.70
 
+    def test_custom_with_overrides(self):
+        overrides = {"glm-4*": 16_384}
+        ct = ContextTracker(
+            model="openai/glm-4.7-flash",
+            context_window_overrides=overrides,
+        )
+        assert ct.context_window_overrides == overrides
+        assert ct.context_window == 16_384
+
 
 class TestContextTrackerProperties:
     def test_context_window(self):
         ct = ContextTracker(model="claude-sonnet-4-20250514")
         assert ct.context_window == 200_000
+
+    def test_context_window_with_overrides(self):
+        ct = ContextTracker(
+            model="claude-sonnet-4-20250514",
+            context_window_overrides={"claude-sonnet-4*": 100_000},
+        )
+        assert ct.context_window == 100_000
+
+    def test_context_window_override_empty_dict(self):
+        """Empty overrides should fall through to hardcoded defaults."""
+        ct = ContextTracker(model="gpt-4o", context_window_overrides={})
+        assert ct.context_window == 128_000
 
     def test_usage_ratio_initial(self):
         ct = ContextTracker()

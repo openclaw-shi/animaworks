@@ -138,6 +138,17 @@ class ConversationMemory:
         self._transcript_dir = anima_dir / "transcripts"
         self._state: ConversationState | None = None
 
+    # ── Context window overrides ────────────────────────────
+
+    def _load_context_window_overrides(self) -> dict[str, int] | None:
+        """Load model_context_windows from config.json for context resolution."""
+        try:
+            from core.config.models import load_config
+            config = load_config()
+            return config.model_context_windows or None
+        except Exception:
+            return None
+
     # ── Load / Save ──────────────────────────────────────────
 
     def load(self) -> ConversationState:
@@ -367,7 +378,9 @@ class ConversationMemory:
 
         from core.prompt.context import _resolve_context_window
 
-        window = _resolve_context_window(self.model_config.model)
+        window = _resolve_context_window(
+            self.model_config.model, self._load_context_window_overrides()
+        )
         threshold_tokens = int(
             window * self.model_config.conversation_history_threshold
         )

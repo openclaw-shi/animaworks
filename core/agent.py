@@ -478,6 +478,18 @@ class AgentCore:
 
         return "\n".join(content_lines) if content_lines else prompt
 
+    # ── Context window overrides ─────────────────────────────
+
+    def _load_context_window_overrides(self) -> dict[str, int]:
+        """Load model_context_windows from config.json."""
+        try:
+            from core.config import load_config
+            config = load_config()
+            return config.model_context_windows
+        except Exception:
+            logger.debug("Failed to load context window overrides; using defaults")
+            return {}
+
     # ── Stream retry config ─────────────────────────────────
 
     def _load_stream_retry_config(self) -> dict[str, Any]:
@@ -614,6 +626,7 @@ class AgentCore:
         tracker = ContextTracker(
             model=self.model_config.model,
             threshold=self.model_config.context_threshold,
+            context_window_overrides=self._load_context_window_overrides(),
         )
 
         # Build system prompt with priming; inject short-term memory from prior session
@@ -840,6 +853,7 @@ class AgentCore:
         tracker = ContextTracker(
             model=self.model_config.model,
             threshold=self.model_config.context_threshold,
+            context_window_overrides=self._load_context_window_overrides(),
         )
 
         build_result = build_system_prompt(

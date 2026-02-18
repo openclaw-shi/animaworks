@@ -236,6 +236,7 @@ class AnimaWorksConfig(BaseModel):
     system: SystemConfig = SystemConfig()
     credentials: dict[str, CredentialConfig] = {"anthropic": CredentialConfig()}
     model_modes: dict[str, str] = {}  # モデル名 → "A1"/"A2"/"B"
+    model_context_windows: dict[str, int] = {}  # モデル名パターン → コンテキストウィンドウサイズ
     anima_defaults: AnimaDefaults = AnimaDefaults()
     animas: dict[str, AnimaModelConfig] = {}
     consolidation: ConsolidationConfig = ConsolidationConfig()
