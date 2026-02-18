@@ -36,6 +36,14 @@ from core.tooling.handler import ToolHandler
 
 logger = logging.getLogger("animaworks.agent")
 
+# ── Prompt size guards ──────────────────────────────────────────
+# Agent SDK uses JSON-RPC with a default 1 MB buffer (now raised to 4 MB via
+# max_buffer_size).  These thresholds trigger defensive actions well before
+# the hard limit is hit.  JSON framing + tool schemas add ~30-50% overhead
+# on top of the raw text, so we use conservative byte limits.
+_PROMPT_SOFT_LIMIT_BYTES = 600_000   # Force compression
+_PROMPT_HARD_LIMIT_BYTES = 1_200_000  # Fall back to A1 Fallback
+
 
 class AgentCore:
     """Orchestrates execution of a Digital Anima's thinking/acting cycle.
@@ -490,6 +498,81 @@ class AgentCore:
                 "retry_delay_s": 5.0,
             }
 
+    # ── Pre-flight prompt size check ─────────────────────────
+
+    async def _preflight_size_check(
+        self,
+        system_prompt: str,
+        prompt: str,
+        conv_memory: "ConversationMemory | None",
+        *,
+        priming_section: str,
+        mode: str,
+        message: str,
+    ) -> tuple[str, str, bool]:
+        """Check combined prompt size and shrink if necessary.
+
+        Returns (system_prompt, prompt, fell_back_to_fallback).
+        """
+        total = len(system_prompt.encode("utf-8")) + len(prompt.encode("utf-8"))
+        logger.info(
+            "Pre-flight prompt size: %d bytes (system=%d, user=%d)",
+            total,
+            len(system_prompt.encode("utf-8")),
+            len(prompt.encode("utf-8")),
+        )
+
+        if total <= _PROMPT_SOFT_LIMIT_BYTES:
+            return system_prompt, prompt, False
+
+        # ── Stage 1: Force conversation compression ──────────
+        logger.warning(
+            "Prompt size %d exceeds soft limit %d; forcing conversation compression",
+            total, _PROMPT_SOFT_LIMIT_BYTES,
+        )
+        if conv_memory is not None:
+            try:
+                await conv_memory._compress()
+                # Rebuild prompt with compressed history
+                prompt = conv_memory.build_chat_prompt(message, "human")
+                system_prompt = build_system_prompt(
+                    self.memory,
+                    tool_registry=self._tool_registry,
+                    personal_tools=self._personal_tools,
+                    priming_section=priming_section,
+                    execution_mode=mode,
+                    message=prompt,
+                    retriever=self._get_retriever(),
+                )
+            except Exception:
+                logger.exception("Forced compression failed")
+
+        total = len(system_prompt.encode("utf-8")) + len(prompt.encode("utf-8"))
+        logger.info("Post-compression prompt size: %d bytes", total)
+
+        if total <= _PROMPT_HARD_LIMIT_BYTES:
+            return system_prompt, prompt, False
+
+        # ── Stage 2: Fall back to Anthropic SDK (no JSON buffer limit) ──
+        logger.warning(
+            "Prompt size %d still exceeds hard limit %d; switching to A1 Fallback",
+            total, _PROMPT_HARD_LIMIT_BYTES,
+        )
+        return system_prompt, prompt, True
+
+    def _create_fallback_executor(self):
+        """Create an AnthropicFallbackExecutor for when A1 SDK can't handle the prompt."""
+        from core.execution import AnthropicFallbackExecutor
+        logger.info("Creating AnthropicFallbackExecutor for oversized prompt")
+        return AnthropicFallbackExecutor(
+            model_config=self.model_config,
+            anima_dir=self.anima_dir,
+            tool_handler=self._tool_handler,
+            tool_registry=self._tool_registry,
+            memory=self.memory,
+            personal_tools=self._personal_tools,
+        )
+
     # ── Public API ─────────────────────────────────────────
 
     async def run_cycle(
@@ -592,12 +675,30 @@ class AgentCore:
             )
 
         # ── Mode A1: Claude Agent SDK ─────────────────────
-        result = await self._executor.execute(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            tracker=tracker,
-            images=images,
+        # Pre-flight: check prompt size to prevent Agent SDK buffer overflow
+        from core.memory.conversation import ConversationMemory
+        conv_memory = ConversationMemory(self.anima_dir, self.model_config)
+        system_prompt, prompt, use_fallback = await self._preflight_size_check(
+            system_prompt, prompt, conv_memory,
+            priming_section=priming_section,
+            mode=mode,
+            message=prompt,
         )
+        if use_fallback:
+            executor = self._create_fallback_executor()
+            result = await executor.execute(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                tracker=tracker,
+                images=images,
+            )
+        else:
+            result = await self._executor.execute(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                tracker=tracker,
+                images=images,
+            )
         # Merge transcript-parsed replied_to for A1 mode
         if result.replied_to_from_transcript:
             self._tool_handler.merge_replied_to(result.replied_to_from_transcript)
@@ -741,6 +842,27 @@ class AgentCore:
         )
         if shortterm.has_pending():
             system_prompt = inject_shortterm(system_prompt, shortterm)
+
+        # Pre-flight size check for streaming path
+        from core.memory.conversation import ConversationMemory
+        conv_memory = ConversationMemory(self.anima_dir, self.model_config)
+        system_prompt, prompt, use_fallback = await self._preflight_size_check(
+            system_prompt, prompt, conv_memory,
+            priming_section=priming_section,
+            mode=mode,
+            message=prompt,
+        )
+        if use_fallback:
+            # Fall back to non-streaming execution
+            logger.warning("Streaming fallback: using blocking A1 Fallback for oversized prompt")
+            async with self._agent_lock:
+                cycle = await self._run_cycle_inner(prompt, trigger, images=images)
+            yield {"type": "text_delta", "text": cycle.summary}
+            yield {
+                "type": "cycle_done",
+                "cycle_result": cycle.model_dump(mode="json"),
+            }
+            return
 
         # ── Stream retry configuration ────────────────────
         retry_cfg = self._load_stream_retry_config()

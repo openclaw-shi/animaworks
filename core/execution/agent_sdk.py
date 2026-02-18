@@ -66,6 +66,11 @@ _WRITE_COMMANDS = frozenset({
     "cp", "mv", "tee", "dd", "install", "rsync",
 })
 
+# Safety margin for Agent SDK JSON-RPC buffer.  The default (1 MB) is too
+# small when system_prompt + conversation history grow large; 4 MB gives
+# comfortable headroom while still catching genuinely broken messages.
+_SDK_MAX_BUFFER_SIZE = 4 * 1024 * 1024  # 4 MB
+
 
 def _check_a1_file_access(
     file_path: str, anima_dir: Path, *, write: bool,
@@ -341,6 +346,7 @@ class AgentSDKExecutor(BaseExecutor):
             max_turns=self._model_config.max_turns,
             model=self._resolve_agent_sdk_model(),
             env=self._build_env(),
+            max_buffer_size=_SDK_MAX_BUFFER_SIZE,
             hooks={
                 "PreToolUse": [HookMatcher(
                     matcher="Write|Edit|Bash|Read",
@@ -515,6 +521,7 @@ class AgentSDKExecutor(BaseExecutor):
             max_turns=self._model_config.max_turns,
             model=self._resolve_agent_sdk_model(),
             env=self._build_env(),
+            max_buffer_size=_SDK_MAX_BUFFER_SIZE,
             include_partial_messages=True,
             hooks={
                 "PreToolUse": [HookMatcher(

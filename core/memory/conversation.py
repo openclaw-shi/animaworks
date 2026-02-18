@@ -32,6 +32,15 @@ logger = logging.getLogger("animaworks.conversation_memory")
 # Truncate assistant responses to this length in the history display.
 _MAX_RESPONSE_CHARS_IN_HISTORY = 1500
 
+# Truncate human messages to this length in the history display.
+# Human messages are typically short (questions/instructions); long
+# command outputs pasted verbatim are truncated to prevent context bloat.
+_MAX_HUMAN_CHARS_IN_HISTORY = 800
+
+# Hard cap on content stored in conversation.json per turn.
+# Prevents unbounded file growth even before compression kicks in.
+_MAX_STORED_CONTENT_CHARS = 3000
+
 # Rough characters-per-token for estimation (conservative for Japanese).
 _CHARS_PER_TOKEN = 4
 
@@ -193,6 +202,14 @@ class ConversationMemory:
         is still maintained for prompt building and compression.
         """
         state = self.load()
+        # Truncate excessively long content at storage time to prevent
+        # conversation.json bloat (70KB+ with 55 turns caused Agent SDK crash).
+        if len(content) > _MAX_STORED_CONTENT_CHARS:
+            logger.info(
+                "Truncating %s turn content from %d to %d chars",
+                role, len(content), _MAX_STORED_CONTENT_CHARS,
+            )
+            content = content[:_MAX_STORED_CONTENT_CHARS] + f"\n[...truncated, original {len(content)} chars]"
         turn = ConversationTurn(
             role=role, content=content, attachments=attachments or [],
         )
@@ -247,13 +264,10 @@ class ConversationMemory:
                 ts = t.timestamp[11:16] if len(t.timestamp) >= 16 else t.timestamp
                 role_label = "あなた" if t.role == "assistant" else t.role
                 display = t.content
-                if (
-                    t.role == "assistant"
-                    and len(display) > _MAX_RESPONSE_CHARS_IN_HISTORY
-                ):
-                    display = (
-                        display[:_MAX_RESPONSE_CHARS_IN_HISTORY] + "..."
-                    )
+                if t.role == "assistant" and len(display) > _MAX_RESPONSE_CHARS_IN_HISTORY:
+                    display = display[:_MAX_RESPONSE_CHARS_IN_HISTORY] + "..."
+                elif t.role != "assistant" and len(display) > _MAX_HUMAN_CHARS_IN_HISTORY:
+                    display = display[:_MAX_HUMAN_CHARS_IN_HISTORY] + "..."
                 turn_lines.append(f"**[{ts}] {role_label}:**\n{display}")
 
             if parts:

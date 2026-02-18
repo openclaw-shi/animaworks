@@ -111,6 +111,20 @@ class ProcessHandle:
                 stderr_dir = self.log_dir / "animas" / self.anima_name
                 stderr_dir.mkdir(parents=True, exist_ok=True)
                 stderr_path = stderr_dir / "stderr.log"
+                # Rotate if exceeds 5 MB (keep one backup)
+                if stderr_path.exists():
+                    try:
+                        if stderr_path.stat().st_size > 5 * 1024 * 1024:
+                            backup = stderr_dir / "stderr.log.1"
+                            if backup.exists():
+                                backup.unlink()
+                            stderr_path.rename(backup)
+                            logger.info(
+                                "Rotated stderr.log for %s (>5MB)",
+                                self.anima_name,
+                            )
+                    except OSError:
+                        logger.debug("stderr.log rotation failed", exc_info=True)
 
             self._stderr_file = (
                 open(stderr_path, "a") if stderr_path else None  # noqa: SIM115
