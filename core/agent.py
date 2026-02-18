@@ -412,7 +412,7 @@ class AgentCore:
 
         Args:
             prompt: The user message (may include conversation history)
-            trigger: Trigger type (e.g., "message:tanaka")
+            trigger: Trigger type (e.g., "message:yamada")
 
         Returns:
             Formatted priming section for system prompt injection, or empty string.
