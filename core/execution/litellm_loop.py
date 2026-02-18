@@ -268,7 +268,14 @@ class LiteLLMExecutor(BaseExecutor):
             )
 
             # ── Pre-flight: clamp max_tokens to fit context window ──
-            ctx_window = _resolve_context_window(self._model_config.model)
+            try:
+                from core.config import load_config
+                _cw_overrides = load_config().model_context_windows
+            except Exception:
+                _cw_overrides = None
+            ctx_window = _resolve_context_window(
+                self._model_config.model, _cw_overrides,
+            )
             try:
                 est_input = litellm.token_counter(
                     model=self._model_config.model,

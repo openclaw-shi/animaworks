@@ -44,7 +44,7 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "gemini-2.5-pro": 1_048_576,
     "gemini-2.5-flash": 1_048_576,
     # GLM (THUDM)
-    "glm-4": 16_383,
+    "glm-4": 131_072,
     # Ollama / local (conservative defaults)
     "gemma3": 128_000,
     "llama3": 128_000,
