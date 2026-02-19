@@ -11,7 +11,7 @@
 /**
  * @typedef {Object} TimelineEvent
  * @property {string}  id         — unique ID (timestamp-based)
- * @property {string}  type       — "message" | "board" | "heartbeat" | "cron" | "chat" | "status"
+ * @property {string}  type       — event type (WS simplified or API detailed)
  * @property {string}  anima      — related Anima name
  * @property {string}  ts         — ISO 8601
  * @property {string}  summary    — display text
@@ -295,6 +295,19 @@ function _formatTime(isoString) {
   }
 }
 
+/**
+ * Extract from/to person names and text from an event,
+ * handling both WS format (meta.from_person) and API format (top-level from_person).
+ */
+function _resolvePersons(event) {
+  const meta = event.meta || {};
+  return {
+    from: meta.from_person || event.from_person || event.anima || "",
+    to:   meta.to_person   || event.to_person   || "",
+    text: meta.text         || event.content     || event.summary || "",
+  };
+}
+
 // ── Replay ─────────────────────────────────────────
 
 function _replayEvent(event, el) {
@@ -308,43 +321,48 @@ function _replayEvent(event, el) {
 
   switch (type) {
     case "message":
-      if (_interactionManager && anima && meta && meta.to_person) {
-        _interactionManager.showMessageEffect(
-          anima,
-          meta.to_person,
-          (meta && meta.text) || "",
-        );
+    case "dm_received":
+    case "dm_sent": {
+      const p = _resolvePersons(event);
+      if (_interactionManager && p.from && p.to) {
+        _interactionManager.showMessageEffect(p.from, p.to, p.text);
+      } else if (_highlightDesk && (p.from || p.to)) {
+        _highlightDesk(p.from || p.to);
+        setTimeout(() => { if (_clearHighlight) _clearHighlight(); }, 3000);
       }
       if (meta && meta.message_id) {
         showMessagePopup(meta.message_id);
       }
       break;
+    }
 
     case "chat":
-      if (_highlightDesk && anima) {
-        _highlightDesk(anima);
-        setTimeout(() => {
-          if (_clearHighlight) _clearHighlight();
-        }, 3000);
-      }
-      break;
-
+    case "message_received":
+    case "response_sent":
     case "board":
+    case "channel_read":
+    case "channel_post":
       if (_highlightDesk && anima) {
         _highlightDesk(anima);
-        setTimeout(() => {
-          if (_clearHighlight) _clearHighlight();
-        }, 3000);
+        setTimeout(() => { if (_clearHighlight) _clearHighlight(); }, 3000);
       }
       break;
 
     case "heartbeat":
+    case "heartbeat_start":
+    case "heartbeat_end":
     case "cron":
+    case "cron_executed":
       if (_highlightDesk && anima) {
         _highlightDesk(anima);
-        setTimeout(() => {
-          if (_clearHighlight) _clearHighlight();
-        }, 3000);
+        setTimeout(() => { if (_clearHighlight) _clearHighlight(); }, 3000);
+      }
+      break;
+
+    default:
+      if (_highlightDesk && anima) {
+        _highlightDesk(anima);
+        setTimeout(() => { if (_clearHighlight) _clearHighlight(); }, 3000);
       }
       break;
   }
