@@ -458,6 +458,7 @@ class MemoryManager:
                 speciality=resolved.speciality,
                 resolved_mode=mode,
                 thinking=resolved.thinking,
+                llm_timeout=resolved.llm_timeout,
             )
 
         # Legacy fallback: parse config.md

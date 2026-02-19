@@ -356,3 +356,96 @@ class TestFormatTurnsForCompression:
         assert "あなた" in result
         assert "Q1" in result
         assert "A1" in result
+
+
+# ── Compression auto-scale ─────────────────────────────────
+
+
+class TestNeedsCompressionAutoScale:
+    """Verify that needs_compression() auto-scales threshold for small windows."""
+
+    def _make_conv(self, anima_dir: Path, configured_threshold: float = 0.30) -> ConversationMemory:
+        """Create a ConversationMemory with a specific configured threshold."""
+        mc = ModelConfig(
+            model="claude-sonnet-4-20250514",
+            conversation_history_threshold=configured_threshold,
+        )
+        return ConversationMemory(anima_dir, mc)
+
+    def _add_turns_with_tokens(self, conv: ConversationMemory, total_tokens: int) -> None:
+        """Add enough turns to reach approximately total_tokens estimate.
+
+        Each turn: content is 4 * token_estimate chars long (since _CHARS_PER_TOKEN=4).
+        We need at least 4 turns so needs_compression doesn't bail early.
+        """
+        turns_count = max(4, 8)  # Enough turns to pass the min-4 check
+        tokens_per_turn = total_tokens // turns_count
+        chars_per_turn = tokens_per_turn * _CHARS_PER_TOKEN
+        for i in range(turns_count):
+            role = "human" if i % 2 == 0 else "assistant"
+            # Use short chars to avoid _MAX_STORED_CONTENT_CHARS truncation (3000)
+            # If chars_per_turn > 3000, stored content is truncated to ~3050
+            conv.append_turn(role, "x" * min(chars_per_turn, 2900))
+
+    def test_small_model_auto_scales_down(self, anima_dir: Path):
+        """16K window → auto_threshold = max(0.10, 16000/64000*0.30) = max(0.10, 0.075) = 0.10.
+
+        effective = min(0.30, 0.10) = 0.10.
+        threshold_tokens = 16000 * 0.10 = 1600.
+        """
+        conv = self._make_conv(anima_dir, configured_threshold=0.30)
+        with patch(
+            "core.prompt.context.resolve_context_window", return_value=16_000,
+        ):
+            # Add turns totalling ~2000 tokens → exceeds 1600 threshold
+            self._add_turns_with_tokens(conv, 2000)
+            assert conv.needs_compression() is True
+
+            # Reset and add turns totalling ~1000 tokens → below 1600 threshold
+            conv._state = None
+            conv2 = self._make_conv(anima_dir, configured_threshold=0.30)
+            # 4 turns with minimal content: 4 * (10/4) = 10 tokens
+            for i in range(4):
+                conv2.append_turn("human" if i % 2 == 0 else "assistant", "x" * 40)
+            # 4 turns * 10 tokens = 40 tokens total, well below 1600
+            assert conv2.needs_compression() is False
+
+    def test_medium_model_auto_scales(self, anima_dir: Path):
+        """32K window → auto = max(0.10, 32000/64000*0.30) = 0.15.
+
+        effective = min(0.30, 0.15) = 0.15.
+        threshold_tokens = 32000 * 0.15 = 4800.
+        """
+        conv = self._make_conv(anima_dir, configured_threshold=0.30)
+        with patch(
+            "core.prompt.context.resolve_context_window", return_value=32_000,
+        ):
+            # Add turns totalling ~5500 tokens → exceeds 4800 threshold
+            self._add_turns_with_tokens(conv, 5500)
+            assert conv.needs_compression() is True
+
+    def test_large_model_uses_configured(self, anima_dir: Path):
+        """128K window (>= 64K) → effective = configured = 0.30.
+
+        threshold_tokens = 128000 * 0.30 = 38400.
+        """
+        conv = self._make_conv(anima_dir, configured_threshold=0.30)
+        with patch(
+            "core.prompt.context.resolve_context_window", return_value=128_000,
+        ):
+            # 8 turns * ~700 tokens each ≈ 5600 tokens, well below 38400
+            self._add_turns_with_tokens(conv, 5600)
+            assert conv.needs_compression() is False
+
+    def test_configured_lower_than_auto_uses_configured(self, anima_dir: Path):
+        """configured=0.05, 32K window → auto=0.15, effective = min(0.05, 0.15) = 0.05.
+
+        threshold_tokens = 32000 * 0.05 = 1600.
+        """
+        conv = self._make_conv(anima_dir, configured_threshold=0.05)
+        with patch(
+            "core.prompt.context.resolve_context_window", return_value=32_000,
+        ):
+            # Add turns totalling ~2000 tokens → exceeds 1600 threshold
+            self._add_turns_with_tokens(conv, 2000)
+            assert conv.needs_compression() is True

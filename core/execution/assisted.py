@@ -43,6 +43,8 @@ from core.tooling.schemas import build_tool_list, to_text_format
 
 logger = logging.getLogger("animaworks.execution.assisted")
 
+_MAX_TOOL_OUTPUT_BYTES = 4096
+
 
 # ── JSON extraction ─────────────────────────────────────────
 
@@ -118,6 +120,18 @@ def _strip_tool_call_block(text: str) -> str:
     return stripped.strip()
 
 
+def _truncate_tool_output(result: str, max_bytes: int = _MAX_TOOL_OUTPUT_BYTES) -> str:
+    """Truncate tool output to prevent context overflow in Mode B."""
+    encoded = result.encode("utf-8", errors="replace")
+    if len(encoded) <= max_bytes:
+        return result
+    truncated = encoded[:max_bytes].decode("utf-8", errors="ignore")
+    return (
+        f"{truncated}\n"
+        f"... [出力切り捨て: 元のサイズ {len(encoded)}バイト]"
+    )
+
+
 # ── Executor ────────────────────────────────────────────────
 
 
@@ -186,9 +200,63 @@ class AssistedExecutor(BaseExecutor):
         schemas = self._build_tool_schemas()
         return to_text_format(schemas)
 
+    def _preflight_check(
+        self,
+        messages: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Pre-flight context window check for Mode B.
+
+        Returns a dict with ``max_tokens`` (possibly clamped), or ``None``
+        if the prompt is too large to fit in the context window at all.
+        """
+        import litellm as _litellm
+        from core.prompt.context import resolve_context_window
+        from core.config import load_config
+
+        try:
+            _cw_overrides = load_config().model_context_windows
+        except Exception:
+            _cw_overrides = None
+
+        ctx_window = resolve_context_window(
+            self._model_config.model, _cw_overrides,
+        )
+
+        try:
+            est_input = _litellm.token_counter(
+                model=self._model_config.model,
+                messages=messages,
+            )
+        except Exception:
+            msg_chars = sum(len(str(m.get("content", ""))) for m in messages)
+            est_input = msg_chars // 2
+
+        available = ctx_window - est_input
+        configured_max = self._model_config.max_tokens
+
+        if available - 128 < 256:
+            logger.error(
+                "Mode B preflight: prompt too large "
+                "(~%d tokens input, %d window)",
+                est_input, ctx_window,
+            )
+            return None
+
+        if available < configured_max:
+            clamped = available - 128
+            logger.info(
+                "Mode B preflight: clamping max_tokens %d -> %d "
+                "(est_input ~%d, window %d)",
+                configured_max, clamped, est_input, ctx_window,
+            )
+            return {"max_tokens": clamped}
+
+        return {"max_tokens": configured_max}
+
     async def _call_llm(
         self,
         messages: list[dict[str, Any]],
+        max_tokens_override: int | None = None,
     ) -> Any:
         """Call LiteLLM ``acompletion`` without tools parameter."""
         import litellm
@@ -196,7 +264,8 @@ class AssistedExecutor(BaseExecutor):
         kwargs: dict[str, Any] = {
             "model": self._model_config.model,
             "messages": messages,
-            "max_tokens": self._model_config.max_tokens,
+            "max_tokens": max_tokens_override if max_tokens_override is not None else self._model_config.max_tokens,
+            "timeout": self._resolve_llm_timeout(),
         }
 
         api_key = self._resolve_api_key()
@@ -210,6 +279,18 @@ class AssistedExecutor(BaseExecutor):
             kwargs["think"] = self._model_config.thinking
         elif self._model_config.model.startswith("ollama/"):
             kwargs["think"] = False
+
+        # Ollama num_ctx: explicitly set context window to prevent silent truncation
+        if self._model_config.model.startswith("ollama/"):
+            from core.prompt.context import resolve_context_window
+            from core.config import load_config
+            try:
+                _cw_overrides = load_config().model_context_windows
+            except Exception:
+                _cw_overrides = None
+            kwargs["num_ctx"] = resolve_context_window(
+                self._model_config.model, _cw_overrides,
+            )
 
         return await litellm.acompletion(**kwargs)
 
@@ -254,8 +335,20 @@ class AssistedExecutor(BaseExecutor):
                 iteration, len(messages),
             )
 
+            # ── Preflight: check context window ───────────
+            preflight = self._preflight_check(messages)
+            if preflight is None:
+                all_response_text.append(
+                    f"[Error: prompt too large for "
+                    f"{self._model_config.model}]"
+                )
+                break
+
             try:
-                response = await self._call_llm(messages)
+                response = await self._call_llm(
+                    messages,
+                    max_tokens_override=preflight.get("max_tokens"),
+                )
             except Exception as e:
                 logger.exception("LiteLLM API error in Mode B")
                 return ExecutionResult(text=f"[LLM API Error: {e}]")
@@ -311,6 +404,8 @@ class AssistedExecutor(BaseExecutor):
             except Exception as e:
                 logger.exception("Mode B tool execution error: %s", tool_name)
                 result = f"ツール実行エラー: {e}"
+
+            result = _truncate_tool_output(str(result))
 
             # ── 6. Inject result and continue ─────────────────
             narrative = _strip_tool_call_block(content)
@@ -382,7 +477,20 @@ class AssistedExecutor(BaseExecutor):
                     iteration, len(messages),
                 )
 
-                response = await self._call_llm(messages)
+                # ── Preflight: check context window ───────────
+                preflight = self._preflight_check(messages)
+                if preflight is None:
+                    error_msg = (
+                        f"[Error: prompt too large for "
+                        f"{self._model_config.model}]"
+                    )
+                    yield {"type": "text_delta", "text": error_msg}
+                    break
+
+                response = await self._call_llm(
+                    messages,
+                    max_tokens_override=preflight.get("max_tokens"),
+                )
                 content = response.choices[0].message.content or ""
 
                 # ── 3. Extract tool call ─────────────────────
@@ -453,6 +561,8 @@ class AssistedExecutor(BaseExecutor):
                         "Mode B streaming tool execution error: %s", tool_name,
                     )
                     result = f"ツール実行エラー: {e}"
+
+                result = _truncate_tool_output(str(result))
 
                 # ── 8. Yield tool_end ────────────────────────
                 yield {

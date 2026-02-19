@@ -77,6 +77,7 @@ class AnimaModelConfig(BaseModel):
     supervisor: str | None = None  # name of supervisor Anima
     speciality: str | None = None  # free-text specialisation
     thinking: bool | None = None  # Ollama thinking mode (None=auto, True/False=explicit)
+    llm_timeout: int | None = None  # LLM API timeout (seconds); None = auto
 
 
 class AnimaDefaults(BaseModel):
@@ -94,6 +95,7 @@ class AnimaDefaults(BaseModel):
     supervisor: str | None = None
     speciality: str | None = None
     thinking: bool | None = None  # Ollama thinking mode
+    llm_timeout: int = 600  # default LLM API timeout (seconds)
 
 
 class RAGConfig(BaseModel):
@@ -601,6 +603,7 @@ def load_model_config(anima_dir: Path) -> "ModelConfig":
         speciality=resolved.speciality,
         resolved_mode=mode,
         thinking=resolved.thinking,
+        llm_timeout=resolved.llm_timeout,
     )
 
 
