@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from core.prompt.context import ContextTracker, _resolve_context_window
+from core.prompt.context import ContextTracker, resolve_context_window
 from core.execution._session import build_continuation_prompt, handle_session_chaining
 from core.execution._streaming import (
     accumulate_tool_call_chunks,
@@ -157,6 +157,7 @@ class LiteLLMExecutor(BaseExecutor):
         kwargs: dict[str, Any] = {
             "model": self._model_config.model,
             "max_tokens": self._model_config.max_tokens,
+            "timeout": self._resolve_llm_timeout(),
         }
         api_key = self._resolve_api_key()
         if api_key:
@@ -168,6 +169,16 @@ class LiteLLMExecutor(BaseExecutor):
             kwargs["think"] = self._model_config.thinking
         elif self._model_config.model.startswith("ollama/"):
             kwargs["think"] = False
+        # Ollama num_ctx: explicitly set context window to prevent silent truncation
+        if self._model_config.model.startswith("ollama/"):
+            from core.config import load_config
+            try:
+                _cw_overrides = load_config().model_context_windows
+            except Exception:
+                _cw_overrides = None
+            kwargs["num_ctx"] = resolve_context_window(
+                self._model_config.model, _cw_overrides,
+            )
         return kwargs
 
     def _list_tool_categories(self) -> str:
@@ -759,7 +770,7 @@ class LiteLLMExecutor(BaseExecutor):
             _cw_overrides = load_config().model_context_windows
         except Exception:
             _cw_overrides = None
-        ctx_window = _resolve_context_window(
+        ctx_window = resolve_context_window(
             self._model_config.model, _cw_overrides,
         )
         try:

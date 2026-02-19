@@ -377,14 +377,23 @@ class ConversationMemory:
         if len(state.turns) < 4:
             return False
 
-        from core.prompt.context import _resolve_context_window
+        from core.prompt.context import resolve_context_window
 
-        window = _resolve_context_window(
+        window = resolve_context_window(
             self.model_config.model, self._load_context_window_overrides()
         )
-        threshold_tokens = int(
-            window * self.model_config.conversation_history_threshold
-        )
+
+        # Auto-scale threshold for small context models.
+        # Formula: min(configured, max(0.10, window / 64000 * 0.30))
+        # Results: 128K+ → 0.30, 32K → 0.15, 16K → 0.10
+        configured = self.model_config.conversation_history_threshold
+        if window < 64_000:
+            auto_threshold = max(0.10, window / 64_000 * 0.30)
+            effective_threshold = min(configured, auto_threshold)
+        else:
+            effective_threshold = configured
+
+        threshold_tokens = int(window * effective_threshold)
         return state.total_token_estimate > threshold_tokens
 
     async def compress_if_needed(self) -> bool:
