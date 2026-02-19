@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from core.time_utils import now_iso, now_jst
+from core.time_utils import ensure_aware, now_iso, now_jst
 
 logger = logging.getLogger("animaworks.activity")
 
@@ -135,8 +135,8 @@ def _get_task_name(group: EntryGroup) -> str:
 def _time_diff(ts1: str, ts2: str) -> float:
     """Return the difference between two ISO timestamps in seconds."""
     try:
-        t1 = datetime.fromisoformat(ts1)
-        t2 = datetime.fromisoformat(ts2)
+        t1 = ensure_aware(datetime.fromisoformat(ts1))
+        t2 = ensure_aware(datetime.fromisoformat(ts2))
         return abs((t2 - t1).total_seconds())
     except (ValueError, TypeError):
         return float("inf")

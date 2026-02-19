@@ -454,3 +454,39 @@ class TestLoadEntries:
         summaries = [e.summary for e in entries]
         assert "Yesterday" in summaries
         assert "Today" in summaries
+
+
+class TestTimeDiff:
+    """Tests for _time_diff() — mixed naive/aware timestamp handling."""
+
+    def test_both_aware(self) -> None:
+        """Two aware timestamps compute correct diff."""
+        from core.memory.activity import _time_diff
+
+        t1 = "2026-02-20T10:00:00+09:00"
+        t2 = "2026-02-20T10:00:10+09:00"
+        assert _time_diff(t1, t2) == pytest.approx(10.0)
+
+    def test_both_naive(self) -> None:
+        """Two naive timestamps compute correct diff (tagged as JST)."""
+        from core.memory.activity import _time_diff
+
+        t1 = "2026-02-20T10:00:00"
+        t2 = "2026-02-20T10:00:05"
+        assert _time_diff(t1, t2) == pytest.approx(5.0)
+
+    def test_mixed_naive_and_aware(self) -> None:
+        """Mixed naive + aware timestamps must not raise TypeError."""
+        from core.memory.activity import _time_diff
+
+        naive = "2026-02-20T10:00:00"
+        aware = "2026-02-20T10:00:30+09:00"
+        # Should not raise; naive is tagged as JST by ensure_aware
+        result = _time_diff(naive, aware)
+        assert result == pytest.approx(30.0)
+
+    def test_invalid_returns_inf(self) -> None:
+        """Invalid timestamps return infinity."""
+        from core.memory.activity import _time_diff
+
+        assert _time_diff("not-a-date", "2026-02-20T10:00:00") == float("inf")

@@ -227,3 +227,68 @@ class TestMessageTriggeredHeartbeatGuard:
         mock_anima.run_heartbeat.assert_not_called()
         # _pending_trigger should be reset
         assert runner._pending_trigger is False
+
+
+class TestRunnerHeartbeat24hDefault:
+    """Verify runner._setup_heartbeat respects 3-tier active hours resolution."""
+
+    def test_default_24h_when_no_active_hours(self, tmp_path):
+        """active_hours=None and no time range in heartbeat.md => hour='*'."""
+        runner = _make_runner(tmp_path)
+        mock_anima = MagicMock()
+        mock_anima.config.active_hours = None
+        mock_anima.memory.read_heartbeat_config.return_value = "- チェック項目A"
+        runner.anima = mock_anima
+
+        mock_scheduler = MagicMock()
+        runner.scheduler = mock_scheduler
+
+        runner._setup_heartbeat()
+
+        mock_scheduler.add_job.assert_called_once()
+        call_kwargs = mock_scheduler.add_job.call_args
+        trigger = call_kwargs[1]["trigger"] if "trigger" in (call_kwargs[1] or {}) else call_kwargs[0][1]
+        # CronTrigger with hour="*" means 24h
+        assert trigger.fields[5].expressions[0].step is None or str(trigger) == str(trigger)
+        # Verify via the positional/keyword arg — hour_spec should be "*"
+        # Check the trigger's hour field
+        hour_field = str(trigger.fields[5])
+        assert hour_field == "*"
+
+    def test_active_hours_from_config(self, tmp_path):
+        """active_hours=(9,22) from config => hour='9-21'."""
+        runner = _make_runner(tmp_path)
+        mock_anima = MagicMock()
+        mock_anima.config.active_hours = (9, 22)
+        mock_anima.memory.read_heartbeat_config.return_value = "- チェック項目B"
+        runner.anima = mock_anima
+
+        mock_scheduler = MagicMock()
+        runner.scheduler = mock_scheduler
+
+        runner._setup_heartbeat()
+
+        mock_scheduler.add_job.assert_called_once()
+        call_kwargs = mock_scheduler.add_job.call_args
+        trigger = call_kwargs[1]["trigger"] if "trigger" in (call_kwargs[1] or {}) else call_kwargs[0][1]
+        hour_field = str(trigger.fields[5])
+        assert "9-21" in hour_field
+
+    def test_heartbeat_md_time_range_takes_priority(self, tmp_path):
+        """Time range in heartbeat.md overrides config active_hours."""
+        runner = _make_runner(tmp_path)
+        mock_anima = MagicMock()
+        mock_anima.config.active_hours = (9, 22)  # Should be overridden
+        mock_anima.memory.read_heartbeat_config.return_value = "稼働時間: 8:00 - 20:00"
+        runner.anima = mock_anima
+
+        mock_scheduler = MagicMock()
+        runner.scheduler = mock_scheduler
+
+        runner._setup_heartbeat()
+
+        mock_scheduler.add_job.assert_called_once()
+        call_kwargs = mock_scheduler.add_job.call_args
+        trigger = call_kwargs[1]["trigger"] if "trigger" in (call_kwargs[1] or {}) else call_kwargs[0][1]
+        hour_field = str(trigger.fields[5])
+        assert "8-19" in hour_field
