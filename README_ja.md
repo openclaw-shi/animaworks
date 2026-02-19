@@ -1,4 +1,4 @@
-# AnimaWorks  ---  Organization-as-Code
+# AnimaWorks  -  Organization-as-Code
 
 **AIエージェントが「自律的な人」として働くオフィスを作ろう。**
 
@@ -18,6 +18,7 @@
 git clone https://github.com/xuiltul/animaworks.git
 cd animaworks
 python3 -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip
 pip install -e .
 ```
 
