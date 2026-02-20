@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from core.paths import load_prompt
-from core.time_utils import ensure_aware, now_iso, now_jst
+from core.time_utils import ensure_aware, now_jst
 
 logger = logging.getLogger("animaworks.forgetting")
 
@@ -180,7 +180,7 @@ class ForgettingEngine:
         """
         logger.info("Starting synaptic downscaling for anima=%s", self.anima_name)
         now = now_jst()
-        now_iso_str = now_iso()
+        now_iso_str = now.isoformat()
         total_scanned = 0
         total_marked = 0
         store = self._get_vector_store()
@@ -452,7 +452,7 @@ class ForgettingEngine:
 
             embedding = indexer._generate_embeddings([content])[0]
 
-            now_iso_str = now_iso()
+            now_iso_str = now.isoformat()
             metadata = {
                 "anima": self.anima_name,
                 "memory_type": memory_type,

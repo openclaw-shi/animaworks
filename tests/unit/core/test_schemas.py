@@ -83,7 +83,7 @@ class TestAnimaConfig:
         assert pc.injection == ""
         assert pc.permissions == ""
         assert pc.heartbeat_interval == 30
-        assert pc.active_hours is None
+        assert pc.active_hours == (9, 22)
         assert pc.cron_tasks == []
         assert isinstance(pc.model_config_data, ModelConfig)
 

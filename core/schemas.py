@@ -87,7 +87,7 @@ class AnimaConfig(BaseModel):
     injection: str = ""
     permissions: str = ""
     heartbeat_interval: int = 30  # minutes
-    active_hours: tuple[int, int] | None = None  # None = 24h, e.g. (9, 22) for daytime only
+    active_hours: tuple[int, int] | None = (9, 22)  # None = 24h, e.g. (9, 22) for daytime only
     cron_tasks: list[CronTask] = []
     model_config_data: ModelConfig = Field(default_factory=ModelConfig)
 

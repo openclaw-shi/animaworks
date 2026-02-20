@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from core.time_utils import now_iso, now_jst
+from core.time_utils import ensure_aware, now_iso, now_jst
 
 logger = logging.getLogger("animaworks.rag.retriever")
 
@@ -244,7 +244,7 @@ class MemoryRetriever:
                 decay_factor = 0.5
             else:
                 try:
-                    updated_at = datetime.fromisoformat(str(updated_at_str))
+                    updated_at = ensure_aware(datetime.fromisoformat(str(updated_at_str)))
                     age_days = (now - updated_at).total_seconds() / 86400.0
                     decay_factor = 0.5 ** (age_days / RECENCY_HALF_LIFE_DAYS)
                 except (ValueError, TypeError):

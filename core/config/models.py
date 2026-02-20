@@ -51,7 +51,6 @@ class WorkerSystemConfig(BaseModel):
 class SystemConfig(BaseModel):
     mode: str = "server"
     log_level: str = "INFO"
-    timezone: str = "Asia/Tokyo"
     gateway: GatewaySystemConfig = GatewaySystemConfig()
     worker: WorkerSystemConfig = WorkerSystemConfig()
 
