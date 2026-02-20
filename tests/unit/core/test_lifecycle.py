@@ -15,7 +15,7 @@ from core.lifecycle import (
     _parse_cron_md,
     _parse_schedule,
 )
-from core.schemas import CronTask
+from core.schemas import CronTask, Message
 
 
 # ── _parse_cron_md ────────────────────────────────────────
@@ -363,6 +363,12 @@ class TestMessageTriggeredHeartbeat:
         dp.name = "alice"
         dp.run_heartbeat = AsyncMock(return_value=MagicMock())
         dp.run_heartbeat.return_value.model_dump.return_value = {}
+        # Provide an actionable message so intent filter passes
+        msg = Message(
+            from_person="bob", to_person="alice",
+            content="please do X", intent="delegation", source="anima",
+        )
+        dp.messenger.receive.return_value = [msg]
         lm.animas["alice"] = dp
         lm._pending_triggers.add("alice")
 

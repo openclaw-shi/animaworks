@@ -98,10 +98,14 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
                 "intent": {
                     "type": "string",
                     "description": (
-                        "Message intent: 'delegation' (task assignment), "
-                        "'report' (status/result report — use the report template), "
+                        "Message intent. delegation/report/question triggers "
+                        "immediate processing by the recipient. "
+                        "Unset messages are processed at the recipient's next "
+                        "scheduled heartbeat (every 30 min). "
+                        "Values: 'delegation' (task assignment), "
+                        "'report' (status/result — use report template), "
                         "'question' (question/confirmation), "
-                        "or '' (default, casual/FYI)."
+                        "'' (default — acknowledgment, thanks, FYI)."
                     ),
                 },
             },

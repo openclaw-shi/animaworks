@@ -14,16 +14,13 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from core.config.models import load_config
+
 if TYPE_CHECKING:
     from core.anima import DigitalAnima
     from core.supervisor.scheduler_manager import SchedulerManager
 
 logger = logging.getLogger(__name__)
-
-_MSG_HEARTBEAT_COOLDOWN_S = 60
-_CASCADE_WINDOW_S = 600   # 10 minutes
-_CASCADE_THRESHOLD = 4     # max round-trips per pair within window
-
 
 class InboxRateLimiter:
     """Inbox rate limiting, cascade detection, and deferred trigger management."""
@@ -34,13 +31,16 @@ class InboxRateLimiter:
         anima_name: str,
         shutdown_event: asyncio.Event,
         scheduler_mgr: SchedulerManager,
-        cooldown_sec: float = _MSG_HEARTBEAT_COOLDOWN_S,
+        cooldown_sec: float | None = None,
     ) -> None:
+        cfg = load_config()
         self._anima = anima
         self._anima_name = anima_name
         self._shutdown_event = shutdown_event
         self._scheduler_mgr = scheduler_mgr
-        self._cooldown_sec = cooldown_sec
+        self._cooldown_sec = cooldown_sec if cooldown_sec is not None else cfg.heartbeat.msg_heartbeat_cooldown_s
+        self._cascade_window_s = cfg.heartbeat.cascade_window_s
+        self._cascade_threshold = cfg.heartbeat.cascade_threshold
 
         self._pending_trigger: bool = False
         self._deferred_timer: asyncio.Handle | None = None
@@ -64,16 +64,16 @@ class InboxRateLimiter:
             for k in keys:
                 times = self._pair_heartbeat_times.get(k, [])
                 # Evict expired entries
-                times = [t for t in times if now - t < _CASCADE_WINDOW_S]
+                times = [t for t in times if now - t < self._cascade_window_s]
                 self._pair_heartbeat_times[k] = times
                 if not times and k in self._pair_heartbeat_times:
                     del self._pair_heartbeat_times[k]
                 total += len(times)
-            if total >= _CASCADE_THRESHOLD:
+            if total >= self._cascade_threshold:
                 logger.warning(
                     "CASCADE DETECTED: %s <-> %s (%d round-trips in %ds window). "
                     "Suppressing message-triggered heartbeat.",
-                    self._anima_name, sender, total, _CASCADE_WINDOW_S,
+                    self._anima_name, sender, total, self._cascade_window_s,
                 )
                 return True
         return False
@@ -163,8 +163,26 @@ class InboxRateLimiter:
             self._pending_trigger = False
             return
 
-        # Peek at inbox senders for cascade detection
-        senders = {m.from_person for m in self._anima.messenger.receive()}
+        # Peek at inbox senders for cascade detection and intent filtering
+        inbox_messages = self._anima.messenger.receive()
+        senders = {m.from_person for m in inbox_messages}
+
+        # ── Intent-based trigger filtering ──
+        # Only trigger immediate heartbeat for actionable messages or human messages.
+        # Non-actionable messages (ack, thanks, FYI) wait for the scheduled heartbeat.
+        cfg = load_config()
+        has_human = any(m.source == "human" for m in inbox_messages)
+        has_actionable = any(
+            m.intent in cfg.heartbeat.actionable_intents for m in inbox_messages
+        )
+        if not has_human and not has_actionable:
+            logger.info(
+                "Intent filter: %s — no actionable messages, deferring to scheduled heartbeat",
+                self._anima_name,
+            )
+            self._pending_trigger = False
+            return
+
         if senders and self.check_cascade(senders):
             self._pending_trigger = False
             return

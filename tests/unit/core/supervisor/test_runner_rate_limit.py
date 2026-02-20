@@ -12,12 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.supervisor.inbox_rate_limiter import (
-    InboxRateLimiter,
-    _CASCADE_THRESHOLD,
-    _CASCADE_WINDOW_S,
-    _MSG_HEARTBEAT_COOLDOWN_S,
-)
+from core.config.models import load_config
+from core.supervisor.inbox_rate_limiter import InboxRateLimiter
 from core.supervisor.scheduler_manager import SchedulerManager
 
 
@@ -61,10 +57,11 @@ class TestCooldown:
         assert limiter.is_in_cooldown() is True
 
     def test_cooldown_expired(self):
-        """Returns False when >60s has passed since last heartbeat end."""
+        """Returns False when cooldown period has passed since last heartbeat end."""
         limiter = _make_limiter()
+        cooldown_s = load_config().heartbeat.msg_heartbeat_cooldown_s
         limiter._last_msg_heartbeat_end = (
-            time.monotonic() - _MSG_HEARTBEAT_COOLDOWN_S - 1
+            time.monotonic() - cooldown_s - 1
         )
         assert limiter.is_in_cooldown() is False
 
@@ -76,37 +73,40 @@ class TestCascadeDetection:
     """Tests for check_cascade() method."""
 
     def test_no_cascade_below_threshold(self):
-        """check_cascade returns False when < 4 round-trips."""
+        """check_cascade returns False when below cascade_threshold."""
         limiter = _make_limiter()
+        threshold = load_config().heartbeat.cascade_threshold
         now = time.monotonic()
         key = ("test", "alice")
         # Add entries below threshold
         limiter._pair_heartbeat_times[key] = [
-            now - 10, now - 5, now - 1,
+            now - (i + 1) for i in range(threshold - 1)
         ]
         assert limiter.check_cascade({"alice"}) is False
 
     def test_cascade_detected_at_threshold(self):
-        """Returns True when exactly 4 round-trips in window."""
+        """Returns True when exactly cascade_threshold round-trips in window."""
         limiter = _make_limiter()
+        threshold = load_config().heartbeat.cascade_threshold
         now = time.monotonic()
         key = ("test", "alice")
         limiter._pair_heartbeat_times[key] = [
-            now - 30, now - 20, now - 10, now - 1,
+            now - (i + 1) for i in range(threshold)
         ]
         assert limiter.check_cascade({"alice"}) is True
 
     def test_cascade_entries_expire(self):
-        """Old entries outside 600s window are evicted."""
+        """Old entries outside cascade window are evicted."""
         limiter = _make_limiter()
+        cfg = load_config().heartbeat
         now = time.monotonic()
         key = ("test", "alice")
         # All entries are older than the cascade window
         limiter._pair_heartbeat_times[key] = [
-            now - _CASCADE_WINDOW_S - 100,
-            now - _CASCADE_WINDOW_S - 50,
-            now - _CASCADE_WINDOW_S - 20,
-            now - _CASCADE_WINDOW_S - 10,
+            now - cfg.cascade_window_s - 100,
+            now - cfg.cascade_window_s - 50,
+            now - cfg.cascade_window_s - 20,
+            now - cfg.cascade_window_s - 10,
         ]
         assert limiter.check_cascade({"alice"}) is False
         # Expired entries should have been evicted

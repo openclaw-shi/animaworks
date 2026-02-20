@@ -17,19 +17,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from core.anima import DigitalAnima
+from core.config.models import load_config
 from core.schemas import CronTask
 
 logger = logging.getLogger("animaworks.lifecycle")
 
 BroadcastFn = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
-
-# Minimum seconds between consecutive message-triggered heartbeats
-# for the same anima. Prevents cascading loops (A sends to B, B replies
-# to A, A replies to B, …).
-_MSG_HEARTBEAT_COOLDOWN_S = 300  # 5 minutes
-
-_CASCADE_WINDOW_S = 1800  # 30 minutes
-_CASCADE_THRESHOLD = 3     # max round-trips per pair within window
 
 class LifecycleManager:
     """Manages heartbeat and cron for Digital Animas via APScheduler."""
@@ -43,6 +36,12 @@ class LifecycleManager:
         self._deferred_timers: dict[str, asyncio.Handle] = {}
         self._last_msg_heartbeat_end: dict[str, float] = {}
         self._pair_heartbeat_times: dict[tuple[str, str], list[float]] = {}
+        # Cache heartbeat config at init time (refreshed on reload_anima_schedule)
+        hb = load_config().heartbeat
+        self._cooldown_s = hb.msg_heartbeat_cooldown_s
+        self._cascade_window_s = hb.cascade_window_s
+        self._cascade_threshold = hb.cascade_threshold
+        self._actionable_intents = hb.actionable_intents
 
     def set_broadcast(self, fn: BroadcastFn) -> None:
         self._ws_broadcast = fn
@@ -96,6 +95,13 @@ class LifecycleManager:
         if not anima:
             logger.warning("reload_anima_schedule: '%s' not registered", name)
             return {"error": f"Anima '{name}' not registered"}
+
+        # Refresh cached heartbeat config
+        hb = load_config().heartbeat
+        self._cooldown_s = hb.msg_heartbeat_cooldown_s
+        self._cascade_window_s = hb.cascade_window_s
+        self._cascade_threshold = hb.cascade_threshold
+        self._actionable_intents = hb.actionable_intents
 
         # Remove existing heartbeat and cron jobs for this anima
         removed = 0
@@ -296,10 +302,12 @@ class LifecycleManager:
     def _is_in_cooldown(self, name: str) -> bool:
         """Return True if a message-triggered heartbeat finished too recently."""
         last = self._last_msg_heartbeat_end.get(name, 0.0)
-        return (time.monotonic() - last) < _MSG_HEARTBEAT_COOLDOWN_S
+        return (time.monotonic() - last) < self._cooldown_s
 
     def _check_cascade(self, anima_name: str, senders: set[str]) -> bool:
         """Return True if any (anima, sender) pair exceeds cascade threshold."""
+        cascade_window = self._cascade_window_s
+        cascade_threshold = self._cascade_threshold
         now = time.monotonic()
         for sender in senders:
             keys = [(anima_name, sender), (sender, anima_name)]
@@ -307,16 +315,16 @@ class LifecycleManager:
             for k in keys:
                 times = self._pair_heartbeat_times.get(k, [])
                 # Evict expired entries
-                times = [t for t in times if now - t < _CASCADE_WINDOW_S]
+                times = [t for t in times if now - t < cascade_window]
                 self._pair_heartbeat_times[k] = times
                 if not times and k in self._pair_heartbeat_times:
                     del self._pair_heartbeat_times[k]
                 total += len(times)
-            if total >= _CASCADE_THRESHOLD:
+            if total >= cascade_threshold:
                 logger.warning(
                     "CASCADE DETECTED: %s <-> %s (%d round-trips in %ds window). "
                     "Suppressing message-triggered heartbeat.",
-                    anima_name, sender, total, _CASCADE_WINDOW_S,
+                    anima_name, sender, total, cascade_window,
                 )
                 return True
         return False
@@ -375,7 +383,7 @@ class LifecycleManager:
         if name in self._deferred_timers:
             return  # already scheduled
         last = self._last_msg_heartbeat_end.get(name, 0.0)
-        remaining = _MSG_HEARTBEAT_COOLDOWN_S - (time.monotonic() - last)
+        remaining = self._cooldown_s - (time.monotonic() - last)
         # If not in cooldown (e.g. lock-only), use a short retry delay
         delay = max(remaining, 2.0)
         loop = asyncio.get_running_loop()
@@ -419,6 +427,22 @@ class LifecycleManager:
         # Peek at inbox senders for cascade detection and rate limiting
         inbox_messages = anima.messenger.receive()
         senders = {m.from_person for m in inbox_messages}
+
+        # ── Intent-based trigger filtering ──
+        # Only trigger immediate heartbeat for actionable messages or human messages.
+        # Non-actionable messages (ack, thanks, FYI) wait for the scheduled heartbeat.
+        has_human = any(m.source == "human" for m in inbox_messages)
+        has_actionable = any(
+            m.intent in self._actionable_intents for m in inbox_messages
+        )
+        if not has_human and not has_actionable:
+            logger.info(
+                "Intent filter: %s — no actionable messages, deferring to scheduled heartbeat",
+                name,
+            )
+            self._pending_triggers.discard(name)
+            return
+
         if senders and self._check_cascade(name, senders):
             self._pending_triggers.discard(name)
             return

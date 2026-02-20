@@ -36,14 +36,6 @@ from core.supervisor.streaming_handler import StreamingIPCHandler
 
 logger = logging.getLogger(__name__)
 
-# Re-export constants for backward compatibility with existing tests
-from core.supervisor.inbox_rate_limiter import (
-    _MSG_HEARTBEAT_COOLDOWN_S,
-    _CASCADE_WINDOW_S,
-    _CASCADE_THRESHOLD,
-)
-
-
 # ── AnimaRunner ──────────────────────────────────────────────────
 
 class AnimaRunner:
