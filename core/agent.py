@@ -252,6 +252,11 @@ class AgentCore:
         m = self.model_config.model
         return m.startswith("claude-") or m.startswith("anthropic/")
 
+    @property
+    def execution_mode(self) -> str:
+        """Public access to the resolved execution mode."""
+        return self._resolve_execution_mode()
+
     def _resolve_execution_mode(self) -> str:
         """Determine the effective execution mode: ``a1``, ``a2``, or ``b``.
 
@@ -651,6 +656,7 @@ class AgentCore:
         prompt: str,
         trigger: str = "manual",
         images: list[dict[str, Any]] | None = None,
+        prior_messages: list[dict[str, Any]] | None = None,
     ) -> CycleResult:
         """Run one agent cycle with autonomous memory search.
 
@@ -663,13 +669,17 @@ class AgentCore:
         externalized to short-term memory and automatically continued.
         """
         async with self._agent_lock:
-            return await self._run_cycle_inner(prompt, trigger, images=images)
+            return await self._run_cycle_inner(
+                prompt, trigger, images=images,
+                prior_messages=prior_messages,
+            )
 
     async def _run_cycle_inner(
         self,
         prompt: str,
         trigger: str,
         images: list[dict[str, Any]] | None = None,
+        prior_messages: list[dict[str, Any]] | None = None,
     ) -> CycleResult:
         start = time.monotonic()
         mode = self._resolve_execution_mode()
@@ -728,6 +738,11 @@ class AgentCore:
             session_id=self._tool_handler.session_id,
         )
 
+        # ── Helper: convert ExecutionResult tool records to dicts ──
+        def _tool_records_to_dicts(result: "ExecutionResult") -> list[dict]:
+            from dataclasses import asdict as _asdict
+            return [_asdict(r) for r in result.tool_call_records]
+
         # ── Mode B: text-based tool-call loop ─────────────
         if mode == "b":
             result = await self._executor.execute(
@@ -746,6 +761,7 @@ class AgentCore:
                 action="responded",
                 summary=result.text,
                 duration_ms=duration_ms,
+                tool_call_records=_tool_records_to_dicts(result),
             )
 
         # ── Mode A2: LiteLLM tool_use loop ────────────────
@@ -756,6 +772,7 @@ class AgentCore:
                 tracker=tracker,
                 shortterm=shortterm,
                 images=images,
+                prior_messages=prior_messages,
             )
             shortterm.clear()
             duration_ms = int((time.monotonic() - start) * 1000)
@@ -769,6 +786,7 @@ class AgentCore:
                 summary=result.text,
                 duration_ms=duration_ms,
                 context_usage_ratio=tracker.usage_ratio,
+                tool_call_records=_tool_records_to_dicts(result),
             )
 
         # ── Mode A1: Claude Agent SDK ─────────────────────
@@ -789,6 +807,7 @@ class AgentCore:
                 system_prompt=system_prompt,
                 tracker=tracker,
                 images=images,
+                prior_messages=prior_messages,
             )
         else:
             result = await self._executor.execute(
@@ -802,6 +821,7 @@ class AgentCore:
             self._tool_handler.merge_replied_to(result.replied_to_from_transcript)
             logger.info("Merged transcript replied_to: %s", result.replied_to_from_transcript)
         result_msg = result.result_message
+        accumulated_tool_records = _tool_records_to_dicts(result)
 
         # Session chaining: if threshold was crossed, continue in a new session
         session_chained = False
@@ -866,6 +886,7 @@ class AgentCore:
                 )
                 break
             accumulated_text = accumulated_text + "\n" + result_2.text
+            accumulated_tool_records.extend(_tool_records_to_dicts(result_2))
             result_msg = result_2.result_message
             if result_msg:
                 total_turns += result_msg.num_turns
@@ -885,6 +906,7 @@ class AgentCore:
             context_usage_ratio=tracker.usage_ratio,
             session_chained=session_chained,
             total_turns=total_turns,
+            tool_call_records=accumulated_tool_records,
         )
 
     # ── Streaming ──────────────────────────────────────────
@@ -894,6 +916,7 @@ class AgentCore:
         prompt: str,
         trigger: str = "manual",
         images: list[dict[str, Any]] | None = None,
+        prior_messages: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Streaming version of run_cycle.
 
@@ -912,6 +935,7 @@ class AgentCore:
             async with self._agent_lock:
                 cycle = await self._run_cycle_inner(
                     prompt, trigger, images=images,
+                    prior_messages=prior_messages,
                 )
             yield {"type": "text_delta", "text": cycle.summary}
             yield {
@@ -996,6 +1020,7 @@ class AgentCore:
 
         # Primary session with checkpoint + retry support
         full_text_parts: list[str] = []
+        all_tool_call_records: list[dict] = []
         result_message: Any = None
         current_prompt = prompt
         current_system_prompt = system_prompt
@@ -1010,11 +1035,16 @@ class AgentCore:
                 async for chunk in self._executor.execute_streaming(
                     current_system_prompt, current_prompt, tracker,
                     images=images,
+                    prior_messages=prior_messages,
                 ):
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
                         text_parts_this_attempt.append(chunk["full_text"])
                         result_message = chunk["result_message"]
+                        # Accumulate tool call records from executor
+                        all_tool_call_records.extend(
+                            chunk.get("tool_call_records", [])
+                        )
                         # Merge transcript replied_to
                         transcript_replied = chunk.get("replied_to_from_transcript", set())
                         if transcript_replied:
@@ -1174,6 +1204,9 @@ class AgentCore:
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
                         result_message = chunk["result_message"]
+                        all_tool_call_records.extend(
+                            chunk.get("tool_call_records", [])
+                        )
                         if result_message:
                             total_turns += result_message.num_turns
                         # Merge transcript replied_to
@@ -1208,5 +1241,6 @@ class AgentCore:
                 context_usage_ratio=tracker.usage_ratio,
                 session_chained=session_chained,
                 total_turns=total_turns,
+                tool_call_records=all_tool_call_records,
             ).model_dump(mode="json"),
         }

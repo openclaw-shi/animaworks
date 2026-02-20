@@ -20,11 +20,12 @@ import re
 import shutil
 import sys
 from collections.abc import AsyncGenerator, Callable
+from dataclasses import asdict
 from typing import Any
 
 from core.prompt.context import ContextTracker
 from core.exceptions import ExecutionError, LLMAPIError, MemoryWriteError  # noqa: F401
-from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError
+from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, ToolCallRecord, _truncate_for_record
 from core.schemas import ModelConfig
 from core.memory.shortterm import ShortTermMemory
 from pathlib import Path
@@ -470,6 +471,7 @@ class AgentSDKExecutor(BaseExecutor):
         shortterm: ShortTermMemory | None = None,
         trigger: str = "",
         images: list[dict[str, Any]] | None = None,
+        prior_messages: list[dict[str, Any]] | None = None,
     ) -> ExecutionResult:
         """Run a session via Claude Agent SDK with context monitoring hook.
 
@@ -558,6 +560,7 @@ class AgentSDKExecutor(BaseExecutor):
         )
 
         response_text: list[str] = []
+        all_tool_records: list[ToolCallRecord] = []
         result_message: ResultMessage | None = None
         message_count = 0
 
@@ -572,6 +575,16 @@ class AgentSDKExecutor(BaseExecutor):
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             response_text.append(block.text)
+                        elif hasattr(block, 'name') and hasattr(block, 'id'):
+                            # ToolUseBlock from Agent SDK
+                            all_tool_records.append(ToolCallRecord(
+                                tool_name=block.name,
+                                tool_id=block.id,
+                                input_summary=_truncate_for_record(
+                                    str(getattr(block, 'input', '')), 200,
+                                ),
+                                result_summary="",  # Not available - managed by Agent SDK internally
+                            ))
                 elif isinstance(message, SystemMessage):
                     if message.subtype == "init" and message.data:
                         mcp_servers = message.data.get("mcp_servers", [])
@@ -589,6 +602,7 @@ class AgentSDKExecutor(BaseExecutor):
             logger.exception("Agent SDK execution error")
             return ExecutionResult(
                 text="\n".join(response_text) or f"[Agent SDK Error: {e}]",
+                tool_call_records=all_tool_records,
             )
         finally:
             _cleanup_tool_outputs(self._anima_dir)
@@ -602,6 +616,7 @@ class AgentSDKExecutor(BaseExecutor):
             text="\n".join(response_text) or "(no response)",
             result_message=result_message,
             replied_to_from_transcript=replied_to,
+            tool_call_records=all_tool_records,
         )
 
     # ── Streaming execution ──────────────────────────────────
@@ -704,8 +719,11 @@ class AgentSDKExecutor(BaseExecutor):
         )
 
         response_text: list[str] = []
+        all_tool_records: list[ToolCallRecord] = []
         result_message: ResultMessage | None = None
         active_tool_ids: set[str] = set()
+        # Track tool names from content_block_start for streaming records
+        active_tool_names: dict[str, str] = {}
         message_count = 0
 
         try:
@@ -718,10 +736,12 @@ class AgentSDKExecutor(BaseExecutor):
                         block = event.get("content_block", {})
                         if block.get("type") == "tool_use":
                             tool_id = block.get("id", "")
+                            tool_name = block.get("name", "")
                             active_tool_ids.add(tool_id)
+                            active_tool_names[tool_id] = tool_name
                             yield {
                                 "type": "tool_start",
-                                "tool_name": block.get("name", ""),
+                                "tool_name": tool_name,
                                 "tool_id": tool_id,
                             }
 
@@ -738,6 +758,14 @@ class AgentSDKExecutor(BaseExecutor):
                         if isinstance(block, TextBlock):
                             response_text.append(block.text)
                         elif isinstance(block, ToolUseBlock):
+                            all_tool_records.append(ToolCallRecord(
+                                tool_name=block.name,
+                                tool_id=block.id,
+                                input_summary=_truncate_for_record(
+                                    str(getattr(block, 'input', '')), 200,
+                                ),
+                                result_summary="",  # Not available - managed by Agent SDK internally
+                            ))
                             if block.id in active_tool_ids:
                                 active_tool_ids.discard(block.id)
                                 yield {
@@ -784,4 +812,5 @@ class AgentSDKExecutor(BaseExecutor):
             "full_text": full_text,
             "result_message": result_message,
             "replied_to_from_transcript": replied_to,
+            "tool_call_records": [asdict(r) for r in all_tool_records],
         }
