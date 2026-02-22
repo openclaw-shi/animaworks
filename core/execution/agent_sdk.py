@@ -510,6 +510,7 @@ class AgentSDKExecutor(BaseExecutor):
         from claude_agent_sdk import (
             AssistantMessage,
             ClaudeAgentOptions,
+            HookMatcher,
             ResultMessage,
             SystemMessage,
             TextBlock,
@@ -532,30 +533,35 @@ class AgentSDKExecutor(BaseExecutor):
             tool_use_id: str | None,
             context: HookContext,
         ) -> SyncHookJSONOutput:
-            nonlocal _hook_fired, _transcript_path
-            # ── Capture tool result into cache ──
-            transcript_path = input_data.get("transcript_path", "")
-            _transcript_path = transcript_path or _transcript_path
-            logger.info(
-                "PostToolUse input_data keys=%s, tool_use_id=%s",
-                list(input_data.keys()), tool_use_id,
-            )
-            tool_output = (
-                input_data.get("tool_response")
-                or input_data.get("output")
-                or input_data.get("content")
-                or ""
-            )
-            if not tool_output and tool_use_id and _transcript_path:
-                tool_output = _parse_tool_result_from_transcript(
-                    _transcript_path, tool_use_id,
+            logger.info("PostToolUse ENTERED tool_use_id=%s", tool_use_id)
+            try:
+                nonlocal _hook_fired, _transcript_path
+                # ── Capture tool result into cache ──
+                transcript_path = input_data.get("transcript_path", "")
+                _transcript_path = transcript_path or _transcript_path
+                logger.info(
+                    "PostToolUse input_data keys=%s, tool_use_id=%s",
+                    list(input_data.keys()), tool_use_id,
                 )
-            logger.info(
-                "PostToolUse tool_output length=%d, transcript_path=%s",
-                len(str(tool_output)), _transcript_path,
-            )
-            if tool_output and tool_use_id:
-                _tool_results_cache[tool_use_id] = str(tool_output)
+                tool_output = (
+                    input_data.get("tool_response")
+                    or input_data.get("output")
+                    or input_data.get("content")
+                    or ""
+                )
+                if not tool_output and tool_use_id and _transcript_path:
+                    tool_output = _parse_tool_result_from_transcript(
+                        _transcript_path, tool_use_id,
+                    )
+                logger.info(
+                    "PostToolUse tool_output length=%d, transcript_path=%s",
+                    len(str(tool_output)), _transcript_path,
+                )
+                if tool_output and tool_use_id:
+                    _tool_results_cache[tool_use_id] = str(tool_output)
+            except Exception:
+                logger.exception("PostToolUse hook error")
+                return SyncHookJSONOutput()
 
             # ── Context threshold check ──
             if tracker is None:
@@ -598,11 +604,11 @@ class AgentSDKExecutor(BaseExecutor):
                 },
             },
             hooks={
-                "PreToolUse": [{
-                    "matcher": "Write|Edit|Bash|Read|Grep|Glob",
-                    "hooks": [_build_pre_tool_hook(self._anima_dir)],
-                }],
-                "PostToolUse": [{"matcher": None, "hooks": [_post_tool_hook]}],
+                "PreToolUse": [HookMatcher(
+                    matcher="Write|Edit|Bash|Read|Grep|Glob",
+                    hooks=[_build_pre_tool_hook(self._anima_dir)],
+                )],
+                "PostToolUse": [HookMatcher(matcher=None, hooks=[_post_tool_hook])],
             },
         )
 
@@ -700,6 +706,7 @@ class AgentSDKExecutor(BaseExecutor):
         from claude_agent_sdk import (
             AssistantMessage,
             ClaudeAgentOptions,
+            HookMatcher,
             ResultMessage,
             SystemMessage,
             TextBlock,
@@ -724,30 +731,35 @@ class AgentSDKExecutor(BaseExecutor):
             tool_use_id: str | None,
             context: HookContext,
         ) -> SyncHookJSONOutput:
-            nonlocal _hook_fired, _transcript_path
-            # ── Capture tool result into cache ──
-            transcript_path = input_data.get("transcript_path", "")
-            _transcript_path = transcript_path or _transcript_path
-            logger.info(
-                "PostToolUse(stream) input_data keys=%s, tool_use_id=%s",
-                list(input_data.keys()), tool_use_id,
-            )
-            tool_output = (
-                input_data.get("tool_response")
-                or input_data.get("output")
-                or input_data.get("content")
-                or ""
-            )
-            if not tool_output and tool_use_id and _transcript_path:
-                tool_output = _parse_tool_result_from_transcript(
-                    _transcript_path, tool_use_id,
+            logger.info("PostToolUse(stream) ENTERED tool_use_id=%s", tool_use_id)
+            try:
+                nonlocal _hook_fired, _transcript_path
+                # ── Capture tool result into cache ──
+                transcript_path = input_data.get("transcript_path", "")
+                _transcript_path = transcript_path or _transcript_path
+                logger.info(
+                    "PostToolUse(stream) input_data keys=%s, tool_use_id=%s",
+                    list(input_data.keys()), tool_use_id,
                 )
-            logger.info(
-                "PostToolUse(stream) tool_output length=%d, transcript=%s",
-                len(str(tool_output)), _transcript_path,
-            )
-            if tool_output and tool_use_id:
-                _tool_results_cache[tool_use_id] = str(tool_output)
+                tool_output = (
+                    input_data.get("tool_response")
+                    or input_data.get("output")
+                    or input_data.get("content")
+                    or ""
+                )
+                if not tool_output and tool_use_id and _transcript_path:
+                    tool_output = _parse_tool_result_from_transcript(
+                        _transcript_path, tool_use_id,
+                    )
+                logger.info(
+                    "PostToolUse(stream) tool_output length=%d, transcript=%s",
+                    len(str(tool_output)), _transcript_path,
+                )
+                if tool_output and tool_use_id:
+                    _tool_results_cache[tool_use_id] = str(tool_output)
+            except Exception:
+                logger.exception("PostToolUse(stream) hook error")
+                return SyncHookJSONOutput()
 
             # ── Context threshold check ──
             ratio = tracker.estimate_from_transcript(transcript_path)
@@ -789,11 +801,11 @@ class AgentSDKExecutor(BaseExecutor):
                 },
             },
             hooks={
-                "PreToolUse": [{
-                    "matcher": "Write|Edit|Bash|Read|Grep|Glob",
-                    "hooks": [_build_pre_tool_hook(self._anima_dir)],
-                }],
-                "PostToolUse": [{"matcher": None, "hooks": [_post_tool_hook]}],
+                "PreToolUse": [HookMatcher(
+                    matcher="Write|Edit|Bash|Read|Grep|Glob",
+                    hooks=[_build_pre_tool_hook(self._anima_dir)],
+                )],
+                "PostToolUse": [HookMatcher(matcher=None, hooks=[_post_tool_hook])],
             },
         )
 
