@@ -803,7 +803,6 @@ class AgentSDKExecutor(BaseExecutor):
                 )
             return SyncHookJSONOutput()
 
-        _system_cli = shutil.which("claude")
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=["Read", "Write", "Edit", "Bash", "Grep", "Glob",
@@ -815,7 +814,6 @@ class AgentSDKExecutor(BaseExecutor):
             env=self._build_env(),
             max_buffer_size=_SDK_MAX_BUFFER_SIZE,
             include_partial_messages=True,
-            **({"cli_path": _system_cli} if _system_cli else {}),
             mcp_servers={
                 "aw": {
                     "command": sys.executable,
