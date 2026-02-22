@@ -579,6 +579,27 @@ KNOWLEDGE_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+SKILL_TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "skill",
+        "description": "スキル・手順書を発動する。skill_nameで指定したスキルの全文を返す。",  # Enriched at runtime via build_skill_tool_description()
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "skill_name": {
+                    "type": "string",
+                    "description": "発動するスキル名（個人スキル、共通スキル、手順書）",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "スキルに渡す補足コンテキスト（任意）",
+                },
+            },
+            "required": ["skill_name"],
+        },
+    },
+]
+
 TASK_TOOLS: list[dict[str, Any]] = [
     {
         "name": "add_task",
@@ -746,6 +767,10 @@ def build_tool_list(
     include_supervisor_tools: bool = False,
     include_tool_management: bool = False,
     include_task_tools: bool = False,
+    include_skill_tools: bool = False,
+    skill_metas: list[Any] | None = None,
+    common_skill_metas: list[Any] | None = None,
+    procedure_metas: list[Any] | None = None,
     external_schemas: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble a tool list from canonical definitions.
@@ -759,6 +784,10 @@ def build_tool_list(
         include_supervisor_tools: Include supervisor tools (disable/enable subordinate).
         include_tool_management: Include refresh_tools/share_tool tools.
         include_task_tools: Include task queue tools (add_task, update_task, list_tasks).
+        include_skill_tools: Include skill on-demand loading tool.
+        skill_metas: Personal skill metadata for dynamic description generation.
+        common_skill_metas: Common skill metadata for dynamic description generation.
+        procedure_metas: Procedure metadata for dynamic description generation.
         external_schemas: Additional tool schemas in canonical format.
 
     Returns:
@@ -787,6 +816,17 @@ def build_tool_list(
         tools.extend(TOOL_MANAGEMENT_TOOLS)
     if include_task_tools:
         tools.extend(TASK_TOOLS)
+    if include_skill_tools:
+        from core.tooling.skill_tool import build_skill_tool_description
+
+        desc = build_skill_tool_description(
+            skill_metas or [],
+            common_skill_metas or [],
+            procedure_metas or [],
+        )
+        # Create a copy with dynamic description
+        skill_tool_schema = {**SKILL_TOOLS[0], "description": desc}
+        tools.append(skill_tool_schema)
     if external_schemas:
         tools.extend(external_schemas)
     tools = apply_db_descriptions(tools)

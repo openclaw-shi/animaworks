@@ -331,6 +331,7 @@ class ToolHandler:
             "share_tool": self._handle_share_tool,
             "report_procedure_outcome": self._handle_report_procedure_outcome,
             "report_knowledge_outcome": self._handle_report_knowledge_outcome,
+            "skill": self._handle_skill,
             "add_task": self._handle_add_task,
             "update_task": self._handle_update_task,
             "list_tasks": self._handle_list_tasks,
@@ -1370,6 +1371,28 @@ class ToolHandler:
             result += f"\nnotes: {notes}"
 
         return result
+
+    # ── Skill tool handler ──────────────────────────────────
+
+    def _handle_skill(self, args: dict[str, Any]) -> str:
+        """Handle skill tool invocation — load and return skill content."""
+        from core.tooling.skill_tool import load_and_render_skill
+        from core.paths import get_common_skills_dir
+
+        skill_name = args.get("skill_name", "")
+        context = args.get("context", "")
+
+        if not skill_name:
+            return "skill_name パラメータは必須です。"
+
+        return load_and_render_skill(
+            skill_name=skill_name,
+            anima_dir=self._anima_dir,
+            skills_dir=self._anima_dir / "skills",
+            common_skills_dir=get_common_skills_dir(),
+            procedures_dir=self._anima_dir / "procedures",
+            context=context,
+        )
 
     # ── Task queue handlers ─────────────────────────────────
 

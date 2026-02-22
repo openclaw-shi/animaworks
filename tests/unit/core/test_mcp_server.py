@@ -31,6 +31,7 @@ EXPECTED_TOOL_NAMES: frozenset[str] = frozenset({
     "discover_tools",
     "disable_subordinate",
     "enable_subordinate",
+    "skill",
 })
 
 
@@ -41,13 +42,13 @@ class TestMcpToolSchemas:
     """Tests for the static MCP_TOOLS list built at import time."""
 
     def test_mcp_tools_count(self) -> None:
-        """MCP_TOOLS has exactly 14 tools."""
+        """MCP_TOOLS has exactly 15 tools."""
         from core.mcp.server import MCP_TOOLS
 
-        assert len(MCP_TOOLS) == 14
+        assert len(MCP_TOOLS) == 15
 
     def test_all_expected_tool_names_present(self) -> None:
-        """All 14 expected tool names are present in MCP_TOOLS."""
+        """All 15 expected tool names are present in MCP_TOOLS."""
         from core.mcp.server import MCP_TOOLS
 
         actual_names = {t.name for t in MCP_TOOLS}

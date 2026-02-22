@@ -170,6 +170,10 @@ class LiteLLMExecutor(BaseExecutor):
             include_supervisor_tools=self._has_subordinates(),
             include_tool_management=True,
             include_task_tools=True,
+            include_skill_tools=True,
+            skill_metas=self._memory.list_skill_metas(),
+            common_skill_metas=self._memory.list_common_skill_metas(),
+            procedure_metas=self._memory.list_procedure_metas(),
         )
         return to_litellm_format(canonical)
 
