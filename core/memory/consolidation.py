@@ -339,6 +339,9 @@ class ConsolidationEngine:
                 "Knowledge reconsolidation failed for anima=%s", self.anima_name,
             )
 
+        # Create procedures from resolved events
+        resolved_procedure_result = await self._run_resolved_to_procedure(model)
+
         # Contradiction check for newly created/updated knowledge files
         contradiction_result: dict[str, int] = {}
         try:
@@ -364,6 +367,7 @@ class ConsolidationEngine:
             "downscaling": downscaling_result,
             "reconsolidation": reconsolidation_result,
             "knowledge_reconsolidation": knowledge_reconsolidation_result,
+            "resolved_to_procedure": resolved_procedure_result,
             "contradiction": contradiction_result,
             "skipped": False,
         }
@@ -468,6 +472,38 @@ class ConsolidationEngine:
 
         return result
 
+    async def _run_resolved_to_procedure(
+        self, model: str,
+    ) -> dict[str, int]:
+        """Create procedures from issue_resolved events.
+
+        Delegates to :class:`ReconsolidationEngine` which scans recent
+        ``issue_resolved`` activity entries and generates procedure files
+        for those that lack matching procedures.
+
+        Args:
+            model: LLM model identifier (LiteLLM format).
+
+        Returns:
+            Dict with counts: ``created``, ``skipped``, ``errors``.
+        """
+        try:
+            from core.memory.reconsolidation import ReconsolidationEngine
+            from core.memory.manager import MemoryManager
+
+            mm = MemoryManager(self.anima_dir)
+            engine = ReconsolidationEngine(
+                self.anima_dir, self.anima_name, memory_manager=mm,
+            )
+            return await engine.create_procedures_from_resolved(model=model)
+        except Exception:
+            logger.warning(
+                "Resolved-to-procedure failed for anima=%s",
+                self.anima_name,
+                exc_info=True,
+            )
+            return {"created": 0, "skipped": 0, "errors": 0}
+
     def _collect_recent_episodes(self, hours: int = 24) -> list[dict[str, str]]:
         """Collect episode entries from the past N hours.
 
@@ -560,7 +596,10 @@ class ConsolidationEngine:
             from core.memory.activity import ActivityLogger
             activity = ActivityLogger(self.anima_dir)
             entries = activity.recent(days=1, limit=50, types=["issue_resolved"])
-            return [{"ts": e.ts, "content": e.content, "summary": e.summary} for e in entries]
+            return [
+                {"ts": e.ts, "content": e.content, "summary": e.summary, "meta": e.meta or {}}
+                for e in entries
+            ]
         except Exception:
             logger.debug("Failed to collect resolved events", exc_info=True)
             return []

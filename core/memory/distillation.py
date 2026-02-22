@@ -237,7 +237,7 @@ class ProceduralDistiller:
             e for e in entries
             if e.get("type") in (
                 "tool_use", "response_sent", "cron_executed",
-                "memory_write",
+                "memory_write", "issue_resolved",
             )
         ]
         if not relevant:

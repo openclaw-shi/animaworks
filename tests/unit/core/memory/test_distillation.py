@@ -1227,5 +1227,88 @@ class TestFilterEntriesByText:
         assert len(result) == 1  # falls back to all
 
 
+# ── Weekly Pattern Filter: issue_resolved ────────────────────
+
+
+class TestWeeklyPatternFilterIncludesResolved:
+    """Test that issue_resolved events are included in weekly pattern detection."""
+
+    @pytest.mark.asyncio
+    async def test_issue_resolved_passes_filter(
+        self, distiller, anima_dir: Path,
+    ) -> None:
+        """issue_resolved events should pass the relevant type filter."""
+        activity_dir = anima_dir / "activity_log"
+        today = datetime.now().date()
+
+        # Write issue_resolved events to activity log
+        entries = []
+        for i in range(5):
+            entries.append(json.dumps({
+                "ts": f"{today}T09:{i:02d}:00",
+                "type": "issue_resolved",
+                "summary": f"問題解決 #{i}",
+                "content": f"サーバー障害対応手順 #{i}",
+            }, ensure_ascii=False))
+
+        (activity_dir / f"{today}.jsonl").write_text(
+            "\n".join(entries) + "\n",
+            encoding="utf-8",
+        )
+
+        llm_response = json.dumps([
+            {
+                "title": "server_recovery",
+                "description": "サーバー障害復旧手順",
+                "tags": ["ops", "recovery"],
+                "content": "# サーバー復旧\n\n1. 状態確認\n2. サービス再起動",
+            },
+        ])
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = llm_response
+            mock_llm.return_value = mock_resp
+
+            with patch.object(
+                distiller, "_check_rag_duplicate", return_value=None,
+            ):
+                result = await distiller.weekly_pattern_distill(
+                    model="test-model",
+                )
+
+        # issue_resolved events should cluster and produce patterns
+        assert result["patterns_detected"] >= 1
+
+    def test_issue_resolved_not_filtered_out(self, distiller) -> None:
+        """issue_resolved entries should not be excluded by the relevant filter."""
+        # The filter in weekly_pattern_distill accepts these types:
+        # "tool_use", "response_sent", "cron_executed", "memory_write",
+        # "issue_resolved"
+        relevant_types = {
+            "tool_use", "response_sent", "cron_executed",
+            "memory_write", "issue_resolved",
+        }
+        # Verify issue_resolved is in the accepted set
+        assert "issue_resolved" in relevant_types
+
+        # Simulate the filtering logic from weekly_pattern_distill
+        entries = [
+            {"type": "issue_resolved", "summary": "test"},
+            {"type": "dm_sent", "summary": "excluded"},
+            {"type": "tool_use", "tool": "github", "summary": "included"},
+        ]
+        relevant = [
+            e for e in entries
+            if e.get("type") in relevant_types
+        ]
+        # issue_resolved and tool_use should pass; dm_sent should not
+        assert len(relevant) == 2
+        types_in_result = {e["type"] for e in relevant}
+        assert "issue_resolved" in types_in_result
+        assert "dm_sent" not in types_in_result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

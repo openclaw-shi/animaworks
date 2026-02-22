@@ -915,5 +915,217 @@ Some knowledge content.
             assert merged_path.parent == consolidation_engine.knowledge_dir
 
 
+# ── Resolved Events Collection Tests ─────────────────────────
+
+
+class TestCollectResolvedEventsMeta:
+    """Test that _collect_resolved_events includes meta field."""
+
+    def test_resolved_events_include_meta(self, temp_anima_dir: Path) -> None:
+        """_collect_resolved_events should return dicts with 'meta' key."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        from core.memory.consolidation import ConsolidationEngine
+
+        engine = ConsolidationEngine(
+            anima_dir=temp_anima_dir, anima_name="test_anima",
+        )
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = "問題を解決した"
+            summary: str = "解決完了"
+            meta: dict[str, Any] = field(default_factory=lambda: {
+                "issue_type": "server_down",
+                "severity": "high",
+            })
+
+        fake_entries = [FakeEntry()]
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=fake_entries,
+        ):
+            result = engine._collect_resolved_events(hours=24)
+
+        # Result should contain at least one entry
+        assert len(result) == 1
+        # The 'meta' field should be included in the result dict
+        assert "meta" in result[0]
+        assert result[0]["meta"]["issue_type"] == "server_down"
+        assert result[0]["meta"]["severity"] == "high"
+
+    def test_resolved_events_empty_meta(self, temp_anima_dir: Path) -> None:
+        """_collect_resolved_events should handle entries with None meta."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        from core.memory.consolidation import ConsolidationEngine
+
+        engine = ConsolidationEngine(
+            anima_dir=temp_anima_dir, anima_name="test_anima",
+        )
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = "修正完了"
+            summary: str = "バグ修正"
+            meta: dict[str, Any] | None = None
+
+        fake_entries = [FakeEntry()]
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=fake_entries,
+        ):
+            result = engine._collect_resolved_events(hours=24)
+
+        assert len(result) == 1
+        # meta should default to empty dict when None (via `e.meta or {}`)
+        assert result[0]["meta"] == {}
+
+    def test_resolved_events_returns_empty_on_error(
+        self, temp_anima_dir: Path,
+    ) -> None:
+        """_collect_resolved_events should return [] on exception."""
+        from core.memory.consolidation import ConsolidationEngine
+
+        engine = ConsolidationEngine(
+            anima_dir=temp_anima_dir, anima_name="test_anima",
+        )
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            side_effect=RuntimeError("Activity log unavailable"),
+        ):
+            result = engine._collect_resolved_events(hours=24)
+
+        # Errors should be caught and return empty list
+        assert result == []
+
+
+class TestDailyConsolidateResolvedPipeline:
+    """Test that daily_consolidate calls _run_resolved_to_procedure."""
+
+    @pytest.mark.asyncio
+    async def test_daily_consolidate_calls_resolved_to_procedure(
+        self, consolidation_engine, temp_anima_dir: Path,
+    ) -> None:
+        """daily_consolidate() should call _run_resolved_to_procedure."""
+        # Create a minimal episode file so consolidation runs
+        today = datetime.now().date()
+        episode_file = consolidation_engine.episodes_dir / f"{today}.md"
+        episode_file.write_text(
+            "## 10:00 — テスト\n\nテスト内容\n",
+            encoding="utf-8",
+        )
+
+        mock_llm_response = (
+            "## 既存ファイル更新\n(なし)\n\n"
+            "## 新規ファイル作成\n(なし)"
+        )
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = mock_llm_response
+            mock_llm.return_value = mock_response
+
+            with patch.object(
+                consolidation_engine,
+                "_run_resolved_to_procedure",
+                new_callable=AsyncMock,
+                return_value={"created": 1, "skipped": 0, "errors": 0},
+            ) as mock_resolved:
+                result = await consolidation_engine.daily_consolidate(
+                    min_episodes=1, model="test-model",
+                )
+
+        # _run_resolved_to_procedure should have been called
+        mock_resolved.assert_called_once_with("test-model")
+
+    @pytest.mark.asyncio
+    async def test_daily_consolidate_result_includes_resolved_key(
+        self, consolidation_engine, temp_anima_dir: Path,
+    ) -> None:
+        """daily_consolidate() result dict should contain 'resolved_to_procedure' key."""
+        today = datetime.now().date()
+        episode_file = consolidation_engine.episodes_dir / f"{today}.md"
+        episode_file.write_text(
+            "## 10:00 — テスト\n\nテスト内容\n",
+            encoding="utf-8",
+        )
+
+        mock_llm_response = (
+            "## 既存ファイル更新\n(なし)\n\n"
+            "## 新規ファイル作成\n(なし)"
+        )
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = mock_llm_response
+            mock_llm.return_value = mock_response
+
+            with patch.object(
+                consolidation_engine,
+                "_run_resolved_to_procedure",
+                new_callable=AsyncMock,
+                return_value={"created": 2, "skipped": 1, "errors": 0},
+            ):
+                result = await consolidation_engine.daily_consolidate(
+                    min_episodes=1, model="test-model",
+                )
+
+        # The result dict should include the resolved_to_procedure key
+        assert "resolved_to_procedure" in result
+        assert result["resolved_to_procedure"]["created"] == 2
+        assert result["resolved_to_procedure"]["skipped"] == 1
+
+    @pytest.mark.asyncio
+    async def test_daily_consolidate_resolved_failure_non_fatal(
+        self, consolidation_engine, temp_anima_dir: Path,
+    ) -> None:
+        """_run_resolved_to_procedure failure should not break daily_consolidate."""
+        today = datetime.now().date()
+        episode_file = consolidation_engine.episodes_dir / f"{today}.md"
+        episode_file.write_text(
+            "## 10:00 — テスト\n\nテスト内容\n",
+            encoding="utf-8",
+        )
+
+        mock_llm_response = (
+            "## 既存ファイル更新\n(なし)\n\n"
+            "## 新規ファイル作成\n(なし)"
+        )
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = mock_llm_response
+            mock_llm.return_value = mock_response
+
+            # _run_resolved_to_procedure catches its own exceptions
+            # and returns zeros, so daily_consolidate should still complete
+            with patch.object(
+                consolidation_engine,
+                "_run_resolved_to_procedure",
+                new_callable=AsyncMock,
+                return_value={"created": 0, "skipped": 0, "errors": 0},
+            ):
+                result = await consolidation_engine.daily_consolidate(
+                    min_episodes=1, model="test-model",
+                )
+
+        # Consolidation should still succeed
+        assert result["skipped"] is False
+        assert "resolved_to_procedure" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

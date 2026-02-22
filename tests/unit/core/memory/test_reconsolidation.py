@@ -695,5 +695,256 @@ class TestConstructor:
         assert engine.activity_logger is activity_logger
 
 
+# ── Create Procedures from Resolved Events Tests ─────────
+
+
+class TestCreateProceduresFromResolved:
+    """Test create_procedures_from_resolved() method."""
+
+    @pytest.mark.asyncio
+    async def test_no_resolved_events_returns_empty(
+        self, engine: ReconsolidationEngine,
+    ) -> None:
+        """No issue_resolved events should return zeros."""
+        # ActivityLogger.recent() returns empty list
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=[],
+        ):
+            result = await engine.create_procedures_from_resolved(
+                model="test-model", days=1,
+            )
+
+        # All counters should be zero when there are no events
+        assert result["created"] == 0
+        assert result["skipped"] == 0
+        assert result["errors"] == 0
+
+    @pytest.mark.asyncio
+    async def test_creates_procedure_from_resolved_event(
+        self, engine: ReconsolidationEngine, anima_dir: Path,
+    ) -> None:
+        """Should create a procedure from a resolved event."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = "DBマイグレーション手順: 1. バックアップ 2. マイグレーション実行 3. 確認"
+            summary: str = "DBマイグレーション完了"
+            meta: dict[str, Any] = field(default_factory=dict)
+
+        fake_entry = FakeEntry()
+
+        # LLM response in the classification format
+        llm_response_text = (
+            "## knowledge抽出\n(なし)\n\n"
+            "## procedure抽出\n"
+            "- ファイル名: procedures/db_migration.md\n"
+            "  description: DBマイグレーション手順\n"
+            "  tags: db, migration\n"
+            "  内容: # DBマイグレーション\n\n1. バックアップ\n2. マイグレーション実行\n3. 確認"
+        )
+        llm_response = MagicMock()
+        llm_response.choices = [MagicMock()]
+        llm_response.choices[0].message.content = llm_response_text
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=[fake_entry],
+        ):
+            with patch(
+                "core.memory.distillation.ProceduralDistiller._check_rag_duplicate",
+                return_value=None,
+            ):
+                with patch(
+                    "litellm.acompletion",
+                    new_callable=AsyncMock,
+                    return_value=llm_response,
+                ):
+                    result = await engine.create_procedures_from_resolved(
+                        model="test-model", days=1,
+                    )
+
+        # A procedure should have been created
+        assert result["created"] == 1
+        assert result["errors"] == 0
+
+        # Verify the file was actually created
+        proc_files = list((anima_dir / "procedures").glob("*.md"))
+        assert len(proc_files) >= 1
+        created_file = [f for f in proc_files if "db_migration" in f.name]
+        assert len(created_file) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_empty_content(
+        self, engine: ReconsolidationEngine,
+    ) -> None:
+        """Events with empty content should be skipped."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = ""
+            summary: str = ""
+            meta: dict[str, Any] = field(default_factory=dict)
+
+        fake_entry = FakeEntry()
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=[fake_entry],
+        ):
+            result = await engine.create_procedures_from_resolved(
+                model="test-model", days=1,
+            )
+
+        # Empty content entries should increment skipped count
+        assert result["skipped"] == 1
+        assert result["created"] == 0
+        assert result["errors"] == 0
+
+    @pytest.mark.asyncio
+    async def test_skips_rag_duplicate(
+        self, engine: ReconsolidationEngine,
+    ) -> None:
+        """Events similar to existing procedures should be skipped."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = "既存手順と同じ内容"
+            summary: str = "重複イベント"
+            meta: dict[str, Any] = field(default_factory=dict)
+
+        fake_entry = FakeEntry()
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=[fake_entry],
+        ):
+            with patch(
+                "core.memory.distillation.ProceduralDistiller._check_rag_duplicate",
+                return_value="procedures/existing.md",
+            ):
+                result = await engine.create_procedures_from_resolved(
+                    model="test-model", days=1,
+                )
+
+        # RAG duplicate should increment skipped count
+        assert result["skipped"] == 1
+        assert result["created"] == 0
+
+    @pytest.mark.asyncio
+    async def test_llm_error_increments_errors(
+        self, engine: ReconsolidationEngine,
+    ) -> None:
+        """LLM failure should increment error count, not raise."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = "問題を解決した: サーバー再起動手順"
+            summary: str = "サーバー再起動"
+            meta: dict[str, Any] = field(default_factory=dict)
+
+        fake_entry = FakeEntry()
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=[fake_entry],
+        ):
+            with patch(
+                "core.memory.distillation.ProceduralDistiller._check_rag_duplicate",
+                return_value=None,
+            ):
+                with patch(
+                    "litellm.acompletion",
+                    new_callable=AsyncMock,
+                    side_effect=RuntimeError("API error"),
+                ):
+                    result = await engine.create_procedures_from_resolved(
+                        model="test-model", days=1,
+                    )
+
+        # LLM error should increment errors, not raise
+        assert result["errors"] == 1
+        assert result["created"] == 0
+
+    @pytest.mark.asyncio
+    async def test_procedure_saved_with_correct_metadata(
+        self, engine: ReconsolidationEngine, anima_dir: Path,
+    ) -> None:
+        """Created procedure should have confidence=0.4 and auto_distilled=True."""
+        from dataclasses import dataclass, field
+        from typing import Any
+
+        @dataclass
+        class FakeEntry:
+            ts: str = "2026-02-22T10:00:00"
+            type: str = "issue_resolved"
+            content: str = "ネットワーク設定手順: 1. DNS変更 2. ルーティング確認"
+            summary: str = "ネットワーク設定完了"
+            meta: dict[str, Any] = field(default_factory=dict)
+
+        fake_entry = FakeEntry()
+
+        llm_response_text = (
+            "## knowledge抽出\n(なし)\n\n"
+            "## procedure抽出\n"
+            "- ファイル名: procedures/network_config.md\n"
+            "  description: ネットワーク設定手順\n"
+            "  tags: network, ops\n"
+            "  内容: # ネットワーク設定\n\n1. DNS変更\n2. ルーティング確認"
+        )
+        llm_response = MagicMock()
+        llm_response.choices = [MagicMock()]
+        llm_response.choices[0].message.content = llm_response_text
+
+        with patch(
+            "core.memory.activity.ActivityLogger.recent",
+            return_value=[fake_entry],
+        ):
+            with patch(
+                "core.memory.distillation.ProceduralDistiller._check_rag_duplicate",
+                return_value=None,
+            ):
+                with patch(
+                    "litellm.acompletion",
+                    new_callable=AsyncMock,
+                    return_value=llm_response,
+                ):
+                    result = await engine.create_procedures_from_resolved(
+                        model="test-model", days=1,
+                    )
+
+        assert result["created"] == 1
+
+        # Verify metadata on the saved procedure file
+        proc_path = anima_dir / "procedures" / "network_config.md"
+        assert proc_path.exists()
+
+        meta = engine.memory_manager.read_procedure_metadata(proc_path)
+        # Auto-distilled procedures should start with confidence=0.4
+        assert meta["confidence"] == 0.4
+        # The auto_distilled flag should be set
+        assert meta["auto_distilled"] is True
+        # Counters should start at zero
+        assert meta["failure_count"] == 0
+        assert meta["success_count"] == 0
+        assert meta["version"] == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
