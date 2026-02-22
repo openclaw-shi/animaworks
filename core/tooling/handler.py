@@ -293,8 +293,9 @@ class ToolHandler:
             personal_tools=personal_tools,
         )
 
-        # ── Cache subordinate activity_log paths for permission checks ──
+        # ── Cache subordinate paths for permission checks ──
         self._subordinate_activity_dirs: list[Path] = []
+        self._subordinate_management_files: list[Path] = []
         try:
             from core.config.models import load_config
             from core.paths import get_animas_dir
@@ -302,9 +303,10 @@ class ToolHandler:
             _animas_dir = get_animas_dir()
             for _sub_name, _sub_cfg in _cfg.animas.items():
                 if _sub_cfg.supervisor == self._anima_name:
-                    self._subordinate_activity_dirs.append(
-                        (_animas_dir / _sub_name / "activity_log").resolve()
-                    )
+                    _sub_dir = (_animas_dir / _sub_name).resolve()
+                    self._subordinate_activity_dirs.append(_sub_dir / "activity_log")
+                    self._subordinate_management_files.append(_sub_dir / "cron.md")
+                    self._subordinate_management_files.append(_sub_dir / "heartbeat.md")
         except Exception:
             logger.debug("Failed to cache subordinate paths for %s", self._anima_name, exc_info=True)
 
@@ -1706,8 +1708,9 @@ class ToolHandler:
         Access rules (evaluated in order):
           1. Own anima_dir -- always allowed for reads; writes to protected files blocked
           2. Subordinate's activity_log/ -- read-only for direct supervisors
-          3. Paths listed under ``ファイル操作`` section in permissions.md
-          4. Everything else -- denied
+          3. Subordinate's cron.md & heartbeat.md -- read/write for direct supervisors
+          4. Paths listed under ``ファイル操作`` section in permissions.md
+          5. Everything else -- denied
         """
         resolved = Path(path).resolve()
 
@@ -1725,6 +1728,11 @@ class ToolHandler:
             for sub_activity in self._subordinate_activity_dirs:
                 if resolved.is_relative_to(sub_activity):
                     return None
+
+        # Supervisor can read/write subordinate's cron.md & heartbeat.md
+        for mgmt_file in self._subordinate_management_files:
+            if resolved == mgmt_file:
+                return None
 
         permissions = self._memory.read_permissions()
         if "ファイル操作" not in permissions:
