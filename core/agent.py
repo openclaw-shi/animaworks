@@ -576,6 +576,7 @@ class AgentCore:
         *,
         message_intent: str = "",
         overflow_files: list[str] | None = None,
+        prompt_tier: str = "full",
     ) -> str:
         """Run priming layer to automatically retrieve relevant memories.
 
@@ -585,19 +586,23 @@ class AgentCore:
             overflow_files: File stems that didn't fit in knowledge injection.
                 None = legacy (full Channel C), [] = all injected (skip C),
                 [...] = overflow files only for Channel C.
+            prompt_tier: Prompt tier for budget control
+                ("full"/"standard"/"light"/"minimal").
 
         Returns:
             Formatted priming section for system prompt injection, or empty string.
         """
         from core.memory.priming import PrimingEngine, format_priming_section
+        from core.prompt.builder import TIER_LIGHT, TIER_MINIMAL, TIER_STANDARD
 
-        # Extract sender name from trigger (format: "message:sender_name")
+        if prompt_tier == TIER_MINIMAL:
+            logger.debug("Priming: skipped (tier=minimal)")
+            return ""
+
         sender_name = "human"
         if trigger.startswith("message:"):
             sender_name = trigger.split(":", 1)[1]
 
-        # Extract the actual message content from prompt
-        # The prompt may contain conversation history, so we need to extract the latest message
         message = self._extract_message_from_prompt(prompt)
 
         try:
@@ -619,7 +624,6 @@ class AgentCore:
                 else "chat"
             )
 
-            # Compute overflow_files for Channel C control
             try:
                 from core.prompt.context import resolve_context_window
                 distilled = self.memory.collect_distilled_knowledge()
@@ -628,7 +632,7 @@ class AgentCore:
                     distilled, ctx_window,
                 )
             except Exception:
-                overflow_files = None  # Fallback to legacy behaviour
+                overflow_files = None
 
             result = await self._priming_engine.prime_memories(
                 message,
@@ -643,11 +647,27 @@ class AgentCore:
                 logger.debug("Priming: No memories found")
                 return ""
 
+            # T3 Light: sender_profile only
+            if prompt_tier == TIER_LIGHT:
+                if result.sender_profile:
+                    logger.info("Priming: tier=light, returning sender_profile only")
+                    return (
+                        f"## あなたが思い出していること\n\n"
+                        f"### {sender_name} について\n\n"
+                        f"{result.sender_profile}"
+                    )
+                return ""
+
             formatted = format_priming_section(result, sender_name)
             logger.info(
-                "Priming: Retrieved %d tokens of memories",
-                result.estimated_tokens(),
+                "Priming: Retrieved %d tokens of memories (tier=%s)",
+                result.estimated_tokens(), prompt_tier,
             )
+
+            # T2 Standard: truncate to ~1000 tokens (≈4000 chars)
+            if prompt_tier == TIER_STANDARD and len(formatted) > 4000:
+                formatted = formatted[:4000] + "\n\n（以降省略）"
+
             return formatted
 
         except Exception:
@@ -728,6 +748,7 @@ class AgentCore:
         mode: str,
         message: str,
         trigger: str = "",
+        context_window: int = 200_000,
     ) -> tuple[str, str, bool]:
         """Check combined prompt size and shrink if necessary.
 
@@ -752,7 +773,6 @@ class AgentCore:
         if conv_memory is not None:
             try:
                 await conv_memory._compress()
-                # Rebuild prompt with compressed history
                 prompt = conv_memory.build_chat_prompt(message, "human")
                 system_prompt = build_system_prompt(
                     self.memory,
@@ -763,6 +783,7 @@ class AgentCore:
                     message=prompt,
                     retriever=self._get_retriever(),
                     trigger=trigger,
+                    context_window=context_window,
                 ).system_prompt
             except Exception:
                 logger.exception("Forced compression failed")
@@ -841,6 +862,15 @@ class AgentCore:
             trigger, len(prompt), mode,
         )
 
+        # ── Resolve context window and prompt tier ────────────
+        from core.prompt.context import resolve_context_window
+        from core.prompt.builder import resolve_prompt_tier
+        _ctx_window = resolve_context_window(
+            self.model_config.model,
+            overrides=self._load_context_window_overrides(),
+        )
+        _prompt_tier = resolve_prompt_tier(_ctx_window)
+
         # ── Priming: Automatic memory retrieval ────────────────
         overflow_files = self._compute_overflow_files()
         priming_section = await self._run_priming(
@@ -848,6 +878,7 @@ class AgentCore:
             trigger,
             message_intent=message_intent,
             overflow_files=overflow_files,
+            prompt_tier=_prompt_tier,
         )
 
         shortterm = ShortTermMemory(self.anima_dir)
@@ -857,7 +888,6 @@ class AgentCore:
             context_window_overrides=self._load_context_window_overrides(),
         )
 
-        # Build system prompt with priming; inject short-term memory from prior session
         build_result = build_system_prompt(
             self.memory,
             tool_registry=self._tool_registry,
@@ -867,12 +897,12 @@ class AgentCore:
             message=prompt,
             retriever=self._get_retriever(),
             trigger=trigger,
+            context_window=_ctx_window,
         )
         system_prompt = build_result.system_prompt
         injected_procedures = build_result.injected_procedures
-        logger.debug("System prompt assembled, length=%d", len(system_prompt))
+        logger.debug("System prompt assembled, length=%d tier=%s", len(system_prompt), _prompt_tier)
 
-        # Persist injected procedures for heartbeat-triggered finalization
         if injected_procedures:
             from core.memory.conversation import ConversationMemory as _CM
             _cm = _CM(self.anima_dir, self.model_config)
@@ -885,12 +915,7 @@ class AgentCore:
             logger.info("Injected short-term memory into system prompt")
 
         # ── Prompt log: save full payload for debugging ───
-        from core.prompt.context import resolve_context_window
         from core.tooling.schemas import load_all_tool_schemas
-        _ctx_win = resolve_context_window(
-            self.model_config.model,
-            overrides=self._load_context_window_overrides(),
-        )
         _tool_schemas = load_all_tool_schemas(
             tool_registry=self._tool_registry,
             personal_tools=self._personal_tools,
@@ -905,7 +930,7 @@ class AgentCore:
             user_message=prompt,
             tools=self._tool_registry,
             session_id=self._tool_handler.session_id,
-            context_window=_ctx_win,
+            context_window=_ctx_window,
             prior_messages=prior_messages,
             tool_schemas=_tool_schemas,
         )
@@ -983,6 +1008,7 @@ class AgentCore:
             mode=mode,
             message=prompt,
             trigger=trigger,
+            context_window=_ctx_window,
         )
         if use_fallback:
             executor = self._create_fallback_executor()
@@ -1078,11 +1104,12 @@ class AgentCore:
                     self.memory,
                     tool_registry=self._tool_registry,
                     personal_tools=self._personal_tools,
-                    priming_section=priming_section,  # Reuse priming from initial session
+                    priming_section=priming_section,
                     execution_mode=mode,
                     message=prompt,
                     retriever=self._get_retriever(),
                     trigger=trigger,
+                    context_window=_ctx_window,
                 ).system_prompt,
                 shortterm,
             )
@@ -1174,14 +1201,23 @@ class AgentCore:
             }
             return
 
+        # ── Resolve context window and prompt tier ────────────
+        from core.prompt.context import resolve_context_window as _rcw
+        from core.prompt.builder import resolve_prompt_tier as _rpt
+        _ctx_window_s = _rcw(
+            self.model_config.model,
+            overrides=self._load_context_window_overrides(),
+        )
+        _prompt_tier_s = _rpt(_ctx_window_s)
+
         # ── Streaming executor (S / A / all modes) ───────────────
-        # Priming: Automatic memory retrieval
         overflow_files = self._compute_overflow_files()
         priming_section = await self._run_priming(
             prompt,
             trigger,
             message_intent=message_intent,
             overflow_files=overflow_files,
+            prompt_tier=_prompt_tier_s,
         )
 
         shortterm = ShortTermMemory(self.anima_dir)
@@ -1200,9 +1236,9 @@ class AgentCore:
             message=prompt,
             retriever=self._get_retriever(),
             trigger=trigger,
+            context_window=_ctx_window_s,
         )
         system_prompt = build_result.system_prompt
-        # Persist injected procedures for heartbeat-triggered finalization
         if build_result.injected_procedures:
             from core.memory.conversation import ConversationMemory as _CM
             _cm = _CM(self.anima_dir, self.model_config)
@@ -1222,9 +1258,9 @@ class AgentCore:
             mode=mode,
             message=prompt,
             trigger=trigger,
+            context_window=_ctx_window_s,
         )
         if use_fallback:
-            # Fall back to non-streaming execution
             logger.warning("Streaming fallback: using blocking S Fallback for oversized prompt")
             async with self._agent_lock:
                 cycle = await self._run_cycle_inner(
@@ -1242,12 +1278,7 @@ class AgentCore:
             return
 
         # ── Prompt log: save full payload for debugging ───
-        from core.prompt.context import resolve_context_window as _rcw
         from core.tooling.schemas import load_all_tool_schemas as _lats
-        _ctx_win_s = _rcw(
-            self.model_config.model,
-            overrides=self._load_context_window_overrides(),
-        )
         _tool_schemas_s = _lats(
             tool_registry=self._tool_registry,
             personal_tools=self._personal_tools,
@@ -1262,7 +1293,7 @@ class AgentCore:
             user_message=prompt,
             tools=self._tool_registry,
             session_id=self._tool_handler.session_id,
-            context_window=_ctx_win_s,
+            context_window=_ctx_window_s,
             prior_messages=prior_messages,
             tool_schemas=_tool_schemas_s,
         )
@@ -1407,6 +1438,7 @@ class AgentCore:
                     message=prompt,
                     retriever=self._get_retriever(),
                     trigger=trigger,
+                    context_window=_ctx_window_s,
                 ).system_prompt
 
                 await asyncio.sleep(retry_delay)
@@ -1463,11 +1495,12 @@ class AgentCore:
                     self.memory,
                     tool_registry=self._tool_registry,
                     personal_tools=self._personal_tools,
-                    priming_section=priming_section,  # Reuse priming from initial session
+                    priming_section=priming_section,
                     execution_mode=mode,
                     message=prompt,
                     retriever=self._get_retriever(),
                     trigger=trigger,
+                    context_window=_ctx_window_s,
                 ).system_prompt,
                 shortterm,
             )

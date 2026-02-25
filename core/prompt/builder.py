@@ -64,6 +64,30 @@ class BuildResult:
 
 _CURRENT_TASK_MAX_CHARS = 3000
 
+# ── Prompt tier constants ─────────────────────────────────────
+TIER_FULL = "full"          # 128k+
+TIER_STANDARD = "standard"  # 32k–128k
+TIER_LIGHT = "light"        # 16k–32k
+TIER_MINIMAL = "minimal"    # <16k
+
+
+def resolve_prompt_tier(context_window: int) -> str:
+    """Determine prompt tier from context window size.
+
+    Boundaries chosen based on measured full prompt size (~12k tokens):
+    - 128k+: all components injected (existing behaviour)
+    - 32k–128k: DK budget reduced, priming budget halved
+    - 16k–32k: bootstrap/vision/specialty/DK/memory_guide omitted
+    - <16k: additionally permissions/priming/org/messaging/emotion omitted
+    """
+    if context_window >= 128_000:
+        return TIER_FULL
+    if context_window >= 32_000:
+        return TIER_STANDARD
+    if context_window >= 16_000:
+        return TIER_LIGHT
+    return TIER_MINIMAL
+
 # ── Emotion Instruction ───────────────────────────────────
 
 def _build_emotion_instruction() -> str:
@@ -388,6 +412,7 @@ def build_system_prompt(
     retriever: object | None = None,
     *,
     trigger: str = "",
+    context_window: int = 200_000,
 ) -> BuildResult:
     """Construct the full system prompt from Markdown files.
 
@@ -402,6 +427,7 @@ def build_system_prompt(
     parts: list[str] = []
     pd = memory.anima_dir
     data_dir = get_data_dir()
+    tier = resolve_prompt_tier(context_window)
 
     # ── Pre-compute values needed across multiple groups ──────────
 
@@ -432,27 +458,34 @@ def build_system_prompt(
     else:
         _env = load_prompt("environment", data_dir=data_dir, anima_name=pd.name)
     if _env:
+        if tier == TIER_LIGHT and len(_env) > 8000:
+            _env = _env[:8000]
+        elif tier == TIER_MINIMAL and len(_env) > 4800:
+            _env = _env[:4800]
         parts.append(_env)
 
     current_time = now_jst().strftime("%Y-%m-%d %H:%M (%Z)")
     parts.append(f"**現在時刻**: {current_time}")
 
-    _br = (
-        _prompt_store.get_section("behavior_rules") if _prompt_store else None
-    ) or load_prompt("behavior_rules")
-    if _br:
-        parts.append(_br)
+    if tier in (TIER_FULL, TIER_STANDARD):
+        _br = (
+            _prompt_store.get_section("behavior_rules") if _prompt_store else None
+        ) or load_prompt("behavior_rules")
+        if _br:
+            parts.append(_br)
 
     # ── Group 2: あなた自身 ───────────────────────────────────
     parts.append("# 2. あなた自身")
 
-    bootstrap = memory.read_bootstrap()
-    if bootstrap:
-        parts.append(bootstrap)
+    if tier in (TIER_FULL, TIER_STANDARD):
+        bootstrap = memory.read_bootstrap()
+        if bootstrap:
+            parts.append(bootstrap)
 
-    company_vision = memory.read_company_vision()
-    if company_vision:
-        parts.append(company_vision)
+    if tier in (TIER_FULL, TIER_STANDARD):
+        company_vision = memory.read_company_vision()
+        if company_vision:
+            parts.append(company_vision)
 
     identity = memory.read_identity()
     if identity:
@@ -462,23 +495,31 @@ def build_system_prompt(
     if injection:
         parts.append(injection)
 
-    specialty = memory.read_specialty_prompt()
-    if specialty:
-        parts.append(specialty)
+    if tier in (TIER_FULL, TIER_STANDARD):
+        specialty = memory.read_specialty_prompt()
+        if specialty:
+            parts.append(specialty)
 
-    if permissions:
-        parts.append(permissions)
+    if tier != TIER_MINIMAL:
+        if permissions:
+            parts.append(permissions)
 
     # ── Group 3: 現在の状況 ───────────────────────────────────
     parts.append("# 3. 現在の状況")
 
-    # current_state with size limit
+    # current_state with tier-dependent size limit
+    _state_max = {
+        TIER_FULL: _CURRENT_TASK_MAX_CHARS,
+        TIER_STANDARD: _CURRENT_TASK_MAX_CHARS,
+        TIER_LIGHT: 1000,
+        TIER_MINIMAL: 500,
+    }[tier]
     state = memory.read_current_state()
     if state and state.strip() != "status: idle":
-        if len(state) > _CURRENT_TASK_MAX_CHARS:
-            truncated = state[-_CURRENT_TASK_MAX_CHARS:]
+        if len(state) > _state_max:
+            truncated = state[-_state_max:]
             first_nl = truncated.find("\n")
-            if first_nl != -1 and first_nl < _CURRENT_TASK_MAX_CHARS * 0.2:
+            if first_nl != -1 and first_nl < _state_max * 0.2:
                 truncated = truncated[first_nl + 1:]
             state = "（前半省略）\n\n" + truncated
         parts.append(load_prompt("builder/task_in_progress", state=state))
@@ -489,98 +530,103 @@ def build_system_prompt(
     if pending:
         parts.append(f"## 未完了タスク\n\n{pending}")
 
-    # Task Queue (structured persistent queue)
-    try:
-        from core.memory.task_queue import TaskQueueManager
-        task_queue = TaskQueueManager(memory.anima_dir)
-        task_summary = task_queue.format_for_priming()
-        if task_summary:
-            parts.append(load_prompt("builder/task_queue", task_summary=task_summary))
-    except Exception:
-        logger.debug("Failed to inject task queue", exc_info=True)
+    if tier in (TIER_FULL, TIER_STANDARD):
+        # Task Queue (structured persistent queue)
+        try:
+            from core.memory.task_queue import TaskQueueManager
+            task_queue = TaskQueueManager(memory.anima_dir)
+            task_summary = task_queue.format_for_priming()
+            if task_summary:
+                parts.append(load_prompt("builder/task_queue", task_summary=task_summary))
+        except Exception:
+            logger.debug("Failed to inject task queue", exc_info=True)
 
-    # Resolution registry with dedup (cross-org resolved issues)
-    try:
-        resolutions = memory.read_resolutions(days=7)
-        if resolutions:
-            seen_issues: dict[str, dict] = {}
-            for r in resolutions:
-                key = r.get("issue", "")
-                seen_issues[key] = r  # 後勝ち = 最新
-            deduped = sorted(seen_issues.values(), key=lambda x: x.get("ts", ""))
-            res_lines = []
-            for r in deduped[-10:]:
-                ts_short = r.get("ts", "")[:16]
-                resolver = r.get("resolver", "unknown")
-                issue = r.get("issue", "")
-                res_lines.append(f"- [{ts_short}] {resolver}: {issue}")
-            parts.append(load_prompt(
-                "builder/resolution_registry",
-                res_lines="\n".join(res_lines),
-            ))
-    except Exception:
-        logger.debug("Failed to inject resolution registry", exc_info=True)
+        # Resolution registry with dedup (cross-org resolved issues)
+        try:
+            resolutions = memory.read_resolutions(days=7)
+            if resolutions:
+                seen_issues: dict[str, dict] = {}
+                for r in resolutions:
+                    key = r.get("issue", "")
+                    seen_issues[key] = r
+                deduped = sorted(seen_issues.values(), key=lambda x: x.get("ts", ""))
+                res_lines = []
+                for r in deduped[-10:]:
+                    ts_short = r.get("ts", "")[:16]
+                    resolver = r.get("resolver", "unknown")
+                    issue = r.get("issue", "")
+                    res_lines.append(f"- [{ts_short}] {resolver}: {issue}")
+                parts.append(load_prompt(
+                    "builder/resolution_registry",
+                    res_lines="\n".join(res_lines),
+                ))
+        except Exception:
+            logger.debug("Failed to inject resolution registry", exc_info=True)
 
-    # Recent outbound actions (channel posts, DMs sent in last 2 hours)
-    try:
-        outbound_section = _build_recent_outbound_section(memory.anima_dir)
-        if outbound_section:
-            parts.append(outbound_section)
-    except Exception:
-        logger.debug("Failed to inject recent outbound section", exc_info=True)
+        # Recent outbound actions (channel posts, DMs sent in last 2 hours)
+        try:
+            outbound_section = _build_recent_outbound_section(memory.anima_dir)
+            if outbound_section:
+                parts.append(outbound_section)
+        except Exception:
+            logger.debug("Failed to inject recent outbound section", exc_info=True)
 
     # Priming section (automatic memory recall)
     if priming_section:
         parts.append(priming_section)
 
-    # Recent tool results (last few turns)
-    try:
-        _model_cfg = memory.read_model_config()
-        recent_tools = _build_recent_tool_section(pd, _model_cfg)
-        if recent_tools:
-            parts.append(recent_tools)
-    except Exception:
-        logger.debug("Failed to inject recent tool results", exc_info=True)
+    if tier in (TIER_FULL, TIER_STANDARD):
+        # Recent tool results (last few turns)
+        try:
+            _model_cfg = memory.read_model_config()
+            recent_tools = _build_recent_tool_section(pd, _model_cfg)
+            if recent_tools:
+                parts.append(recent_tools)
+        except Exception:
+            logger.debug("Failed to inject recent tool results", exc_info=True)
 
     # ── Group 4: 記憶と能力 ───────────────────────────────────
     parts.append("# 4. 記憶と能力")
 
-    # Memory directory guide
-    knowledge_list = ", ".join(memory.list_knowledge_files()) or "(なし)"
-    episode_list = ", ".join(memory.list_episode_files()[:7]) or "(なし)"
-    procedure_list = ", ".join(memory.list_procedure_files()) or "(なし)"
-    all_skill_names = [m.name for m in skill_metas] + [
-        f"{m.name}(共通)" for m in common_skill_metas
-    ]
-    skill_names = ", ".join(all_skill_names) or "(なし)"
-    shared_users_list = ", ".join(memory.list_shared_users()) or "(なし)"
+    if tier in (TIER_FULL, TIER_STANDARD):
+        # Memory directory guide
+        knowledge_list = ", ".join(memory.list_knowledge_files()) or "(なし)"
+        episode_list = ", ".join(memory.list_episode_files()[:7]) or "(なし)"
+        procedure_list = ", ".join(memory.list_procedure_files()) or "(なし)"
+        all_skill_names = [m.name for m in skill_metas] + [
+            f"{m.name}(共通)" for m in common_skill_metas
+        ]
+        skill_names = ", ".join(all_skill_names) or "(なし)"
+        shared_users_list = ", ".join(memory.list_shared_users()) or "(なし)"
 
-    parts.append(load_prompt(
-        "memory_guide",
-        anima_dir=pd,
-        knowledge_list=knowledge_list,
-        episode_list=episode_list,
-        procedure_list=procedure_list,
-        skill_names=skill_names,
-        shared_users_list=shared_users_list,
-    ))
+        parts.append(load_prompt(
+            "memory_guide",
+            anima_dir=pd,
+            knowledge_list=knowledge_list,
+            episode_list=episode_list,
+            procedure_list=procedure_list,
+            skill_names=skill_names,
+            shared_users_list=shared_users_list,
+        ))
 
     # ── Distilled Knowledge Injection ─────────────────────
-    # CLS theory: knowledge/ + procedures/ = neocortex (always-active)
     from core.prompt.context import resolve_context_window
 
     injected_knowledge_files: list[str] = []
     overflow_files: list[str] = []
 
-    try:
-        _model_config = memory.read_model_config()
-        ctx_window = resolve_context_window(_model_config.model)
-    except Exception:
-        ctx_window = 128_000
+    if tier == TIER_FULL:
+        try:
+            _model_config = memory.read_model_config()
+            ctx_window = resolve_context_window(_model_config.model)
+        except Exception:
+            ctx_window = 128_000
+        knowledge_budget = min(int(ctx_window * 0.05), 4000)
+    elif tier == TIER_STANDARD:
+        knowledge_budget = min(int(context_window * 0.03), 2000)
+    else:
+        knowledge_budget = 0
 
-    # コンテキスト窓の5%、かつ絶対上限4,000トークン（≈12,000文字）。
-    # 10%では200kモデルで20,000トークンとなり肥大化するため抑制する。
-    knowledge_budget = min(int(ctx_window * 0.05), 4000)
     distilled = memory.collect_distilled_knowledge()
 
     used_tokens = 0
@@ -602,18 +648,19 @@ def build_system_prompt(
             + "\n\n---\n\n".join(injection_parts)
         )
 
-    # Common knowledge reference hint
-    common_knowledge_dir = data_dir / "common_knowledge"
-    if common_knowledge_dir.exists() and any(common_knowledge_dir.rglob("*.md")):
-        parts.append(load_prompt("builder/common_knowledge_hint"))
+    if tier in (TIER_FULL, TIER_STANDARD):
+        # Common knowledge reference hint
+        common_knowledge_dir = data_dir / "common_knowledge"
+        if common_knowledge_dir.exists() and any(common_knowledge_dir.rglob("*.md")):
+            parts.append(load_prompt("builder/common_knowledge_hint"))
 
-    # Commander hiring guardrail: force create_anima tool/CLI usage
-    has_newstaff = any(m.name == "newstaff" for m in skill_metas)
-    if has_newstaff:
-        if execution_mode == "s":
-            parts.append(load_prompt("builder/hiring_rules_s"))
-        else:
-            parts.append(load_prompt("builder/hiring_rules_other"))
+        # Commander hiring guardrail
+        has_newstaff = any(m.name == "newstaff" for m in skill_metas)
+        if has_newstaff:
+            if execution_mode == "s":
+                parts.append(load_prompt("builder/hiring_rules_s"))
+            else:
+                parts.append(load_prompt("builder/hiring_rules_other"))
 
     # ── Tool usage guides from DB (with hardcoded fallback) ──
     if not _prompt_store:
@@ -657,60 +704,63 @@ def build_system_prompt(
     # ── Group 5: 組織とコミュニケーション ─────────────────────
     parts.append("# 5. 組織とコミュニケーション")
 
-    # Hiring context: suggest team building when top-level anima has no peers
-    if not other_animas:
+    if tier in (TIER_FULL, TIER_STANDARD):
+        if not other_animas:
+            try:
+                model_config = memory.read_model_config()
+                if model_config.supervisor is None:
+                    _hc = (
+                        _prompt_store.get_section("hiring_context")
+                        if _prompt_store else None
+                    ) or load_prompt("hiring_context")
+                    if _hc:
+                        parts.append(_hc)
+            except Exception:
+                logger.debug("Skipped hiring context injection", exc_info=True)
+
+        org_context = _build_org_context(pd.name, other_animas, execution_mode)
+        if org_context:
+            parts.append(org_context)
+
+        parts.append(_build_messaging_section(pd, other_animas, execution_mode))
+
         try:
-            model_config = memory.read_model_config()
-            if model_config.supervisor is None:
-                _hc = (
-                    _prompt_store.get_section("hiring_context")
-                    if _prompt_store else None
-                ) or load_prompt("hiring_context")
-                if _hc:
-                    parts.append(_hc)
+            from core.config import load_config as _load_cfg
+            _cfg = _load_cfg()
+            _my_pcfg = _cfg.animas.get(pd.name)
+            _is_top_level = _my_pcfg is None or _my_pcfg.supervisor is None
+            if _is_top_level and _cfg.human_notification.enabled:
+                parts.append(_build_human_notification_guidance(execution_mode))
         except Exception:
-            logger.debug("Skipped hiring context injection", exc_info=True)
-
-    org_context = _build_org_context(pd.name, other_animas, execution_mode)
-    if org_context:
-        parts.append(org_context)
-
-    parts.append(_build_messaging_section(pd, other_animas, execution_mode))
-
-    # Human notification guidance for top-level Animas
-    try:
-        from core.config import load_config as _load_cfg
-        _cfg = _load_cfg()
-        _my_pcfg = _cfg.animas.get(pd.name)
-        _is_top_level = _my_pcfg is None or _my_pcfg.supervisor is None
-        if _is_top_level and _cfg.human_notification.enabled:
-            parts.append(_build_human_notification_guidance(execution_mode))
-    except Exception:
-        logger.debug("Skipped human notification guidance injection", exc_info=True)
+            logger.debug("Skipped human notification guidance injection", exc_info=True)
+    elif tier == TIER_LIGHT:
+        parts.append(f"あなたは{pd.name}です。他のアニマとはsend_messageで通信できます。")
+        parts.append("メッセージはsend_messageツールで送信してください。")
 
     # ── Group 6: メタ設定 ─────────────────────────────────────
     parts.append("# 6. メタ設定")
 
-    _ei = (
-        _prompt_store.get_section("emotion_instruction")
-        if _prompt_store else None
-    ) or EMOTION_INSTRUCTION
-    if _ei:
-        parts.append(_ei)
-
-    if execution_mode == "a":
-        _ar = (
-            _prompt_store.get_section("a_reflection")
+    if tier in (TIER_FULL, TIER_STANDARD):
+        _ei = (
+            _prompt_store.get_section("emotion_instruction")
             if _prompt_store else None
-        ) or _load_a_reflection()
-        if _ar:
-            parts.append(_ar)
+        ) or EMOTION_INSTRUCTION
+        if _ei:
+            parts.append(_ei)
+
+        if execution_mode == "a":
+            _ar = (
+                _prompt_store.get_section("a_reflection")
+                if _prompt_store else None
+            ) or _load_a_reflection()
+            if _ar:
+                parts.append(_ar)
 
     # ── Final assembly ────────────────────────────────────────
     prompt = "\n\n---\n\n".join(parts)
     logger.debug(
-        "System prompt built: %d sections, total_len=%d",
-        len(parts), len(prompt),
+        "System prompt built: %d sections, total_len=%d, tier=%s, context_window=%d",
+        len(parts), len(prompt), tier, context_window,
     )
     return BuildResult(
         system_prompt=prompt,
