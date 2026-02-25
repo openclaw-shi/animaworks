@@ -9,7 +9,46 @@ description: >-
 
 # スキル: システム管理
 
-## API リファレンス
+## CLIコマンド（推奨）
+
+`animaworks` CLIで個別Anima管理が可能。**API直叩きよりCLIを優先すること。**
+
+```bash
+# 個別Animaのリスタート（設定変更の反映等）
+animaworks anima restart <name>
+
+# ステータス確認（全体 or 個別）
+animaworks anima status
+animaworks anima status <name>
+
+# モデル変更（status.jsonを更新 + 自動リスタート）
+animaworks anima set-model <name> <model>
+
+# ロール変更
+animaworks anima set-role <name> <role>
+
+# Anima一覧
+animaworks anima list
+
+# 無効化 / 有効化
+animaworks anima disable <name>
+animaworks anima enable <name>
+
+# 削除（--archive でバックアップ可）
+animaworks anima delete <name>
+```
+
+### よくある使い方
+
+```bash
+# config.json変更後に特定Animaだけリスタート
+animaworks anima restart tsumugi
+
+# モデルを変更して自動リスタート
+animaworks anima set-model tsumugi claude-sonnet-4-6
+```
+
+## API リファレンス（CLIが使えない場合）
 
 ベース URL: `http://localhost:18500`
 
@@ -19,40 +58,16 @@ description: >-
 | `/api/system/reload` | POST | **全 anima のホットリロード** |
 | `/api/animas` | GET | anima 一覧 |
 | `/api/animas/{name}` | GET | anima 詳細 |
+| `/api/animas/{name}/restart` | POST | 個別リスタート |
+| `/api/animas/{name}/stop` | POST | 個別停止 |
+| `/api/animas/{name}/start` | POST | 停止中animaの起動 |
 | `/api/animas/{name}/chat` | POST | メッセージ送信 |
 | `/api/animas/{name}/trigger` | POST | ハートビート即時実行 |
-
-## システム状態の確認
-
-```bash
-curl -s http://localhost:18500/api/system/status | python3 -m json.tool
-```
-
-応答例:
-```json
-{
-  "animas": 2,
-  "scheduler_running": true,
-  "jobs": [
-    {"id": "heartbeat_alice", "name": "heartbeat_alice", "next_run": "2026-01-26 10:30:00+09:00"}
-  ]
-}
-```
 
 ## リロード手順（プログラム更新後）
 
 ```bash
 curl -s -X POST http://localhost:18500/api/system/reload | python3 -m json.tool
-```
-
-応答例:
-```json
-{
-  "added": [],
-  "refreshed": ["alice", "bob"],
-  "removed": [],
-  "total": 2
-}
 ```
 
 - `added`: 新たに検出された anima
@@ -64,3 +79,4 @@ curl -s -X POST http://localhost:18500/api/system/reload | python3 -m json.tool
 
 - ワーカーを停止しても anima のデータ（記憶・設定）は残る
 - **自分自身を停止する操作は行わないこと**
+- 個別操作はCLI → API の優先順位で使う
