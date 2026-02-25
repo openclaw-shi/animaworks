@@ -206,13 +206,14 @@ def create_channels_router() -> APIRouter:
         # pair_key (sorted "alice-bob") -> {count, last_ts}
         pair_map: dict[str, dict] = {}
 
-        # Fetch valid Anima names for filtering garbage pairs
+        # Fetch valid Anima names for filtering garbage pairs.
+        # Falls back to no filtering when config is unavailable.
         valid_names: set[str] = set()
         try:
             from core.config.models import load_config
             valid_names = set(load_config().animas.keys())
         except Exception:
-            pass
+            logger.debug("load_config unavailable for DM pair filter", exc_info=True)
 
         # ── Primary: scan activity_log from all Animas ────────
         if animas_dir.exists():
