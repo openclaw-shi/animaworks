@@ -2319,6 +2319,11 @@ class ToolHandler:
         (``- rm -rf``) formats.  Natural-language entries like
         ``システム設定の変更`` are returned as-is but will harmlessly fail
         to match any real command name.
+
+        Note: This parser differs from ``_parse_permission_section`` —
+        that one expects ``- item: description`` (colon-separated, dash-only)
+        while this one handles comma-separated and ``-``/``*`` list formats
+        without colon splitting.
         """
         header = self._find_section_header(
             permissions, self._DENIED_CMD_SECTION_HEADERS,
@@ -2403,6 +2408,12 @@ class ToolHandler:
                     continue
                 cmd_base = seg_argv[0]
                 for denied in denied_items:
+                    # Check both command name and full segment text.
+                    # Segment check is intentionally conservative: catches
+                    # cases like "rm -rf" matching in "rm -rf /tmp" even
+                    # though cmd_base is just "rm".  May match argument
+                    # paths containing the denied string — acceptable as
+                    # denied entries are admin-controlled command names.
                     if denied in cmd_base or denied in segment:
                         logger.warning(
                             "permission_denied anima=%s command=%s reason=denied_list(%s)",
