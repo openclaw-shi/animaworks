@@ -292,62 +292,77 @@ rm -rf, システム設定の変更
 - 外部ツール（Slack, Gmail, GitHub 等）は `外部ツール` セクションで個別に許可/拒否する
 - `読める場所` / `書ける場所` は自然言語で記述し、ToolHandler が解釈する
 
-## Anima デフォルトと個別オーバーライド
+### ブロックコマンド
 
-`anima_defaults` は全 Anima に適用されるベースライン設定。
-`animas` セクションで Anima 名をキーとして個別に上書きできる。
+`permissions.md` に `## 実行できないコマンド` セクションを記載すると、指定されたコマンドの実行がブロックされる。
+システム全体のハードコードされたブロックリスト（`rm -rf /` 等の危険なコマンド）に加え、Anima 個別のブロックリストが適用される。
 
-### デフォルト値一覧
+```markdown
+## 実行できないコマンド
+rm -rf, docker rm, git push --force
+```
+
+パイプライン中のコマンドも個別にチェックされる（例: `cat file | rm -rf` は `rm -rf` がブロックされる）。
+
+## Anima 設定の解決（2層マージ）
+
+Anima のモデル設定は **`status.json` が Single Source of Truth（SSoT）** となる。
+
+### 設定解決の2層構造
+
+| 優先度 | ソース | 説明 |
+|--------|--------|------|
+| 1（最優先） | `status.json` | 各 Anima ディレクトリに配置。モデル・実行パラメータの全設定を保持 |
+| 2（フォールバック） | `anima_defaults` | `config.json` の全体デフォルト。`status.json` に未設定のフィールドに適用 |
+
+`config.json` の `animas` セクションは **組織レイアウト**（`supervisor`, `speciality`）のみを保持する。
+モデル名・credential・max_turns 等のモデル設定は `status.json` に記録される。
+
+### status.json の構造
+
+ファイルパス: `~/.animaworks/animas/{name}/status.json`
+
+```json
+{
+  "enabled": true,
+  "role": "engineer",
+  "model": "claude-opus-4-6",
+  "credential": "anthropic",
+  "max_tokens": 16384,
+  "max_turns": 200,
+  "max_chains": 10,
+  "context_threshold": 0.80,
+  "execution_mode": null
+}
+```
+
+### モデル変更
+
+モデルを変更するには CLI コマンドを使用する:
+
+```bash
+animaworks anima set-model <anima名> <モデル名> [--credential <credential名>]
+
+# 全 Anima のモデルを一括変更
+animaworks anima set-model --all <モデル名>
+```
+
+スーパーバイザーが部下のモデルを変更する場合は `set_subordinate_model` ツールを使用する。
+
+### デフォルト値一覧（anima_defaults）
 
 | フィールド | デフォルト値 | 説明 |
 |-----------|-------------|------|
 | `model` | `claude-sonnet-4-6` | 使用するLLMモデル |
-| `fallback_model` | `null` | フォールバックモデル（メイン失敗時） |
 | `max_tokens` | `4096` | 1回の応答の最大トークン数 |
 | `max_turns` | `20` | 1セッションの最大ターン数 |
 | `credential` | `"anthropic"` | 使用する credential 名 |
 | `context_threshold` | `0.50` | コンテキスト使用率がこの閾値を超えると短期記憶を外部化 |
 | `max_chains` | `2` | 自動セッション継続の最大回数 |
-| `conversation_history_threshold` | `0.30` | 会話履歴圧縮のトリガー閾値 |
-| `execution_mode` | `null` | 実行モード（`null` = モデル名から自動判定） |
-| `supervisor` | `null` | 上司 Anima 名（`null` = トップレベル） |
-| `speciality` | `null` | 専門領域（自由テキスト） |
-
-### オーバーライドの仕組み
-
-Anima 個別設定（`AnimaModelConfig`）では全フィールドが `null` 許容。
-`null` のフィールドは `anima_defaults` の値が使われる。
-
-```json
-{
-  "anima_defaults": {
-    "model": "claude-sonnet-4-6",
-    "max_tokens": 4096,
-    "credential": "anthropic"
-  },
-  "animas": {
-    "hinata": {
-      "model": null,
-      "max_tokens": 8192,
-      "supervisor": null
-    },
-    "ken": {
-      "model": "openai/gpt-4.1",
-      "credential": "openai",
-      "supervisor": "hinata",
-      "speciality": "リサーチ・情報収集"
-    }
-  }
-}
-```
-
-上の例では:
-- `hinata`: model は defaults の `claude-sonnet-4-6` を継承、max_tokens のみ `8192` に上書き
-- `ken`: model を `openai/gpt-4.1` に変更、credential も `openai` に変更、hinata を上司に設定
 
 ### 階層構造
 
-`supervisor` フィールドのみで組織階層を定義する。
+`supervisor` フィールドのみで組織階層を定義する（`config.json` の `animas` セクションに記載）。
 
 - `supervisor: null` — トップレベル Anima（指揮系統の最上位）
 - `supervisor: "hinata"` — hinata の部下として動作

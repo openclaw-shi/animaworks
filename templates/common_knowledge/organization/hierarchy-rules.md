@@ -55,6 +55,42 @@ alice宛: キャッシュ戦略について判断をお願いしたいです。
 - 私の推奨はAですが、コスト面の判断はお任せします。
 ```
 
+## スーパーバイザーツール
+
+部下を持つ Anima には、組織管理のための専用ツールが自動的に有効化される。
+
+### ツール一覧
+
+| ツール | 対象範囲 | 概要 |
+|--------|---------|------|
+| `org_dashboard` | 全配下（再帰） | 配下全体のプロセス状態・最終アクティビティ・現在タスク・タスク数をツリー表示 |
+| `ping_subordinate` | 全配下（再帰） | 配下の生存確認。`name` 省略で全員一括 |
+| `read_subordinate_state` | 全配下（再帰） | 配下の `current_task.md` + `pending.md` を読み取り |
+| `delegate_task` | 直属部下のみ | タスク委譲（部下キュー追加 + DM送信 + 自分側追跡エントリ作成） |
+| `task_tracker` | 自分の委譲タスク | `delegate_task` で委譲したタスクの進捗追跡 |
+| `disable_subordinate` | 直属部下 | 部下を休止（約30秒でプロセス停止） |
+| `enable_subordinate` | 直属部下 | 休止した部下を再開 |
+| `set_subordinate_model` | 直属部下 | 部下のモデルを変更（反映には `restart_subordinate` が必要） |
+| `restart_subordinate` | 直属部下 | 部下プロセスを再起動（約30秒で再起動） |
+
+`check_permissions` は全 Anima が利用可能（自分の権限一覧を確認）。
+
+### タスク委譲フロー
+
+1. `delegate_task(name="dave", instruction="...", deadline="2026-02-20")` を実行
+2. dave のタスクキューにタスクが自動追加される
+3. dave に DM が自動送信される（intent="delegation"）
+4. 自分のキューに追跡エントリが作成される
+5. `task_tracker()` で進捗を追跡する
+
+### 配下の状態確認（定期的に行うべき）
+
+```
+org_dashboard()                        # 配下全体の状態をツリー表示
+read_subordinate_state(name="dave")    # dave の現在タスクと保留タスクを確認
+ping_subordinate()                     # 全員の生存確認
+```
+
 ## 部下へのコミュニケーション（指示・確認）
 
 部下はシステムプロンプトの「部下」欄に表示される Anima。
@@ -67,6 +103,7 @@ alice宛: キャッシュ戦略について判断をお願いしたいです。
   - **期待する成果物**: 何を作るか・何をするか
   - **期限・優先度**: いつまでに、どの程度急ぐか
 - 部下の完了報告を受けたら、確認結果を MUST フィードバックする
+- 定期的に `org_dashboard` で配下の状態を MUST 確認する
 
 ### SHOULD（推奨）
 

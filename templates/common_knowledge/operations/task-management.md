@@ -5,15 +5,48 @@ Digital Anima がタスクを受け取り、追跡し、完了させるための
 
 ## タスク管理の基本構造
 
-タスクの状態は `state/` ディレクトリ内の2つのファイルで管理する。
+タスクの状態は `state/` ディレクトリ内のファイルとタスクキューで管理する。
 
-| ファイル | 役割 |
+| リソース | 役割 |
 |---------|------|
 | `state/current_task.md` | 今取り組んでいるタスク（1つ） |
-| `state/pending.md` | 待機中・未着手のタスク一覧（バックログ） |
+| `state/pending.md` | 手動メモ用のバックログ（自由形式） |
+| `state/pending/` ディレクトリ | Heartbeat が書き出した LLM タスク（JSON 形式）。TaskExec パスが自動取得・実行する |
+| タスクキュー（`add_task`） | 永続タスクキュー。人間やAnimaからの依頼を追跡する |
 
-この2つのファイルは常に最新の状態を保たなければならない（MUST）。
-タスク状態が変わるたびに、対応するファイルを更新すること。
+`state/current_task.md` は常に最新の状態を保たなければならない（MUST）。
+タスク状態が変わるたびに更新すること。
+
+### 3パス実行モデル
+
+AnimaWorks ではタスクが3つの独立パスで処理される:
+
+| パス | トリガー | 役割 | 実行範囲 |
+|------|---------|------|---------|
+| **Inbox** | DM受信 | Anima間メッセージの処理・返信 | 即時、軽量な応答のみ |
+| **Heartbeat** | 定期巡回 | 状況確認・計画立案（Observe → Plan → Reflect） | 確認・判断のみ。実行は `pending/` に書き出す |
+| **TaskExec** | `pending/` にタスク出現 | LLMタスクの実行 | フル実行（ツール使用含む） |
+
+Heartbeat は **実行しない**。実行が必要なタスクを発見したら `state/pending/` に JSON ファイルとして書き出し、TaskExec パスに委譲する。
+
+### タスクキュー（add_task ツール）
+
+`add_task` ツールで永続タスクキューにタスクを登録できる。
+キューに登録されたタスクはシステムプロンプトの Priming セクションに要約表示される。
+
+```
+add_task(title="レポート作成", description="月次売上レポートを作成する", priority="high", source="human")
+```
+
+| パラメータ | 必須 | 説明 |
+|-----------|------|------|
+| `title` | MUST | タスクの簡潔なタイトル |
+| `description` | SHOULD | 詳細な説明 |
+| `priority` | MAY | `urgent` / `high` / `medium` / `low`（デフォルト: `medium`） |
+| `source` | MAY | `human`（人間からの依頼）/ `anima`（Animaからの委譲） |
+
+- `source: human` のタスクは最優先で処理する（MUST）
+- キューのタスクは Heartbeat で確認され、優先順に着手される
 
 ## current_task.md の使い方
 
@@ -282,3 +315,36 @@ Slack API 接続テスト完了。#general への投稿テストも成功。
 ```
 
 重要な学びには `[IMPORTANT]` タグを付ける（SHOULD）。後のハートビートや記憶統合で優先的に抽出される。
+
+## タスク委譲（delegate_task）
+
+部下を持つ Anima（スーパーバイザー）は `delegate_task` ツールでタスクを部下に委譲できる。
+
+### delegate_task の動作
+
+1. 部下のタスクキューにタスクが追加される（source="anima"）
+2. 部下に DM が自動送信される（intent="delegation"）
+3. 自分のキューに追跡エントリが作成される（status="delegated"）
+
+### 使い方
+
+```
+delegate_task(name="dave", instruction="API テストを実施して結果を報告してください", deadline="2026-02-20", summary="API テスト")
+```
+
+### 委譲タスクの追跡
+
+`task_tracker` ツールで委譲したタスクの進捗を確認できる:
+
+```
+task_tracker()                    # アクティブな委譲タスク一覧
+task_tracker(status="all")        # 完了済み含む全タスク
+task_tracker(status="completed")  # 完了済みのみ
+```
+
+### 委譲を受けた側の対応
+
+1. DM で委譲メッセージを受信する
+2. タスクキューに自動的にタスクが登録される
+3. 内容を確認し、不明点があれば委譲元に質問する（SHOULD）
+4. 完了したら委譲元に結果を報告する（MUST）
