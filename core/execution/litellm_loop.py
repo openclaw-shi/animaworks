@@ -1261,6 +1261,12 @@ class LiteLLMExecutor(BaseExecutor):
                         "error_type": "ToolExecutionError",
                         "message": str(e),
                     }, ensure_ascii=False)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": shim.id,
+                        "content": wrap_tool_result(shim.function.name, error_content),
+                    })
+                    result_summary = _truncate_for_record(error_content, tool_result_save_budget(shim.function.name, context_window))
                 except Exception as e:
                     logger.warning("Serial tool execution error (unexpected): %s", e)
                     error_content = _json.dumps({
