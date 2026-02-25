@@ -127,8 +127,9 @@ class AnimaRunner:
                 anima_dir=self._anima_dir,
             )
 
+            inbox_limiter = self._inbox_limiter
             self.anima.set_on_lock_released(
-                lambda: asyncio.ensure_future(self._inbox_limiter.on_anima_lock_released())
+                lambda: asyncio.ensure_future(inbox_limiter.on_anima_lock_released())
             )
 
             # Wire on_message_sent callback for WebSocket event emission
@@ -431,12 +432,12 @@ class AnimaRunner:
             raise RuntimeError("Anima not initialized")
 
         task_name = params.get("task_name")
-        task_description = params.get("task_description")
+        task_description = params.get("task_description", "")
 
         if not task_name:
             raise ValueError("task_name is required")
 
-        await self.anima.run_cron_task(task_name, task_description)
+        await self.anima.run_cron_task(task_name, str(task_description))
 
         return {"status": "completed"}
 

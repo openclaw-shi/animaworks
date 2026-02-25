@@ -22,8 +22,13 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 from core.time_utils import ensure_aware, now_jst
 from core.tools._async_compat import run_sync
+
+if TYPE_CHECKING:
+    from core.memory.rag.retriever import MemoryRetriever
 
 logger = logging.getLogger("animaworks.priming")
 
@@ -120,7 +125,7 @@ class PrimingEngine:
         self.knowledge_dir = anima_dir / "knowledge"
         self.skills_dir = anima_dir / "skills"
         # Lazily initialized by _get_or_create_retriever(); shared by C & D
-        self._retriever: object | None = None
+        self._retriever: MemoryRetriever | None = None
         self._retriever_initialized: bool = False
         # Budget values loaded lazily from config.json
         self._config_loaded: bool = False
@@ -240,7 +245,7 @@ class PrimingEngine:
 
     # ── Shared retriever ────────────────────────────────────────
 
-    def _get_or_create_retriever(self) -> object | None:
+    def _get_or_create_retriever(self) -> MemoryRetriever | None:
         """Return a MemoryRetriever instance, creating one lazily if needed.
 
         Shared between Channel C (related knowledge) and Channel D (skill
@@ -647,7 +652,7 @@ class PrimingEngine:
                 results = [
                     r for r in results
                     if _Path(
-                        r.metadata.get("source_file", r.doc_id)
+                        str(r.metadata.get("source_file", r.doc_id))
                     ).stem in restrict_set
                 ]
 

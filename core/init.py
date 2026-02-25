@@ -12,6 +12,10 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.tooling.prompt_db import ToolPromptStore
 
 from core.paths import TEMPLATES_DIR, get_data_dir
 
@@ -85,7 +89,7 @@ def _ensure_tool_prompt_db(data_dir: Path) -> None:
 
 
 def _migrate_memory_prompts_v1(
-    tool_store: "ToolPromptStore",  # noqa: F821
+    tool_store: ToolPromptStore,
     prompts_dir: Path,
 ) -> None:
     """One-shot migration: update memory-related prompts to v1 (active style).
@@ -152,7 +156,7 @@ def _migrate_memory_prompts_v1(
 
 
 def _migrate_praise_loop_prevention_v1(
-    tool_store: "ToolPromptStore",  # noqa: F821
+    tool_store: ToolPromptStore,
     prompts_dir: Path,
 ) -> None:
     """One-shot migration: update communication/messaging prompts to prevent praise loops.
@@ -207,7 +211,7 @@ def _migrate_praise_loop_prevention_v1(
 
 
 def _migrate_behavior_rules_must_v1(
-    tool_store: "ToolPromptStore",  # noqa: F821
+    tool_store: ToolPromptStore,
     prompts_dir: Path,
 ) -> None:
     """One-shot migration: upgrade behavior_rules to MUST-level memory search constraints.

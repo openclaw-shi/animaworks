@@ -19,9 +19,10 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TYPE_CHECKING
 
-from typing import Literal
+if TYPE_CHECKING:
+    from core.schemas import ModelConfig
 
 from pydantic import BaseModel, Field, model_validator
 

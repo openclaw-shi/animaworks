@@ -16,7 +16,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from core.exceptions import AnimaWorksError  # noqa: F401
 
@@ -423,7 +423,7 @@ async def _synthesize_prompt_via_llm(
     try:
         import litellm
 
-        response = await litellm.acompletion(**kwargs)
+        response = cast(Any, await litellm.acompletion(**kwargs))
         result = (response.choices[0].message.content or "").strip()
     except Exception as exc:
         logger.warning(

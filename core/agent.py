@@ -23,7 +23,12 @@ import time
 from collections.abc import AsyncGenerator, Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.execution.base import ExecutionResult
+    from core.memory.conversation import ConversationMemory
+    from core.notification.notifier import HumanNotifier
 
 from core.time_utils import now_iso, now_jst
 
@@ -640,16 +645,6 @@ class AgentCore:
                 else "cron" if trigger.startswith("cron")
                 else "chat"
             )
-
-            try:
-                from core.prompt.context import resolve_context_window
-                distilled = self.memory.collect_distilled_knowledge()
-                ctx_window = resolve_context_window(self.model_config.model)
-                _, overflow_files = MemoryManager.compute_injection_plan(
-                    distilled, ctx_window,
-                )
-            except Exception:
-                overflow_files = None
 
             result = await self._priming_engine.prime_memories(
                 message,
@@ -1510,7 +1505,7 @@ class AgentCore:
                     break
 
                 # ── Stream disconnect: attempt retry ──────────
-                partial_text = e.partial_text if is_stream_error else ""
+                partial_text = getattr(e, "partial_text", "") or ""
                 if partial_text:
                     full_text_parts.append(partial_text)
 

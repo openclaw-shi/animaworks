@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from core.exceptions import LLMAPIError, ToolExecutionError, ConfigError  # noqa: F401
 from core.prompt.context import ContextTracker, resolve_context_window
@@ -367,7 +367,7 @@ class LiteLLMExecutor(BaseExecutor):
                 call_kwargs["tools"] = tools
 
             try:
-                response = await litellm.acompletion(**call_kwargs)
+                response = cast(Any, await litellm.acompletion(**call_kwargs))
             except Exception as e:
                 logger.exception("LiteLLM API error")
                 return ExecutionResult(text=f"[LLM API Error: {e}]")
@@ -448,7 +448,7 @@ class LiteLLMExecutor(BaseExecutor):
             logger.info(
                 "A tool calls at iteration=%d: %s",
                 iteration,
-                ", ".join(tc.function.name for tc in tool_calls),
+                ", ".join(tc.function.name or "unknown" for tc in tool_calls),
             )
             messages.append(message.model_dump())
 
@@ -593,7 +593,7 @@ class LiteLLMExecutor(BaseExecutor):
                 if not is_final_iteration:
                     call_kwargs["tools"] = tools
 
-                response = await litellm.acompletion(**call_kwargs)
+                response = cast(Any, await litellm.acompletion(**call_kwargs))
 
                 # Accumulate streamed chunks
                 iter_text_parts: list[str] = []
@@ -848,7 +848,7 @@ class LiteLLMExecutor(BaseExecutor):
                 if not is_final_iteration:
                     call_kwargs["tools"] = tools
 
-                response = await litellm.acompletion(**call_kwargs)
+                response = cast(Any, await litellm.acompletion(**call_kwargs))
 
                 choice = response.choices[0]
                 message = choice.message
@@ -905,7 +905,7 @@ class LiteLLMExecutor(BaseExecutor):
                 logger.info(
                     "A ollama stream tool calls at iteration=%d: %s",
                     iteration,
-                    ", ".join(tc.function.name for tc in tool_calls),
+                    ", ".join(tc.function.name or "unknown" for tc in tool_calls),
                 )
                 messages.append(message.model_dump())
 
@@ -1215,7 +1215,7 @@ class LiteLLMExecutor(BaseExecutor):
             results = await asyncio.gather(*coros, return_exceptions=True)
             for i, r in enumerate(results):
                 shim = parallel[i]
-                if isinstance(r, Exception):
+                if isinstance(r, BaseException):
                     logger.warning("Parallel tool execution error: %s", r)
                     error_content = _json.dumps({
                         "status": "error",
@@ -1228,9 +1228,12 @@ class LiteLLMExecutor(BaseExecutor):
                         "content": wrap_tool_result(shim.function.name, error_content),
                     })
                     result_summary = _truncate_for_record(error_content, tool_result_save_budget(shim.function.name, context_window))
-                else:
+                elif isinstance(r, dict):
                     messages.append(r)
                     result_summary = _truncate_for_record(r.get("content", ""), tool_result_save_budget(shim.function.name, context_window))
+                else:
+                    messages.append({"role": "tool", "tool_call_id": shim.id, "content": str(r)})
+                    result_summary = _truncate_for_record(str(r), tool_result_save_budget(shim.function.name, context_window))
                 yield {
                     "type": "tool_end",
                     "tool_id": shim.id,

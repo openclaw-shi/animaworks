@@ -644,12 +644,12 @@ class ToolHandler:
 
             if not is_error:
                 try:
-                    parsed = json.loads(result)
+                    parsed = _json.loads(result)
                     if isinstance(parsed, list):
                         meta["result_count"] = len(parsed)
                     elif isinstance(parsed, dict) and "count" in parsed:
                         meta["result_count"] = parsed["count"]
-                except (json.JSONDecodeError, TypeError):
+                except (_json.JSONDecodeError, TypeError):
                     pass
 
             self._activity.log(
@@ -757,9 +757,9 @@ class ToolHandler:
 
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        use_lock = self._state_file_lock and self._is_state_file(path)
-        if use_lock:
-            self._state_file_lock.acquire()
+        lock = self._state_file_lock if self._state_file_lock and self._is_state_file(path) else None
+        if lock:
+            lock.acquire()
         try:
             # Auto-add YAML frontmatter for procedure overwrite writes
             auto_frontmatter_applied = False
@@ -781,8 +781,8 @@ class ToolHandler:
             else:
                 path.write_text(content, encoding="utf-8")
         finally:
-            if use_lock:
-                self._state_file_lock.release()
+            if lock:
+                lock.release()
         logger.info(
             "write_memory_file path=%s mode=%s",
             args["path"], args.get("mode", "overwrite"),
@@ -2561,9 +2561,9 @@ class ToolHandler:
         if not path.exists():
             return _error_result("FileNotFound", f"File not found: {path_str}", suggestion="Use list_directory to find the correct path")
         try:
-            use_lock = self._state_file_lock and self._is_state_file(path)
-            if use_lock:
-                self._state_file_lock.acquire()
+            lock = self._state_file_lock if self._state_file_lock and self._is_state_file(path) else None
+            if lock:
+                lock.acquire()
             try:
                 content = path.read_text(encoding="utf-8")
                 old = args.get("old_string", "")
@@ -2576,8 +2576,8 @@ class ToolHandler:
                 content = content.replace(old, new, 1)
                 path.write_text(content, encoding="utf-8")
             finally:
-                if use_lock:
-                    self._state_file_lock.release()
+                if lock:
+                    lock.release()
             logger.info("edit_file path=%s", path_str)
             return f"Edited {path_str}"
         except Exception as e:

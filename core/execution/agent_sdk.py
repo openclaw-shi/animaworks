@@ -26,7 +26,13 @@ import tempfile
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import asdict
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    try:
+        from claude_code_sdk import ClaudeCodeSDKClient as ClaudeSDKClient, ClaudeAgentOptions, ResultMessage
+    except ImportError:
+        pass
 
 from core.prompt.context import CHARS_PER_TOKEN, ContextTracker, resolve_context_window
 from core.exceptions import ExecutionError, LLMAPIError, MemoryWriteError  # noqa: F401
@@ -644,7 +650,7 @@ def _build_pre_compact_hook(anima_dir: Path) -> "Callable":
         try:
             from core.memory.activity import ActivityLogger
             activity = ActivityLogger(anima_dir)
-            await activity.log(
+            activity.log(
                 event_type="tool_use",
                 content=f"SDK context compaction ({trigger})",
                 summary=f"auto-compact:{trigger}",

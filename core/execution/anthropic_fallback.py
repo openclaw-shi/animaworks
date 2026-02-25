@@ -56,7 +56,7 @@ def _extract_tool_uses_from_messages(messages: list[dict]) -> list[dict]:
                             "name": block.get("name", ""),
                             "input": str(block.get("input", ""))[:500],
                         })
-                    elif hasattr(block, "type") and block.type == "tool_use":
+                    elif hasattr(block, "type") and getattr(block, "type", None) == "tool_use":
                         tool_uses.append({
                             "name": getattr(block, "name", ""),
                             "input": str(getattr(block, "input", ""))[:500],
@@ -121,7 +121,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
         """Create an AsyncAnthropic client with resolved credentials."""
         import anthropic
 
-        client_kwargs: dict[str, str] = {}
+        client_kwargs: dict[str, Any] = {}
         api_key = self._resolve_api_key()
         if api_key:
             client_kwargs["api_key"] = api_key
@@ -257,7 +257,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
                 if new_sys is not None:
                     all_response_text.append(current_text)
                     system_prompt = new_sys
-                    messages = [
+                    messages: list[dict[str, Any]] = [
                         {"role": "user", "content": build_continuation_prompt()}
                     ]
                     continue

@@ -154,7 +154,7 @@ class DigitalAnima:
 
         return notifications
 
-    def set_on_lock_released(self, fn: Callable[[], None]) -> None:
+    def set_on_lock_released(self, fn: Callable[[], Any]) -> None:
         """Inject a callback invoked when the anima's lock is released."""
         self._on_lock_released = fn
 
