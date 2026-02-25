@@ -41,7 +41,7 @@ def _mock_load_prompt_with_builder(default: str = "section"):
         if name == "builder/hiring_rules_other":
             return "## 雇用ルール\n\ncreate-anima"
         if name == "skills_guide":
-            return "## スキルと手順書\n\nスキルと手順書はあなたが持つ能力・作業手順です。\n使用する際は該当ファイルをReadで読んでから実行してください。"
+            return "## スキルと手順書\n\nスキルと手順書はあなたが持つ能力・作業手順です。\n使用する際はskillツールで読み込んでから実行してください。"
         return default
 
     return _mock

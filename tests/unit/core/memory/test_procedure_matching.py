@@ -184,7 +184,7 @@ class TestBuilderProcedureInjection:
                 return (
                     "## スキルと手順書\n\n"
                     "スキルと手順書はあなたが持つ能力・作業手順です。\n"
-                    "使用する際は該当ファイルをReadで読んでから実行してください。"
+                    "使用する際はskillツールで読み込んでから実行してください。"
                 )
             return f"[{name}]"
 
