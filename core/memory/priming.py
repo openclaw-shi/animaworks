@@ -67,6 +67,7 @@ class PrimingResult:
     related_knowledge: str = ""
     matched_skills: list[str] = field(default_factory=list)
     pending_tasks: str = ""
+    recent_outbound: str = ""
 
     def is_empty(self) -> bool:
         """Return True if no memories were primed."""
@@ -76,6 +77,7 @@ class PrimingResult:
             and not self.related_knowledge
             and not self.matched_skills
             and not self.pending_tasks
+            and not self.recent_outbound
         )
 
     def total_chars(self) -> int:
@@ -86,6 +88,7 @@ class PrimingResult:
             + len(self.related_knowledge)
             + sum(len(s) for s in self.matched_skills)
             + len(self.pending_tasks)
+            + len(self.recent_outbound)
         )
 
     def estimated_tokens(self) -> int:
@@ -188,13 +191,14 @@ class PrimingEngine:
 
             channel_c_coro = _noop()
 
-        # Execute 5 channels in parallel
+        # Execute 5 channels + outbound collection in parallel
         results = await asyncio.gather(
             self._channel_a_sender_profile(sender_name),
             self._channel_b_recent_activity(sender_name, keywords),  # Unified channel
             channel_c_coro,
             self._channel_d_skill_match(message, keywords, channel=channel),
             self._channel_e_pending_tasks(),
+            self._collect_recent_outbound(),
             return_exceptions=True,
         )
 
@@ -204,6 +208,7 @@ class PrimingEngine:
         related_knowledge = results[2] if isinstance(results[2], str) else ""
         matched_skills = results[3] if isinstance(results[3], list) else []
         pending_tasks = results[4] if isinstance(results[4], str) else ""
+        recent_outbound = results[5] if isinstance(results[5], str) else ""
 
         # Log exceptions if any
         for i, r in enumerate(results):
@@ -223,17 +228,19 @@ class PrimingEngine:
             related_knowledge=self._truncate_head(related_knowledge, budget_knowledge),
             matched_skills=matched_skills[:max(1, budget_skills // 50)],  # ~50 tokens per skill name
             pending_tasks=self._truncate_head(pending_tasks, budget_tasks),
+            recent_outbound=recent_outbound,
         )
 
         logger.info(
             "Priming complete: %d chars (~%d tokens), sender_prof=%d, activity=%d, "
-            "knowledge=%d, skills=%d",
+            "knowledge=%d, skills=%d, outbound=%d",
             result.total_chars(),
             result.estimated_tokens(),
             len(result.sender_profile),
             len(result.recent_activity),
             len(result.related_knowledge),
             len(result.matched_skills),
+            len(result.recent_outbound),
         )
 
         return result
@@ -806,6 +813,61 @@ class PrimingEngine:
             logger.debug("Channel E (pending_tasks) failed", exc_info=True)
             return ""
 
+    # ── Recent outbound collection ────────────────────────────────
+
+    async def _collect_recent_outbound(self, max_entries: int = 3) -> str:
+        """Collect recent outbound actions (channel_post, message_sent).
+
+        Reads activity_log for the last 2 hours and formats a short summary.
+        This replaces the former ``_build_recent_outbound_section`` in builder.py,
+        ensuring builder.py never reads ActivityLogger directly (hippocampus model).
+        """
+        try:
+            from core.memory.activity import ActivityLogger
+
+            activity = ActivityLogger(self.anima_dir)
+            entries = activity.recent(
+                days=1,
+                limit=20,
+                types=["channel_post", "message_sent"],
+            )
+        except Exception:
+            return ""
+
+        if not entries:
+            return ""
+
+        from datetime import datetime, timedelta
+
+        cutoff = now_jst() - timedelta(hours=2)
+
+        recent: list = []
+        for e in reversed(entries):
+            try:
+                ts = ensure_aware(datetime.fromisoformat(e.ts))
+                if ts >= cutoff:
+                    recent.append(e)
+            except (ValueError, TypeError):
+                continue
+            if len(recent) >= max_entries:
+                break
+
+        if not recent:
+            return ""
+
+        lines = ["## 直近のアウトバウンド行動", ""]
+        for e in reversed(recent):
+            time_str = e.ts[11:16] if len(e.ts) >= 16 else e.ts
+            text_preview = (e.summary or e.content or "")[:80]
+            if e.type == "channel_post":
+                ch = e.channel or "?"
+                lines.append(f"- [{time_str}] #{ch} に投稿済み: 「{text_preview}」")
+            elif e.type in ("dm_sent", "message_sent"):
+                to = e.to_person or "?"
+                lines.append(f"- [{time_str}] {to} にメッセージ送信済み: 「{text_preview}」")
+        lines.append("")
+        return "\n".join(lines)
+
     # ── Config loading ──────────────────────────────────────────
 
     def _load_config_budgets(self) -> None:
@@ -1070,6 +1132,10 @@ def format_priming_section(result: PrimingResult, sender_name: str = "human") ->
         parts.append("### 未完了タスク")
         parts.append("")
         parts.append(wrap_priming("pending_tasks", result.pending_tasks, trust="medium"))
+        parts.append("")
+
+    if result.recent_outbound:
+        parts.append(wrap_priming("recent_outbound", result.recent_outbound, trust="trusted"))
         parts.append("")
 
     return "\n".join(parts)
