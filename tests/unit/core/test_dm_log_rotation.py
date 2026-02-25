@@ -74,8 +74,7 @@ class TestRotateDmLogs:
                 ],
             )
 
-        with patch("core.background._rotate_dm_logs_sync", side_effect=_rotate_dm_logs_sync):
-            result = _rotate_dm_logs_sync(tmp_path, max_age_days=7)
+        result = _rotate_dm_logs_sync(tmp_path, max_age_days=7)
 
         assert result["alice-bob.jsonl"] == {"archived": 1, "kept": 1}
         archive_path = dm_logs / f"alice-bob.{base.strftime('%Y%m%d')}.archive.jsonl"
@@ -146,8 +145,7 @@ class TestRotateDmLogs:
         main_path = dm_logs / "alice-bob.jsonl"
         main_path.write_text(json.dumps(_make_dm_entry("alice", "bob", "second", ts=old_ts), ensure_ascii=False) + "\n")
 
-        with patch("core.time_utils.now_jst", return_value=base):
-            result = _rotate_dm_logs_sync(tmp_path, max_age_days=7)
+        result = _rotate_dm_logs_sync(tmp_path, max_age_days=7)
 
         assert result["alice-bob.jsonl"] == {"archived": 1, "kept": 0}
         lines = archive_path.read_text(encoding="utf-8").strip().split("\n")
@@ -206,3 +204,17 @@ class TestRotateDmLogs:
         assert result == {}
         assert (dm_logs / "fresh.jsonl").read_text().strip() != ""
         assert not list(dm_logs.glob("*.archive.jsonl"))
+
+
+class TestDmLogRotationSchedulerRegistration:
+    """Verify rotate_dm_logs is registered in LifecycleManager system crons."""
+
+    def test_scheduler_has_dm_log_rotation_job(self) -> None:
+        """system_dm_log_rotation ジョブがスケジューラに登録される。"""
+        from core.lifecycle import LifecycleManager
+
+        lifecycle = LifecycleManager()
+        lifecycle._setup_system_crons()
+        job = lifecycle.scheduler.get_job("system_dm_log_rotation")
+        assert job is not None, "system_dm_log_rotation job not found in scheduler"
+        assert "DM Log Rotation" in job.name
