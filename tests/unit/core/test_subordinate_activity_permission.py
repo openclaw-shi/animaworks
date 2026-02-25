@@ -147,9 +147,12 @@ class TestSupervisorActivityLogPermission:
 
         assert result is not None, "Non-supervisor should NOT be allowed to read another anima's activity_log"
 
-    def test_supervisor_cannot_read_grandchild_activity_log(self, tmp_path: Path):
-        """Supervisor mio cannot read grandchild (yuki's subordinate) activity_log."""
-        # grandchild's activity_log
+    def test_supervisor_can_read_grandchild_activity_log(self, tmp_path: Path):
+        """Supervisor mio CAN read grandchild (yuki's subordinate) activity_log.
+
+        Since the supervisor-tools-expansion feature, supervisors can read
+        any descendant's activity_log (not just direct subordinates).
+        """
         grandchild_dir = tmp_path / "animas" / "hana" / "activity_log"
         grandchild_dir.mkdir(parents=True, exist_ok=True)
         log_file = grandchild_dir / "2026-02-22.jsonl"
@@ -160,7 +163,7 @@ class TestSupervisorActivityLogPermission:
         yuki_cfg = MagicMock()
         yuki_cfg.supervisor = "mio"
         hana_cfg = MagicMock()
-        hana_cfg.supervisor = "yuki"  # hana reports to yuki, not mio
+        hana_cfg.supervisor = "yuki"
         mio_cfg = MagicMock()
         mio_cfg.supervisor = None
         mock_cfg.animas = {"mio": mio_cfg, "yuki": yuki_cfg, "hana": hana_cfg}
@@ -169,7 +172,7 @@ class TestSupervisorActivityLogPermission:
 
         result = handler._check_file_permission(str(log_file), write=False)
 
-        assert result is not None, "Supervisor should NOT be allowed to read grandchild's activity_log"
+        assert result is None, "Supervisor SHOULD be allowed to read grandchild's activity_log"
 
     def test_config_load_failure_denies_gracefully(self, tmp_path: Path):
         """If load_config fails at init, _subordinate_activity_dirs is empty → denied."""

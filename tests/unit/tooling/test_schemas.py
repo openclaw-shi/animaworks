@@ -275,8 +275,8 @@ class TestBuildToolList:
             include_tool_management=True,
         )
         names = [t["name"] for t in result]
-        # 5 memory + 3 channel + 1 report_procedure_outcome + 1 report_knowledge_outcome + 4 file + 2 search + 1 discovery + 2 tool_management = 19
-        assert len(result) == 19
+        # 5 memory + 3 channel + 1 report_procedure_outcome + 1 report_knowledge_outcome + 1 check_permissions + 4 file + 2 search + 1 discovery + 2 tool_management = 20
+        assert len(result) == 20
         assert "search_code" in names
         assert "list_directory" in names
         assert "discover_tools" in names

@@ -133,17 +133,29 @@ class TestToolHandlerActivityConsolidation:
         assert "self._activity = ActivityLogger(self._anima_dir)" in source
 
     def test_no_inline_activity_logger_outside_init(self):
-        """core/tooling/handler.py has no inline ActivityLogger(...) outside __init__."""
+        """core/tooling/handler.py has no inline ActivityLogger(...) outside __init__.
+
+        _read_recent_activity is a staticmethod that intentionally creates
+        ActivityLogger for remote anima dirs (supervisor dashboard/ping).
+        """
         source_path = Path("core/tooling/handler.py")
         source = source_path.read_text(encoding="utf-8")
         lines = source.splitlines()
 
+        # _read_recent_activity is exempt: staticmethod that reads
+        # other animas' activity logs for supervisor tools.
+        _EXEMPT_METHODS = {"_read_recent_activity"}
+
         occurrences: list[tuple[int, str]] = []
+        current_method = ""
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
+            if stripped.startswith("def "):
+                current_method = stripped.split("(")[0].replace("def ", "")
             if "ActivityLogger(" in stripped and "self._activity" not in stripped:
-                # Skip import lines
                 if "import" in stripped:
+                    continue
+                if current_method in _EXEMPT_METHODS:
                     continue
                 occurrences.append((i, stripped))
 

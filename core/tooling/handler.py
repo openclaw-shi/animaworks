@@ -343,6 +343,7 @@ class ToolHandler:
         human_notifier: HumanNotifier | None = None,
         background_manager: BackgroundTaskManager | None = None,
         context_window: int = 32_000,
+        process_supervisor: Any | None = None,
     ) -> None:
         self._anima_dir = anima_dir
         self._anima_name = anima_dir.name
@@ -353,6 +354,7 @@ class ToolHandler:
         self._human_notifier = human_notifier
         self._background_manager = background_manager
         self._context_window = context_window
+        self._process_supervisor = process_supervisor
         self._pending_notifications: list[dict[str, Any]] = []
         self._replied_to: dict[str, set[str]] = {"chat": set(), "background": set()}
         self._posted_channels: dict[str, set[str]] = {"chat": set(), "background": set()}
@@ -367,6 +369,8 @@ class ToolHandler:
         # ── Cache subordinate paths for permission checks ──
         self._subordinate_activity_dirs: list[Path] = []
         self._subordinate_management_files: list[Path] = []
+        self._descendant_activity_dirs: list[Path] = []
+        self._descendant_state_files: list[Path] = []
         try:
             from core.config.models import load_config
             from core.paths import get_animas_dir
@@ -378,6 +382,12 @@ class ToolHandler:
                     self._subordinate_activity_dirs.append(_sub_dir / "activity_log")
                     self._subordinate_management_files.append(_sub_dir / "cron.md")
                     self._subordinate_management_files.append(_sub_dir / "heartbeat.md")
+            _all_descendants = self._get_all_descendants()
+            for _desc_name in _all_descendants:
+                _desc_dir = (_animas_dir / _desc_name).resolve()
+                self._descendant_activity_dirs.append(_desc_dir / "activity_log")
+                self._descendant_state_files.append(_desc_dir / "state" / "current_task.md")
+                self._descendant_state_files.append(_desc_dir / "state" / "pending.md")
         except Exception:
             logger.debug("Failed to cache subordinate paths for %s", self._anima_name, exc_info=True)
 
@@ -403,6 +413,12 @@ class ToolHandler:
             "enable_subordinate": self._handle_enable_subordinate,
             "set_subordinate_model": self._handle_set_subordinate_model,
             "restart_subordinate":   self._handle_restart_subordinate,
+            "org_dashboard":         self._handle_org_dashboard,
+            "ping_subordinate":      self._handle_ping_subordinate,
+            "read_subordinate_state": self._handle_read_subordinate_state,
+            "check_permissions":     self._handle_check_permissions,
+            "delegate_task":         self._handle_delegate_task,
+            "task_tracker":          self._handle_task_tracker,
             "refresh_tools": self._handle_refresh_tools,
             "share_tool": self._handle_share_tool,
             "report_procedure_outcome": self._handle_report_procedure_outcome,
@@ -1330,6 +1346,54 @@ class ToolHandler:
 
         return None
 
+    def _get_all_descendants(self, root_name: str | None = None) -> list[str]:
+        """Get all descendant Anima names recursively via supervisor chain."""
+        from core.config.models import load_config
+
+        config = load_config()
+        root = root_name or self._anima_name
+        descendants: list[str] = []
+        visited: set[str] = {root}
+        queue = [
+            name for name, cfg in config.animas.items()
+            if cfg.supervisor == root
+        ]
+        while queue:
+            current = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            descendants.append(current)
+            queue.extend(
+                name for name, cfg in config.animas.items()
+                if cfg.supervisor == current
+            )
+        return descendants
+
+    @staticmethod
+    def _read_recent_activity(anima_dir: Path, *, limit: int = 1) -> list:
+        """Read recent activity entries from another anima's directory."""
+        al = ActivityLogger(anima_dir)
+        return al.recent(days=1, limit=limit)
+
+    def _check_descendant(self, target_name: str) -> str | None:
+        """Verify that target_name is a descendant (any depth) of this anima.
+
+        Returns None if allowed, or an error JSON string if denied.
+        """
+        if target_name == self._anima_name:
+            return _error_result(
+                "PermissionDenied",
+                "自分自身を操作することはできません",
+            )
+        descendants = self._get_all_descendants()
+        if target_name not in descendants:
+            return _error_result(
+                "PermissionDenied",
+                f"'{target_name}' はあなたの配下ではありません",
+            )
+        return None
+
     def _handle_disable_subordinate(self, args: dict[str, Any]) -> str:
         """Disable a subordinate anima (set enabled=false in status.json).
 
@@ -1561,6 +1625,473 @@ class ToolHandler:
         if reason:
             result += f"\n理由: {reason}"
         return result
+
+    def _handle_org_dashboard(self, args: dict[str, Any]) -> str:
+        """Show organization dashboard with all descendants' status."""
+        descendants = self._get_all_descendants()
+        if not descendants:
+            return "配下の Anima はいません"
+
+        from core.config.models import load_config
+        from core.paths import get_animas_dir
+
+        animas_dir = get_animas_dir()
+        config = load_config()
+
+        entries: list[dict[str, Any]] = []
+        for name in descendants:
+            desc_dir = animas_dir / name
+            entry: dict[str, Any] = {"name": name, "supervisor": ""}
+
+            cfg = config.animas.get(name)
+            if cfg:
+                entry["supervisor"] = cfg.supervisor or ""
+
+            if self._process_supervisor:
+                try:
+                    ps = self._process_supervisor.get_process_status(name)
+                    entry["process_status"] = ps.get("status", "unknown") if isinstance(ps, dict) else str(ps)
+                except Exception:
+                    entry["process_status"] = "unknown"
+            else:
+                status_file = desc_dir / "status.json"
+                if status_file.exists():
+                    try:
+                        status_data = _json.loads(status_file.read_text(encoding="utf-8"))
+                        entry["process_status"] = "enabled" if status_data.get("enabled", True) else "disabled"
+                    except Exception:
+                        entry["process_status"] = "unknown"
+                else:
+                    entry["process_status"] = "unknown"
+
+            try:
+                recent = self._read_recent_activity(desc_dir, limit=1)
+                if recent:
+                    entry["last_activity"] = recent[-1].ts
+                else:
+                    entry["last_activity"] = "なし"
+            except Exception:
+                entry["last_activity"] = "不明"
+
+            task_file = desc_dir / "state" / "current_task.md"
+            if task_file.exists():
+                try:
+                    task_text = task_file.read_text(encoding="utf-8").strip()
+                    entry["current_task"] = task_text[:100] if task_text else "なし"
+                except Exception:
+                    entry["current_task"] = "読取不可"
+            else:
+                entry["current_task"] = "なし"
+
+            try:
+                from core.memory.task_queue import TaskQueueManager
+
+                tqm = TaskQueueManager(desc_dir)
+                active = tqm.get_all_active()
+                entry["active_tasks"] = len(active)
+            except Exception:
+                entry["active_tasks"] = 0
+
+            entries.append(entry)
+
+        lines: list[str] = ["## 組織ダッシュボード", ""]
+        by_supervisor: dict[str, list[dict[str, Any]]] = {}
+        for e in entries:
+            sup = e.get("supervisor", "")
+            by_supervisor.setdefault(sup, []).append(e)
+
+        def _render_tree(parent: str, indent: int = 0) -> None:
+            children = by_supervisor.get(parent, [])
+            for child in children:
+                prefix = "  " * indent + "├─ " if indent > 0 else ""
+                status_icon = "🟢" if child["process_status"] in ("running", "enabled") else "🔴" if child["process_status"] == "disabled" else "⚪"
+                line = f"{prefix}{status_icon} **{child['name']}** [{child['process_status']}]"
+                line += f" | 最終: {child['last_activity']}"
+                line += f" | タスク: {child['active_tasks']}件"
+                if child["current_task"] != "なし":
+                    line += f"\n{'  ' * (indent + 1)}└ 作業中: {child['current_task']}"
+                lines.append(line)
+                _render_tree(child["name"], indent + 1)
+
+        _render_tree(self._anima_name)
+
+        rendered = set()
+        for e in entries:
+            rendered.add(e["name"])
+
+        self._activity.log(
+            "tool_use",
+            tool="org_dashboard",
+            summary=f"配下{len(descendants)}名のダッシュボード表示",
+        )
+
+        return "\n".join(lines)
+
+    def _handle_ping_subordinate(self, args: dict[str, Any]) -> str:
+        """Ping subordinate(s) for liveness check."""
+        target_name = args.get("name")
+
+        if target_name:
+            err = self._check_descendant(target_name)
+            if err:
+                return err
+            targets = [target_name]
+        else:
+            targets = self._get_all_descendants()
+            if not targets:
+                return "配下の Anima はいません"
+
+        from core.paths import get_animas_dir
+
+        animas_dir = get_animas_dir()
+        results: list[dict[str, Any]] = []
+
+        for name in targets:
+            desc_dir = animas_dir / name
+            result: dict[str, Any] = {
+                "name": name,
+                "alive": False,
+                "process_status": "unknown",
+                "last_activity": "不明",
+                "since": "",
+            }
+
+            if self._process_supervisor:
+                try:
+                    ps = self._process_supervisor.get_process_status(name)
+                    if isinstance(ps, dict):
+                        result["process_status"] = ps.get("status", "unknown")
+                        result["alive"] = ps.get("status") == "running"
+                    else:
+                        result["process_status"] = str(ps)
+                        result["alive"] = "running" in str(ps).lower()
+                except Exception:
+                    result["process_status"] = "not_found"
+            else:
+                from core.paths import get_data_dir
+
+                sock = get_data_dir() / "run" / "sockets" / f"{name}.sock"
+                if sock.exists():
+                    result["alive"] = True
+                    result["process_status"] = "running (socket exists)"
+                else:
+                    status_file = desc_dir / "status.json"
+                    if status_file.exists():
+                        try:
+                            sdata = _json.loads(status_file.read_text(encoding="utf-8"))
+                            result["process_status"] = "enabled" if sdata.get("enabled", True) else "disabled"
+                        except Exception:
+                            logger.debug("Failed to read status.json for %s", name, exc_info=True)
+
+            try:
+                recent = self._read_recent_activity(desc_dir, limit=1)
+                if recent:
+                    result["last_activity"] = recent[-1].ts
+                    from core.time_utils import ensure_aware, now_jst
+
+                    ts = ensure_aware(datetime.fromisoformat(recent[-1].ts))
+                    elapsed = (now_jst() - ts).total_seconds()
+                    minutes = int(elapsed / 60)
+                    if minutes < 60:
+                        result["since"] = f"{minutes}分前"
+                    else:
+                        hours = minutes // 60
+                        result["since"] = f"{hours}時間{minutes % 60}分前"
+                else:
+                    result["last_activity"] = "なし"
+            except Exception:
+                logger.debug("Failed to read activity for %s", name, exc_info=True)
+
+            results.append(result)
+
+        self._activity.log(
+            "tool_use",
+            tool="ping_subordinate",
+            summary=f"{'全配下' if not target_name else target_name}の生存確認",
+        )
+
+        return _json.dumps(results, ensure_ascii=False, indent=2)
+
+    def _handle_read_subordinate_state(self, args: dict[str, Any]) -> str:
+        """Read a descendant's current task state."""
+        target_name = args.get("name", "")
+        if not target_name:
+            return _error_result("InvalidArguments", "name is required")
+
+        err = self._check_descendant(target_name)
+        if err:
+            return err
+
+        from core.paths import get_animas_dir
+
+        desc_dir = get_animas_dir() / target_name
+
+        parts: list[str] = [f"## {target_name} の作業状態", ""]
+
+        task_file = desc_dir / "state" / "current_task.md"
+        if task_file.exists():
+            try:
+                content = task_file.read_text(encoding="utf-8").strip()
+                parts.append("### 進行中タスク")
+                parts.append(content if content else "(なし)")
+            except Exception:
+                parts.append("### 進行中タスク")
+                parts.append("(読取不可)")
+        else:
+            parts.append("### 進行中タスク")
+            parts.append("(なし)")
+
+        parts.append("")
+
+        pending_file = desc_dir / "state" / "pending.md"
+        if pending_file.exists():
+            try:
+                content = pending_file.read_text(encoding="utf-8").strip()
+                parts.append("### 保留タスク")
+                parts.append(content if content else "(なし)")
+            except Exception:
+                parts.append("### 保留タスク")
+                parts.append("(読取不可)")
+        else:
+            parts.append("### 保留タスク")
+            parts.append("(なし)")
+
+        self._activity.log(
+            "tool_use",
+            tool="read_subordinate_state",
+            summary=f"{target_name}の作業状態を読み取り",
+        )
+
+        return "\n".join(parts)
+
+    # ── check_permissions handler ────────────────────────────
+
+    def _handle_check_permissions(self, args: dict[str, Any]) -> str:
+        """Return a summary of what tools, external tools, and file access this anima has."""
+        internal_tools = sorted(self._dispatch.keys())
+
+        external_enabled: list[str] = []
+        external_available: list[str] = []
+        try:
+            from core.tools import TOOL_MODULES
+            all_categories = sorted(TOOL_MODULES.keys())
+            for cat in all_categories:
+                if cat in (self._external._tool_registry if hasattr(self._external, '_tool_registry') else []):
+                    external_enabled.append(cat)
+                else:
+                    external_available.append(cat)
+        except Exception:
+            logger.debug("Failed to enumerate external tools", exc_info=True)
+
+        permissions_text = self._memory.read_permissions() if self._memory else ""
+
+        file_read: list[str] = ["自分のディレクトリ", "shared/"]
+        file_write: list[str] = ["自分のディレクトリ"]
+        if self._descendant_activity_dirs:
+            file_read.append("配下のactivity_log")
+        if self._descendant_state_files:
+            file_read.append("配下のstate (current_task.md, pending.md)")
+
+        file_header = self._find_section_header(permissions_text, self._FILE_SECTION_HEADERS)
+        if file_header:
+            extra_dirs = self._parse_permission_section(file_header)
+            for d in extra_dirs:
+                if d.startswith("/"):
+                    file_read.append(d)
+                    file_write.append(d)
+
+        restrictions: list[str] = []
+        denied_cmds = self._parse_denied_commands(permissions_text)
+        if denied_cmds:
+            restrictions.extend(f"{cmd} 禁止" for cmd in denied_cmds)
+
+        result = {
+            "internal_tools": internal_tools,
+            "external_tools": {
+                "enabled": external_enabled,
+                "available_but_not_enabled": external_available,
+            },
+            "file_access": {
+                "read": file_read,
+                "write": file_write,
+            },
+            "restrictions": restrictions,
+        }
+
+        return _json.dumps(result, ensure_ascii=False, indent=2)
+
+    # ── Delegation tool handlers ─────────────────────────────
+
+    def _handle_delegate_task(self, args: dict[str, Any]) -> str:
+        """Delegate a task to a direct subordinate.
+
+        1. Adds task to subordinate's task queue
+        2. Sends DM with instruction
+        3. Creates tracking entry in own task queue
+        """
+        target_name = args.get("name", "")
+        instruction = args.get("instruction", "")
+        summary = args.get("summary", "") or instruction[:100]
+        deadline = args.get("deadline", "")
+
+        if not target_name:
+            return _error_result("InvalidArguments", "name is required")
+        if not instruction:
+            return _error_result("InvalidArguments", "instruction is required")
+        if not deadline:
+            return _error_result(
+                "InvalidArguments",
+                "deadline is required. Use relative format ('30m', '2h', '1d') or ISO8601.",
+            )
+
+        err = self._check_subordinate(target_name)
+        if err:
+            return err
+
+        from core.memory.task_queue import TaskQueueManager
+        from core.paths import get_animas_dir
+
+        target_dir = get_animas_dir() / target_name
+
+        # 1. Add task to subordinate's queue
+        sub_tqm = TaskQueueManager(target_dir)
+        try:
+            sub_entry = sub_tqm.add_task(
+                source="anima",
+                original_instruction=instruction,
+                assignee=target_name,
+                summary=summary,
+                deadline=deadline,
+                relay_chain=[self._anima_name],
+            )
+        except ValueError as e:
+            return _error_result("InvalidArguments", str(e))
+
+        # 2. Send DM to subordinate
+        dm_result = ""
+        if self._messenger:
+            try:
+                self._messenger.send(
+                    to=target_name,
+                    content=f"[タスク委譲]\n{instruction}\n\n期限: {deadline}\nタスクID: {sub_entry.task_id}",
+                    intent="delegation",
+                )
+                dm_result = "DM送信済み"
+            except Exception as e:
+                dm_result = f"DM送信失敗: {e}"
+                logger.warning("delegate_task DM failed: %s -> %s: %s", self._anima_name, target_name, e)
+        else:
+            dm_result = "メッセンジャー未設定（タスクキューへの追加は成功）"
+
+        # Check if subordinate process is running
+        process_warning = ""
+        try:
+            from core.paths import get_data_dir
+            sock = get_data_dir() / "run" / "sockets" / f"{target_name}.sock"
+            if not sock.exists():
+                status_file = target_dir / "status.json"
+                if status_file.exists():
+                    sdata = _json.loads(status_file.read_text(encoding="utf-8"))
+                    if not sdata.get("enabled", True):
+                        process_warning = f"\n⚠️ {target_name} は現在休止中です。タスクはキューに蓄積されますが、処理は再起動後になります。"
+        except Exception:
+            logger.debug("Failed to check subordinate process status for %s", target_name, exc_info=True)
+
+        # 3. Create tracking entry in own queue
+        own_tqm = TaskQueueManager(self._anima_dir)
+        own_entry = own_tqm.add_delegated_task(
+            original_instruction=instruction,
+            assignee=target_name,
+            summary=f"[委譲] {summary}",
+            deadline=deadline,
+            relay_chain=[self._anima_name, target_name],
+            meta={
+                "delegated_to": target_name,
+                "delegated_task_id": sub_entry.task_id,
+            },
+        )
+
+        self._activity.log(
+            "tool_use",
+            tool="delegate_task",
+            summary=f"{target_name}にタスク委譲: {summary[:80]}",
+            meta={
+                "target": target_name,
+                "own_task_id": own_entry.task_id,
+                "sub_task_id": sub_entry.task_id,
+            },
+        )
+
+        result = (
+            f"タスクを {target_name} に委譲しました。\n"
+            f"- 部下側タスクID: {sub_entry.task_id}\n"
+            f"- 追跡用タスクID: {own_entry.task_id}\n"
+            f"- {dm_result}"
+        )
+        return result + process_warning
+
+    def _handle_task_tracker(self, args: dict[str, Any]) -> str:
+        """Track progress of delegated tasks."""
+        status_filter = args.get("status", "active")
+
+        from core.memory.task_queue import TaskQueueManager
+        from core.paths import get_animas_dir
+
+        own_tqm = TaskQueueManager(self._anima_dir)
+        delegated = own_tqm.get_delegated_tasks()
+
+        if not delegated:
+            return "委譲済みタスクはありません"
+
+        animas_dir = get_animas_dir()
+        results: list[dict[str, Any]] = []
+
+        for task in delegated:
+            meta = task.meta or {}
+            delegated_to = meta.get("delegated_to", "")
+            delegated_task_id = meta.get("delegated_task_id", "")
+
+            entry: dict[str, Any] = {
+                "my_task_id": task.task_id,
+                "delegated_to": delegated_to,
+                "summary": task.summary,
+                "delegated_at": task.ts,
+                "deadline": task.deadline or "",
+                "subordinate_status": "unknown",
+                "last_updated": "",
+            }
+
+            if delegated_to and delegated_task_id:
+                target_dir = animas_dir / delegated_to
+                try:
+                    sub_tqm = TaskQueueManager(target_dir)
+                    sub_tasks = sub_tqm._load_all()
+                    sub_task = sub_tasks.get(delegated_task_id)
+                    if sub_task:
+                        entry["subordinate_status"] = sub_task.status
+                        entry["last_updated"] = sub_task.updated_at
+                except Exception:
+                    entry["subordinate_status"] = "unknown"
+
+            # Apply filter
+            sub_status = entry["subordinate_status"]
+            if status_filter == "active" and sub_status in ("done", "cancelled"):
+                continue
+            if status_filter == "completed" and sub_status not in ("done", "cancelled"):
+                continue
+
+            results.append(entry)
+
+        self._activity.log(
+            "tool_use",
+            tool="task_tracker",
+            summary=f"委譲タスク追跡 (filter={status_filter}, count={len(results)})",
+        )
+
+        if not results:
+            return f"条件に合う委譲済みタスクはありません (filter={status_filter})"
+
+        return _json.dumps(results, ensure_ascii=False, indent=2)
 
     # ── Tool management handlers ─────────────────────────────
 
@@ -2267,6 +2798,18 @@ class ToolHandler:
         if not write:
             for sub_activity in self._subordinate_activity_dirs:
                 if resolved.is_relative_to(sub_activity):
+                    return None
+
+        # Supervisor can read any descendant's activity_log
+        if not write:
+            for desc_activity in self._descendant_activity_dirs:
+                if resolved.is_relative_to(desc_activity):
+                    return None
+
+        # Supervisor can read any descendant's current_task.md / pending.md
+        if not write:
+            for desc_state in self._descendant_state_files:
+                if resolved == desc_state:
                     return None
 
         # Supervisor can read/write subordinate's cron.md & heartbeat.md

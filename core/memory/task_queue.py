@@ -25,7 +25,7 @@ from core.time_utils import ensure_aware, now_iso, now_jst
 logger = logging.getLogger("animaworks.task_queue")
 
 # Valid task statuses
-_VALID_STATUSES = frozenset({"pending", "in_progress", "done", "cancelled", "blocked"})
+_VALID_STATUSES = frozenset({"pending", "in_progress", "done", "cancelled", "blocked", "delegated"})
 # Valid task sources
 _VALID_SOURCES = frozenset({"human", "anima"})
 # Maximum characters for original_instruction
@@ -170,6 +170,47 @@ class TaskQueueManager:
         )
         return entry
 
+    def add_delegated_task(
+        self,
+        *,
+        original_instruction: str,
+        assignee: str,
+        summary: str,
+        deadline: str,
+        relay_chain: list[str] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> TaskEntry:
+        """Add a task with 'delegated' status for tracking delegation.
+
+        Used by the delegating supervisor to record that a task was sent
+        to a subordinate. The meta field stores delegated_to and delegated_task_id.
+        """
+        if not deadline:
+            raise ValueError("deadline is required")
+        parsed_deadline = _parse_deadline(deadline)
+        if len(original_instruction) > _MAX_INSTRUCTION_CHARS:
+            original_instruction = original_instruction[:_MAX_INSTRUCTION_CHARS]
+        now = now_iso()
+        entry = TaskEntry(
+            task_id=uuid.uuid4().hex[:12],
+            ts=now,
+            source="anima",
+            original_instruction=original_instruction,
+            assignee=assignee,
+            status="delegated",
+            summary=summary,
+            deadline=parsed_deadline,
+            relay_chain=relay_chain or [],
+            updated_at=now,
+            meta=meta or {},
+        )
+        self._append(entry.model_dump())
+        logger.info(
+            "Delegated task added: id=%s assignee=%s summary=%s",
+            entry.task_id, assignee, summary[:50],
+        )
+        return entry
+
     def update_status(
         self,
         task_id: str,
@@ -284,6 +325,11 @@ class TaskQueueManager:
         if status:
             return [t for t in tasks.values() if t.status == status]
         return list(tasks.values())
+
+    def get_delegated_tasks(self) -> list[TaskEntry]:
+        """Return tasks with status 'delegated'."""
+        tasks = self._load_all()
+        return [t for t in tasks.values() if t.status == "delegated"]
 
     # ── Formatting ───────────────────────────────────────────
 
