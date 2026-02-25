@@ -337,8 +337,9 @@ async function _loadMessages(type, name, isPolling) {
 
   try {
     let data;
+    const fetchOffset = isPolling ? 0 : _currentOffset;
     if (type === "channel") {
-      data = await api(`/api/channels/${encodeURIComponent(name)}?limit=50&offset=${_currentOffset}`);
+      data = await api(`/api/channels/${encodeURIComponent(name)}?limit=50&offset=${fetchOffset}`);
     } else {
       data = await api(`/api/dm/${encodeURIComponent(name)}?limit=50`);
     }
