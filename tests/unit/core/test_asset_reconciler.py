@@ -186,7 +186,8 @@ class TestExtractPrompt:
             "# Alice\nJust an anima.\n",
             encoding="utf-8",
         )
-        result = await _extract_prompt(anima_dir)
+        with patch("core.asset_reconciler._synthesize_prompt_via_llm", new_callable=AsyncMock, return_value=None):
+            result = await _extract_prompt(anima_dir)
         assert result is None
 
     @pytest.mark.asyncio
@@ -317,7 +318,8 @@ class TestExtractPrompt:
             "# Test\n\nJust personality description, no table.\n",
             encoding="utf-8",
         )
-        result = await _extract_prompt(anima_dir)
+        with patch("core.asset_reconciler._synthesize_prompt_via_llm", new_callable=AsyncMock, return_value=None):
+            result = await _extract_prompt(anima_dir)
         assert result is None
 
 
@@ -354,7 +356,8 @@ class TestReconcileAnimaAssets:
             "# Test\nNo prompt here.", encoding="utf-8",
         )
 
-        result = await reconcile_anima_assets(anima_dir)
+        with patch("core.asset_reconciler._synthesize_prompt_via_llm", new_callable=AsyncMock, return_value=None):
+            result = await reconcile_anima_assets(anima_dir)
         assert result["skipped"] is True
         assert result["reason"] == "no_prompt"
 
