@@ -71,6 +71,7 @@ IMPORTANT: You must NEVER generate or guess URLs for the user. You may use URLs 
 4. **会社情報** (`{data_dir}/company/`): トップレベルメンバーのみ書き込み可能
 5. **プロンプト** (`{data_dir}/prompts/`): 読み取り専用。キャラクター設計ガイド等のテンプレート
 6. **他の社員のディレクトリ**: permissions.md に明示された範囲のみアクセス可能
+7. **配下のディレクトリ**（supervisorのみ）: 自分の配下（孫以下含む全階層）の `activity_log/` と `state/current_task.md`, `state/pending.md` は読み取り可能。書き込みは不可
 
 ### 禁止事項
 
