@@ -162,23 +162,83 @@ def _build_full_org_tree(
     return "\n".join(lines)
 
 
-def _build_org_context(anima_name: str, other_animas: list[str], execution_mode: str = "s") -> str:
-    """Build organisation context section from supervisor chain.
+def _scan_all_animas(animas_dir: Path) -> dict[str, Any]:
+    """Scan anima directories and merge with config.json for a complete org map.
 
-    Reads config.json to derive each Anima's relationship
-    (supervisor / subordinate / peer) relative to *anima_name*
-    and returns a formatted prompt section.
+    Reads ``status.json`` from each anima directory and merges with
+    config.json entries (config overrides where present).
+    Returns a dict of ``name -> AnimaModelConfig``-like objects.
     """
     from core.config import load_config
-    from core.tooling.prompt_db import get_prompt_store
+    from core.config.models import AnimaModelConfig
 
     try:
         config = load_config()
     except Exception:
-        logger.debug("Could not load config for org context", exc_info=True)
+        config = None
+
+    config_animas = config.animas if config else {}
+    result: dict[str, AnimaModelConfig] = {}
+
+    if not animas_dir.is_dir():
+        return config_animas
+
+    for d in sorted(animas_dir.iterdir()):
+        if not d.is_dir() or d.name.startswith((".", "_", "tmp")):
+            continue
+        if not (d / "identity.md").exists():
+            continue
+
+        name = d.name
+        supervisor: str | None = None
+        speciality: str | None = None
+        role: str | None = None
+
+        status_path = d / "status.json"
+        if status_path.exists():
+            try:
+                import json
+                data = json.loads(status_path.read_text(encoding="utf-8"))
+                supervisor = data.get("supervisor") or None
+                speciality = data.get("speciality") or None
+                role = data.get("role") or None
+            except Exception:
+                pass
+
+        if name in config_animas:
+            cfg = config_animas[name]
+            if cfg.supervisor is not None:
+                supervisor = cfg.supervisor
+            if cfg.speciality is not None:
+                speciality = cfg.speciality
+
+        if not speciality and role:
+            speciality = role
+
+        result[name] = AnimaModelConfig(supervisor=supervisor, speciality=speciality)
+
+    for name, cfg in config_animas.items():
+        if name not in result:
+            result[name] = cfg
+
+    return result
+
+
+def _build_org_context(anima_name: str, other_animas: list[str], execution_mode: str = "s") -> str:
+    """Build organisation context section from directory scan + config.json.
+
+    Scans anima directories for ``status.json`` supervisor relationships
+    and merges with config.json for a complete org tree.
+    """
+    from core.tooling.prompt_db import get_prompt_store
+    from core.paths import get_data_dir
+
+    animas_dir = get_data_dir() / "animas"
+    all_animas = _scan_all_animas(animas_dir)
+
+    if not all_animas:
         return ""
 
-    all_animas = config.animas
     my_config = all_animas.get(anima_name)
     my_supervisor = my_config.supervisor if my_config else None
     my_speciality = my_config.speciality if my_config else None
@@ -692,7 +752,12 @@ def build_system_prompt(
         logger.warning("Tool prompt DB unavailable; using hardcoded fallback guides")
 
     if is_heartbeat:
-        parts.append("ツールは観察・計画に使い、実行はしないでください。")
+        parts.append(
+            "Heartbeatでは**観察・報告・計画**にツールを使ってください。\n"
+            "- OK: チャネル読み取り、記憶検索、メッセージ送信、タスク更新、pending作成\n"
+            "- NG: コード変更、ファイル大量編集、長時間の分析・調査\n"
+            "重い作業が必要な場合は state/pending/ にタスクファイルを書き出してください。"
+        )
     else:
         if execution_mode == "s":
             _s_builtin = (
