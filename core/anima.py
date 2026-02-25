@@ -677,7 +677,10 @@ class DigitalAnima:
                         conv_memory.save()
                     # Close journal (no-op if already finalized)
                     journal.close()
-                    active_session_type.reset(_session_token)
+                    try:
+                        active_session_type.reset(_session_token)
+                    except ValueError:
+                        pass
                     self._status_slots["conversation"] = "idle"
                     self._task_slots["conversation"] = ""
         finally:

@@ -600,8 +600,11 @@ class LiteLLMExecutor(BaseExecutor):
                 tool_calls_acc: dict[int, dict[str, Any]] = {}
                 finish_reason: str | None = None
                 usage_data: dict[str, int] | None = None
+                _chunk_count = 0
+                _reasoning_seen = False
 
                 async for chunk in response:
+                    _chunk_count += 1
                     choice = chunk.choices[0] if chunk.choices else None
                     if choice is None:
                         # Usage-only chunk (last chunk with stream_options)
@@ -621,6 +624,17 @@ class LiteLLMExecutor(BaseExecutor):
                     if delta.content:
                         iter_text_parts.append(delta.content)
                         yield {"type": "text_delta", "text": delta.content}
+
+                    # Fallback: capture reasoning_content as text when
+                    # content is empty (e.g. GLM thinking mode via vLLM)
+                    reasoning = getattr(delta, "reasoning_content", None)
+                    if reasoning and not delta.content:
+                        if not _reasoning_seen:
+                            _reasoning_seen = True
+                            logger.info(
+                                "A stream: reasoning_content detected "
+                                "(model may be in thinking mode)",
+                            )
 
                     # H1: Use accumulate_tool_call_chunks return value
                     if delta.tool_calls:
@@ -647,6 +661,17 @@ class LiteLLMExecutor(BaseExecutor):
                             "input_tokens": chunk.usage.prompt_tokens or 0,
                             "output_tokens": chunk.usage.completion_tokens or 0,
                         }
+
+                # Post-stream diagnostics
+                if not iter_text_parts and not tool_calls_acc:
+                    logger.warning(
+                        "A stream: empty response at iteration=%d "
+                        "chunks=%d finish_reason=%s reasoning_seen=%s "
+                        "usage=%s model=%s",
+                        iteration, _chunk_count, finish_reason,
+                        _reasoning_seen, usage_data,
+                        self._model_config.model,
+                    )
 
                 # Update context tracker
                 if tracker and usage_data:
