@@ -349,6 +349,27 @@ animaworks anima set-model --all <モデル名>
 
 スーパーバイザーが部下のモデルを変更する場合は `set_subordinate_model` ツールを使用する。
 
+### 設定のリロード
+
+`status.json` を変更した後、プロセスを再起動せずに設定を反映するには `reload` コマンドを使用する:
+
+```bash
+# 単一 Anima のリロード
+animaworks anima reload <anima名>
+
+# 全 Anima のリロード
+animaworks anima reload --all
+```
+
+リロードは IPC 経由で即座に反映される（ダウンタイムなし）。実行中のセッションは旧設定で完了し、次のセッションから新設定が適用される。
+
+**典型的な設定変更ワークフロー**:
+
+1. `animaworks anima set-model <name> <model>` でモデルを変更
+2. `animaworks anima reload <name>` で即座に反映
+
+手動で `status.json` を編集した場合も同様に `reload` で反映できる。
+
 ### デフォルト値一覧（anima_defaults）
 
 | フィールド | デフォルト値 | 説明 |
@@ -368,3 +389,39 @@ animaworks anima set-model --all <モデル名>
 - `supervisor: "hinata"` — hinata の部下として動作
 
 階層はメッセージングによる指示・報告で機能する。上司は部下にタスクを委任でき、部下は上司に結果を報告する。
+
+## Anima 管理コマンド一覧
+
+日常的な Anima の操作・管理に使う CLI コマンド。
+サーバーが起動中（`animaworks start` 済み）の状態で実行する。
+
+| コマンド | 説明 | ダウンタイム |
+|---------|------|-----------|
+| `animaworks anima list` | 全 Anima の一覧と状態を表示 | なし |
+| `animaworks anima status [name]` | 指定 Anima（省略時は全体）のプロセス状態を表示 | なし |
+| `animaworks anima reload <name>` | status.json を再読み込みしてモデル設定を即座に反映（プロセス再起動なし） | なし |
+| `animaworks anima reload --all` | 全 Anima の設定を一括リロード | なし |
+| `animaworks anima restart <name>` | Anima プロセスを完全に再起動（コード変更の反映時に使用） | 15-30秒 |
+| `animaworks anima set-model <name> <model>` | モデルを変更（status.json を更新。反映には `reload` が必要） | なし |
+| `animaworks anima set-model --all <model>` | 全 Anima のモデルを一括変更 | なし |
+| `animaworks anima enable <name>` | 休止中の Anima を有効化してプロセスを起動 | — |
+| `animaworks anima disable <name>` | Anima を休止（プロセス停止、status.json の enabled=false） | — |
+| `animaworks anima create` | 新しい Anima を作成（`--from-md`, `--template`, `--blank`） | — |
+| `animaworks anima delete <name>` | Anima を削除（デフォルトでアーカイブ保存） | — |
+
+### サーバー管理コマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `animaworks start` | サーバーを起動 |
+| `animaworks stop` | サーバーを停止 |
+| `animaworks restart` | サーバーを完全再起動（全プロセス再生成） |
+| `animaworks status` | システム全体のステータスを表示 |
+
+### reload / restart / system reload の棲み分け
+
+| コマンド | 動作 | ダウンタイム | ユースケース |
+|---------|------|-----------|-------------|
+| `anima reload` | IPC で ModelConfig スワップ | なし | status.json のモデル/パラメータ変更 |
+| `anima restart` | プロセス kill → 再生成 | 15-30秒 | コード変更の反映、メモリリーク対策 |
+| サーバー restart | 全 Anima 再起動 + 新規検出 | 15-30秒 | Anima 追加/削除の反映 |
