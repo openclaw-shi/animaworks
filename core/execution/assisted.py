@@ -48,6 +48,42 @@ from core.tooling.schemas import build_tool_list, to_text_format
 logger = logging.getLogger("animaworks.execution.assisted")
 
 _MAX_TOOL_OUTPUT_BYTES = 4096
+_MAX_INTENT_REPROMPTS = 2
+
+_TOOL_INTENT_PATTERNS_JA = re.compile(
+    r"(?:調べ|確認し|実行し|検索し|取得し|チェックし|見てみ|探し|読み込|読んで)"
+    r"(?:ます|ましょう|てみます|ますね|ましょうか|ていきます)",
+)
+_TOOL_INTENT_PATTERNS_EN = re.compile(
+    r"(?:I(?:'ll| will) (?:check|look|search|run|execute|fetch|retrieve|find|read))"
+    r"|(?:Let me (?:check|look|search|run|execute|fetch|retrieve|find|read))",
+    re.IGNORECASE,
+)
+
+_INTENT_REPROMPT_JA = (
+    "ツールを使う意図があるようですが、実際にツールが呼び出されていません。"
+    "必要な操作を以下の形式で出力してください:\n\n"
+    '```json\n{"tool": "ツール名", "arguments": {"引数名": "値"}}\n```'
+)
+_INTENT_REPROMPT_EN = (
+    "You indicated intent to use a tool but did not actually call one. "
+    "Please output the tool call in the following format:\n\n"
+    '```json\n{"tool": "tool_name", "arguments": {"arg_name": "value"}}\n```'
+)
+
+
+def _looks_like_tool_intent(text: str) -> bool:
+    """Detect whether response text implies the model intended to call a tool.
+
+    Returns True if the text contains phrases like "調べます" or "I'll check"
+    without an actual tool-call JSON block.
+    """
+    if not text or len(text) > 2000:
+        return False
+    return bool(
+        _TOOL_INTENT_PATTERNS_JA.search(text)
+        or _TOOL_INTENT_PATTERNS_EN.search(text)
+    )
 
 
 # ── JSON extraction ─────────────────────────────────────────
@@ -402,6 +438,7 @@ class AssistedExecutor(BaseExecutor):
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
         max_iterations = max_turns_override or self._model_config.max_turns
+        intent_reprompt_count = 0
 
         # ── 2. Tool-call loop ────────────────────────────────
         for iteration in range(max_iterations):
@@ -438,6 +475,31 @@ class AssistedExecutor(BaseExecutor):
             # ── 3. Extract tool call ─────────────────────────
             tool_call = extract_tool_call(content)
             if tool_call is None:
+                # Check for intent-without-action: model says "I'll check"
+                # but doesn't actually call a tool.  Re-prompt up to
+                # _MAX_INTENT_REPROMPTS times to coax out the JSON block.
+                if (
+                    intent_reprompt_count < _MAX_INTENT_REPROMPTS
+                    and _looks_like_tool_intent(content)
+                ):
+                    intent_reprompt_count += 1
+                    logger.info(
+                        "Mode B intent detected without tool call "
+                        "(reprompt %d/%d): %.80s",
+                        intent_reprompt_count,
+                        _MAX_INTENT_REPROMPTS,
+                        content,
+                    )
+                    from core.tooling.prompt_db import _get_locale
+                    reprompt = (
+                        _INTENT_REPROMPT_JA
+                        if _get_locale() == "ja"
+                        else _INTENT_REPROMPT_EN
+                    )
+                    messages.append({"role": "assistant", "content": content})
+                    messages.append({"role": "user", "content": reprompt})
+                    continue
+
                 # No tool call → final response
                 all_response_text.append(content)
                 logger.info(
@@ -574,6 +636,7 @@ class AssistedExecutor(BaseExecutor):
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
         max_iterations = max_turns_override or self._model_config.max_turns
+        intent_reprompt_count = 0
 
         # ── 2. Tool-call loop ────────────────────────────────
         async with stream_error_boundary(
@@ -610,6 +673,29 @@ class AssistedExecutor(BaseExecutor):
                 tool_call = extract_tool_call(content)
 
                 if tool_call is None:
+                    # Check for intent-without-action (same as non-streaming)
+                    if (
+                        intent_reprompt_count < _MAX_INTENT_REPROMPTS
+                        and _looks_like_tool_intent(content)
+                    ):
+                        intent_reprompt_count += 1
+                        logger.info(
+                            "Mode B streaming intent detected without tool call "
+                            "(reprompt %d/%d): %.80s",
+                            intent_reprompt_count,
+                            _MAX_INTENT_REPROMPTS,
+                            content,
+                        )
+                        from core.tooling.prompt_db import _get_locale
+                        reprompt = (
+                            _INTENT_REPROMPT_JA
+                            if _get_locale() == "ja"
+                            else _INTENT_REPROMPT_EN
+                        )
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": reprompt})
+                        continue
+
                     # No tool call → final response
                     all_response_text.append(content)
                     if content:

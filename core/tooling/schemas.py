@@ -958,6 +958,10 @@ def to_text_format(
     Generates a markdown-formatted tool guide that instructs the LLM to
     output tool calls as JSON code blocks.  Used by ``AssistedExecutor``
     to inject tool specifications into the system prompt.
+
+    Includes imperative instructions, few-shot examples, and
+    anti-hallucination rules to maximise tool-call compliance from
+    weaker models.
     """
     from core.tooling.prompt_db import _get_locale
 
@@ -965,22 +969,60 @@ def to_text_format(
 
     if loc == "ja":
         header = "## 利用可能なツール"
-        instruction = "ツールを使いたい場合、以下の形式で ```json コードブロックとして出力してください:"
+        instruction = (
+            "外部情報の取得やコマンド実行が必要な場合は、"
+            "**必ず**以下の形式で ```json コードブロックを出力してツールを呼び出してください:"
+        )
         example = '{"tool": "ツール名", "arguments": {"引数名": "値"}}'
-        result_note = "ツールの実行結果は次のメッセージで提供されます。"
-        text_note = "ツールを使う必要がなければ、普通にテキストで返答してください。"
-        one_call = "1回のメッセージでツール呼び出しは1つだけにしてください。"
+        rules = [
+            "ツールの実行結果は次のメッセージで提供されます。結果を待ってから回答してください。",
+            "ツールを使う必要がなければ、普通にテキストで返答してください。",
+            "1回のメッセージでツール呼び出しは1つだけにしてください。",
+            "**重要**: コマンド出力・ファイル内容・プロセス情報などを推測や想像で生成してはいけません。必ずツールで取得してください。",
+            "「調べます」「確認します」とだけ言って終わらないでください。調べるならツールを呼び出してください。",
+        ]
+        fewshot_header = "### 使用例"
+        fewshot_items = [
+            (
+                "ユーザー: docker ps して",
+                '```json\n{"tool": "execute_command", "arguments": {"command": "docker ps"}}\n```',
+            ),
+            (
+                "ユーザー: 今のメモリ使用量を教えて",
+                '```json\n{"tool": "execute_command", "arguments": {"command": "free -h"}}\n```',
+            ),
+        ]
         args_label = "引数"
         required_label = "(必須)"
+        tools_header = "### ツール一覧"
     else:
         header = "## Available Tools"
-        instruction = "To use a tool, output a ```json code block in the following format:"
+        instruction = (
+            "When you need external information or command execution, "
+            "you **MUST** output a ```json code block to invoke a tool:"
+        )
         example = '{"tool": "tool_name", "arguments": {"arg_name": "value"}}'
-        result_note = "Tool results will be provided in the next message."
-        text_note = "If you don't need to use a tool, respond with plain text."
-        one_call = "Only one tool call per message."
+        rules = [
+            "Tool results will be provided in the next message. Wait for results before answering.",
+            "If you don't need to use a tool, respond with plain text.",
+            "Only one tool call per message.",
+            "**Important**: NEVER fabricate command output, file contents, or system information. Always use a tool to retrieve real data.",
+            "Do NOT just say \"I'll check\" without actually calling a tool.",
+        ]
+        fewshot_header = "### Examples"
+        fewshot_items = [
+            (
+                "User: run docker ps",
+                '```json\n{"tool": "execute_command", "arguments": {"command": "docker ps"}}\n```',
+            ),
+            (
+                "User: show current memory usage",
+                '```json\n{"tool": "execute_command", "arguments": {"command": "free -h"}}\n```',
+            ),
+        ]
         args_label = "Args"
         required_label = "(required)"
+        tools_header = "### Tool List"
 
     lines = [
         header,
@@ -991,11 +1033,23 @@ def to_text_format(
         example,
         "```",
         "",
-        result_note,
-        text_note,
-        one_call,
-        "",
     ]
+    for rule in rules:
+        lines.append(f"- {rule}")
+    lines.append("")
+
+    # Few-shot examples
+    lines.append(fewshot_header)
+    lines.append("")
+    for prompt_ex, call_ex in fewshot_items:
+        lines.append(prompt_ex)
+        lines.append("")
+        lines.append(call_ex)
+        lines.append("")
+
+    # Tool list
+    lines.append(tools_header)
+    lines.append("")
     for schema in schemas:
         name = schema["name"]
         desc = schema.get("description", "")
