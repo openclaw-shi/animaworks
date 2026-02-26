@@ -80,3 +80,12 @@ export function renderMarkdown(text) {
     return escapeHtml(text);
   }
 }
+
+export function renderSafeMarkdown(text) {
+  if (!text) return "";
+  try {
+    return marked.parse(escapeHtml(text), { breaks: true });
+  } catch {
+    return escapeHtml(text);
+  }
+}

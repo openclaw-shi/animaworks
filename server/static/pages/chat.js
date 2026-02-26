@@ -1,6 +1,6 @@
 // ── Chat Page (Self-Contained) ──────────────
 import { api } from "../modules/api.js";
-import { escapeHtml, renderMarkdown, timeStr, smartTimestamp } from "../modules/state.js";
+import { escapeHtml, renderMarkdown, renderSafeMarkdown, timeStr, smartTimestamp } from "../modules/state.js";
 import { streamChat } from "../shared/chat-stream.js";
 import { createLogger } from "../shared/logger.js";
 import { createImageInput, initLightbox, renderChatImages } from "../shared/image-input.js";
@@ -489,9 +489,7 @@ function _renderChat(scrollToBottom = true) {
         let thinkingHtml = "";
         if (m.thinkingText) {
           const thSummary = `Thinking (${m.thinkingText.length} chars)`;
-          let thRendered;
-          try { thRendered = marked.parse(m.thinkingText, { breaks: true }); }
-          catch { thRendered = escapeHtml(m.thinkingText); }
+          const thRendered = renderSafeMarkdown(m.thinkingText);
           thinkingHtml = `<details class="thinking-block"><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(thSummary)}</summary><div class="thinking-content">${thRendered}</div></details>`;
         }
         let content = "";
@@ -539,9 +537,7 @@ function _renderStreamingBubble(msg) {
   if (msg.thinkingText) {
     const open = msg.thinking ? " open" : "";
     const summary = msg.thinking ? "Thinking..." : `Thinking (${msg.thinkingText.length} chars)`;
-    let thHtml;
-    try { thHtml = marked.parse(msg.thinkingText, { breaks: true }); }
-    catch { thHtml = escapeHtml(msg.thinkingText); }
+    const thHtml = renderSafeMarkdown(msg.thinkingText);
     html += `<details class="thinking-block"${open}><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(summary)}</summary><div class="thinking-content">${thHtml}</div></details>`;
   }
 

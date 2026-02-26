@@ -1,6 +1,6 @@
 /* ── Chat ──────────────────────────────────── */
 
-import { state, dom, escapeHtml, renderMarkdown, smartTimestamp } from "./state.js";
+import { state, dom, escapeHtml, renderMarkdown, renderSafeMarkdown, smartTimestamp } from "./state.js";
 import { addActivity } from "./activity.js";
 import { streamChat, fetchActiveStream, fetchStreamProgress } from "../shared/chat-stream.js";
 import { createLogger } from "../shared/logger.js";
@@ -288,7 +288,7 @@ function _renderHistoryMessage(msg) {
   if (msg.role === "assistant") {
     let thinkingHtml = "";
     if (msg.thinking_text) {
-      const thRendered = renderMarkdown(msg.thinking_text);
+      const thRendered = renderSafeMarkdown(msg.thinking_text);
       const thSummary = `Thinking (${msg.thinking_text.length} chars)`;
       thinkingHtml = `<details class="thinking-block"><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(thSummary)}</summary><div class="thinking-content">${thRendered}</div></details>`;
     }
@@ -314,9 +314,7 @@ function _renderLiveChatMessage(m) {
     let thinkingHtml = "";
     if (m.thinkingText) {
       const thSummary = m.thinking ? "Thinking..." : `Thinking (${m.thinkingText.length} chars)`;
-      let thRendered;
-      try { thRendered = marked.parse(m.thinkingText, { breaks: true }); }
-      catch { thRendered = escapeHtml(m.thinkingText); }
+      const thRendered = renderSafeMarkdown(m.thinkingText);
       const open = m.thinking ? " open" : "";
       thinkingHtml = `<details class="thinking-block"${open}><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(thSummary)}</summary><div class="thinking-content">${thRendered}</div></details>`;
     }
@@ -416,9 +414,7 @@ function renderStreamingBubble(msg) {
   if (msg.thinkingText) {
     const open = msg.thinking ? " open" : "";
     const summary = msg.thinking ? "Thinking..." : `Thinking (${msg.thinkingText.length} chars)`;
-    let thinkingHtml;
-    try { thinkingHtml = marked.parse(msg.thinkingText, { breaks: true }); }
-    catch { thinkingHtml = escapeHtml(msg.thinkingText); }
+    const thinkingHtml = renderSafeMarkdown(msg.thinkingText);
     html += `<details class="thinking-block"${open}><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(summary)}</summary><div class="thinking-content">${thinkingHtml}</div></details>`;
   }
 
