@@ -36,7 +36,7 @@ from core.exceptions import (  # noqa: F401
     ToolError,
     MemoryIOError,
 )
-from core.schemas import CycleResult, AnimaStatus, VALID_EMOTIONS
+from core.schemas import CycleResult, AnimaStatus, ModelConfig, VALID_EMOTIONS
 
 logger = logging.getLogger("animaworks.anima")
 
@@ -159,6 +159,19 @@ class DigitalAnima:
                 logger.warning("Failed to read notification: %s", path.name)
 
         return notifications
+
+    def reload_config(self) -> dict[str, Any]:
+        """Hot-reload ModelConfig from status.json without process restart."""
+        old = self.model_config
+        new = self.memory.read_model_config()
+        self.model_config = new
+        self.agent.update_model_config(new)
+        changes = [
+            k for k in ModelConfig.model_fields
+            if getattr(old, k) != getattr(new, k)
+        ]
+        logger.info("reload_config: model=%s, changes=%s", new.model, changes)
+        return {"status": "ok", "model": new.model, "changes": changes}
 
     def set_on_lock_released(self, fn: Callable[[], Any]) -> None:
         """Inject a callback invoked when the anima's lock is released."""

@@ -236,6 +236,18 @@ class AgentCore:
         """Return and clear pending notification events from ToolHandler."""
         return self._tool_handler.drain_notifications()
 
+    def update_model_config(self, new_config: ModelConfig) -> None:
+        """Update model config, rebuild executor and refresh context window."""
+        self.model_config = new_config
+        from core.config.models import resolve_context_window
+        cw = resolve_context_window(new_config.model) or 32_000
+        self._tool_handler._context_window = cw
+        self._executor = self._create_executor()
+        logger.info(
+            "AgentCore: config reloaded, model=%s, context_window=%d",
+            new_config.model, cw,
+        )
+
     def reset_reply_tracking(self, session_type: str | None = None) -> None:
         """Clear reply tracking (call at start of each heartbeat cycle)."""
         self._tool_handler.reset_replied_to(session_type=session_type)

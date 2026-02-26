@@ -331,4 +331,46 @@ def create_animas_router() -> APIRouter:
             "pid": proc_status.get("pid"),
         }
 
+    # ── Reload Config ─────────────────────────────────────
+
+    @router.post("/animas/{name}/reload")
+    async def reload_anima_config(name: str, request: Request):
+        """Hot-reload ModelConfig from status.json without process restart."""
+        supervisor = request.app.state.supervisor
+        anima_names = request.app.state.anima_names
+
+        if name not in anima_names:
+            raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
+
+        try:
+            result = await supervisor.send_request(
+                anima_name=name,
+                method="reload_config",
+                params={},
+                timeout=10.0,
+            )
+            return result
+        except Exception as e:
+            logger.exception("Failed to reload config for anima=%s", name)
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/animas/reload-all")
+    async def reload_all_anima_configs(request: Request):
+        """Hot-reload ModelConfig for all running animas."""
+        supervisor = request.app.state.supervisor
+        results = {}
+        for name, handle in supervisor.processes.items():
+            try:
+                result = await supervisor.send_request(
+                    anima_name=name,
+                    method="reload_config",
+                    params={},
+                    timeout=10.0,
+                )
+                results[name] = result
+            except Exception as e:
+                logger.warning("Failed to reload config for %s: %s", name, e)
+                results[name] = {"status": "error", "error": str(e)}
+        return {"status": "ok", "results": results}
+
     return router

@@ -364,6 +364,7 @@ class AnimaRunner:
             "run_consolidation": self._handle_run_consolidation,
             "get_status": self._handle_get_status,
             "ping": self._handle_ping,
+            "reload_config": self._handle_reload_config,
             "shutdown": self._handle_shutdown,
         }
         return handlers.get(method)
@@ -488,6 +489,12 @@ class AnimaRunner:
             "anima": self.anima_name,
             "uptime_sec": round(uptime, 1),
         }
+
+    async def _handle_reload_config(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Hot-reload ModelConfig from status.json."""
+        if not self.anima:
+            raise RuntimeError("Anima not initialized")
+        return self.anima.reload_config()
 
     async def _handle_shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle shutdown request."""
