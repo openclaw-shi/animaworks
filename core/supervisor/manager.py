@@ -936,8 +936,17 @@ class ProcessSupervisor:
         """Check for and generate missing anima assets during reconciliation."""
         try:
             from core.asset_reconciler import find_animas_with_missing_assets, reconcile_anima_assets
+            from core.config.models import load_config
 
-            incomplete = find_animas_with_missing_assets(self.animas_dir)
+            enable_3d = True
+            try:
+                enable_3d = load_config().image_gen.enable_3d
+            except Exception:
+                pass
+
+            incomplete = find_animas_with_missing_assets(
+                self.animas_dir, enable_3d=enable_3d,
+            )
             if not incomplete:
                 return
 
@@ -947,7 +956,9 @@ class ProcessSupervisor:
             )
             for anima_name, _check in incomplete:
                 anima_dir = self.animas_dir / anima_name
-                result = await reconcile_anima_assets(anima_dir)
+                result = await reconcile_anima_assets(
+                    anima_dir, enable_3d=enable_3d,
+                )
                 if not result.get("skipped"):
                     await self._broadcast_event(
                         "anima.assets_updated",

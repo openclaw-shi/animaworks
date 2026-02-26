@@ -148,6 +148,7 @@ class ImageGenConfig(BaseModel):
     negative_prompt_extra: str = ""  # Extra tags added to negative prompt
     vibe_strength: float = 0.6  # Vibe Transfer strength (0.0-1.0)
     vibe_info_extracted: float = 0.8  # Vibe Transfer information extraction (0.0-1.0)
+    enable_3d: bool = True  # Enable 3D model generation (Meshy API)
 
 
 class NotificationChannelConfig(BaseModel):
