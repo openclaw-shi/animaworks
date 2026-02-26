@@ -95,6 +95,7 @@ def mock_memory(anima_dir: Path, tmp_path: Path) -> MagicMock:
     mm.list_shared_users.return_value = []
     mm.load_recent_heartbeat_summary.return_value = ""
     mm.read_model_config.return_value = MagicMock(supervisor=None)
+    mm.collect_distilled_knowledge_separated.return_value = ([], [])
     return mm
 
 

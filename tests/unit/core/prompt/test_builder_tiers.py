@@ -86,7 +86,7 @@ def _make_mock_memory(
     memory.list_common_skill_metas.return_value = []
     memory.list_procedure_metas.return_value = []
     memory.list_shared_users.return_value = []
-    memory.collect_distilled_knowledge.return_value = []
+    memory.collect_distilled_knowledge_separated.return_value = ([], [])
     return memory
 
 
@@ -238,9 +238,10 @@ class TestDistilledKnowledgeTierBudget:
 
     def test_t1_injects_dk(self, tmp_path, data_dir):
         memory = _make_mock_memory(tmp_path, data_dir)
-        memory.collect_distilled_knowledge.return_value = [
-            {"name": "test_knowledge", "content": "knowledge content here"},
-        ]
+        memory.collect_distilled_knowledge_separated.return_value = (
+            [],
+            [{"name": "test_knowledge", "content": "knowledge content here"}],
+        )
         with patch("core.prompt.builder.load_prompt", return_value="section"):
             result = build_system_prompt(
                 memory, execution_mode="a", context_window=200_000,
@@ -250,9 +251,10 @@ class TestDistilledKnowledgeTierBudget:
 
     def test_t4_omits_dk(self, tmp_path, data_dir):
         memory = _make_mock_memory(tmp_path, data_dir)
-        memory.collect_distilled_knowledge.return_value = [
-            {"name": "test_knowledge", "content": "knowledge content here"},
-        ]
+        memory.collect_distilled_knowledge_separated.return_value = (
+            [],
+            [{"name": "test_knowledge", "content": "knowledge content here"}],
+        )
         with patch("core.prompt.builder.load_prompt", return_value="section"):
             result = build_system_prompt(
                 memory, execution_mode="a", context_window=8_000,
@@ -261,9 +263,10 @@ class TestDistilledKnowledgeTierBudget:
 
     def test_t3_omits_dk(self, tmp_path, data_dir):
         memory = _make_mock_memory(tmp_path, data_dir)
-        memory.collect_distilled_knowledge.return_value = [
-            {"name": "test_knowledge", "content": "knowledge content here"},
-        ]
+        memory.collect_distilled_knowledge_separated.return_value = (
+            [],
+            [{"name": "test_knowledge", "content": "knowledge content here"}],
+        )
         with patch("core.prompt.builder.load_prompt", return_value="section"):
             result = build_system_prompt(
                 memory, execution_mode="a", context_window=16_000,

@@ -86,7 +86,7 @@ class TestAnimaDefaults:
     def test_defaults(self):
         pd = AnimaDefaults()
         assert pd.model == "claude-sonnet-4-6"
-        assert pd.max_tokens == 4096
+        assert pd.max_tokens == 8192
         assert pd.max_turns == 20
         assert pd.credential == "anthropic"
         assert pd.context_threshold == 0.50

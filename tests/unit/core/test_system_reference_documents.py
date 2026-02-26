@@ -233,6 +233,7 @@ def _make_mock_memory(anima_dir: Path) -> MagicMock:
     mem.list_common_skill_metas.return_value = []
     mem.list_shared_users.return_value = []
     mem.common_skills_dir = anima_dir.parent.parent / "common_skills"
+    mem.collect_distilled_knowledge_separated.return_value = ([], [])
     return mem
 
 
@@ -805,18 +806,24 @@ _TEMPLATES_CK_DIR = (
     / "common_knowledge"
 )
 
-# All 12 expected markdown files
+# All 18 expected markdown files
 _EXPECTED_FILES = [
     "00_index.md",
-    "organization/structure.md",
-    "organization/roles.md",
-    "organization/hierarchy-rules.md",
-    "communication/messaging-guide.md",
+    "communication/board-guide.md",
     "communication/instruction-patterns.md",
+    "communication/messaging-guide.md",
     "communication/reporting-guide.md",
+    "communication/sending-limits.md",
+    "operations/background-tasks.md",
+    "operations/heartbeat-cron-guide.md",
     "operations/project-setup.md",
     "operations/task-management.md",
-    "operations/heartbeat-cron-guide.md",
+    "operations/tool-usage-overview.md",
+    "operations/voice-chat-guide.md",
+    "organization/hierarchy-rules.md",
+    "organization/roles.md",
+    "organization/structure.md",
+    "security/prompt-injection-awareness.md",
     "troubleshooting/common-issues.md",
     "troubleshooting/escalation-flowchart.md",
 ]
@@ -831,16 +838,16 @@ class TestTemplateFilesExist:
         assert full_path.exists(), f"Missing template: {rel_path}"
 
     def test_total_file_count(self):
-        """Exactly 14 .md files should exist in common_knowledge."""
+        """Exactly 18 .md files should exist in common_knowledge."""
         md_files = list(_TEMPLATES_CK_DIR.rglob("*.md"))
-        assert len(md_files) == 14, (
-            f"Expected 14 .md files, found {len(md_files)}: "
+        assert len(md_files) == 18, (
+            f"Expected 18 .md files, found {len(md_files)}: "
             f"{[str(f.relative_to(_TEMPLATES_CK_DIR)) for f in md_files]}"
         )
 
     def test_directory_structure(self):
         """Expected subdirectories should exist."""
-        for subdir in ("organization", "communication", "operations", "troubleshooting"):
+        for subdir in ("organization", "communication", "operations", "troubleshooting", "security"):
             assert (_TEMPLATES_CK_DIR / subdir).is_dir(), f"Missing subdir: {subdir}"
 
 

@@ -177,6 +177,7 @@ class TestBuildSystemPrompt:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -208,6 +209,7 @@ class TestBuildSystemPrompt:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -242,6 +244,7 @@ class TestBuildSystemPrompt:
         memory.list_skill_metas.return_value = [SkillMeta(name="coding", description="Write code", path=Path("/tmp/test/skills/coding.md"), is_common=False)]
         memory.list_common_skill_metas.return_value = [SkillMeta(name="deploy", description="Deploy apps", path=Path("/tmp/test/common_skills/deploy.md"), is_common=True)]
         memory.list_procedure_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -277,6 +280,7 @@ class TestBuildSystemPrompt:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -306,6 +310,7 @@ class TestBuildSystemPrompt:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -339,6 +344,7 @@ class TestBuildSystemPrompt:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -373,6 +379,7 @@ class TestBuildSystemPrompt:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -523,6 +530,7 @@ class TestHiringContextPlacement:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
@@ -576,6 +584,7 @@ class TestHiringContextPlacement:
         memory.list_common_skill_summaries.return_value = []
         memory.list_skill_metas.return_value = []
         memory.list_common_skill_metas.return_value = []
+        memory.collect_distilled_knowledge_separated.return_value = ([], [])
         memory.common_skills_dir = data_dir / "common_skills"
         memory.list_shared_users.return_value = []
 
