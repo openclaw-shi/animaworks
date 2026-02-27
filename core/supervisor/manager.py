@@ -129,12 +129,12 @@ class ProcessSupervisor:
 
     async def start_all(self, anima_names: list[str]) -> None:
         """
-        Start all Anima processes.
+        Start all Anima processes in parallel.
 
         Args:
             anima_names: List of anima names to start
         """
-        logger.info("Starting %d Anima processes", len(anima_names))
+        logger.info("Starting %d Anima processes (parallel)", len(anima_names))
 
         # Create socket directory and clean up stale sockets from previous runs
         socket_dir = self.run_dir / "sockets"
@@ -146,9 +146,15 @@ class ProcessSupervisor:
             except OSError as exc:
                 logger.warning("Failed to remove stale socket %s: %s", stale_sock, exc)
 
-        # Start each process
-        for anima_name in anima_names:
-            await self.start_anima(anima_name)
+        # Start all processes in parallel
+        if anima_names:
+            results = await asyncio.gather(
+                *(self.start_anima(name) for name in anima_names),
+                return_exceptions=True,
+            )
+            for name, result in zip(anima_names, results):
+                if isinstance(result, Exception):
+                    logger.error("Failed to start anima %s: %s", name, result)
 
         # Start health check loop
         self._health_check_task = asyncio.create_task(
