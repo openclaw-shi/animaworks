@@ -169,7 +169,8 @@ class TestPreToolHookTaskBranch:
         output = result.get("hookSpecificOutput", {})
         assert output.get("permissionDecision") == "deny"
         reason = output.get("permissionDecisionReason", "")
-        assert "バックグラウンド実行キュー" in reason
+        assert "Task accepted" in reason
+        assert "background self" in reason
 
     async def test_task_tool_creates_pending_file(self, hook, tmp_path: Path) -> None:
         """Task intercept should write a JSON file to state/pending/."""

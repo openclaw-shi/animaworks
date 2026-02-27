@@ -627,10 +627,11 @@ def _build_pre_tool_hook(
                     hookEventName="PreToolUse",
                     permissionDecision="deny",
                     permissionDecisionReason=(
-                        f"タスクをバックグラウンド実行キューに投入しました "
-                        f"(task_id: {task_id}). "
-                        f"PendingTaskExecutorが数秒以内に独立LLMセッションで"
-                        f"実行を開始します。あなたはすぐにユーザーへ応答を返してください。"
+                        f"Task accepted (task_id: {task_id}). "
+                        f"Your background self (separate session with your identity) "
+                        f"will execute this shortly. "
+                        f"You will be notified upon completion. "
+                        f"Continue the conversation now."
                     ),
                 )
             )
