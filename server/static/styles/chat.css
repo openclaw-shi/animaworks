@@ -28,6 +28,62 @@
   margin-top: 80px;
 }
 
+/* --- Anima Tabs --- */
+.anima-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border-color, #eee);
+  flex-wrap: wrap;
+  min-height: 38px;
+}
+
+.anima-tab-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.anima-tab {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--aw-color-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.anima-tab:hover,
+.anima-tab:active {
+  background: var(--aw-color-bg-hover);
+  color: var(--aw-color-text-primary);
+}
+
+.anima-tab.active {
+  background: var(--aw-color-accent);
+  color: var(--aw-color-bg-primary);
+}
+
+.anima-tab-close {
+  padding: 0 4px;
+  font-size: 1rem;
+  line-height: 1;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--aw-color-text-muted);
+  cursor: pointer;
+}
+
+.anima-tab-close:hover,
+.anima-tab-close:active {
+  background: var(--aw-color-bg-hover);
+  color: var(--aw-color-text-primary);
+}
+
 /* --- Thread Tabs --- */
 .thread-tabs {
   display: flex;
@@ -101,6 +157,12 @@
 .thread-tab-new:active {
   background: var(--aw-color-bg-hover);
   color: var(--aw-color-accent);
+}
+
+.tab-star {
+  color: #f59e0b;
+  font-size: 0.78rem;
+  margin-left: 0.2rem;
 }
 
 .chat-ts {

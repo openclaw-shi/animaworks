@@ -17,6 +17,7 @@ let _animas = [];
 let _selectedAnima = null;
 let _chatHistories = {};
 let _animaDetail = null;
+let _animaTabs = [];  // [{ name, unreadStar }]
 let _activeRightTab = "state";
 let _activeMemoryTab = "episodes";
 let _intervals = [];
@@ -26,12 +27,14 @@ let _chatObserver = null;
 let _isChatStreaming = false;
 let _selectedThreadId = "default";
 let _threads = {};  // { [animaName]: [{ id, label, unread }] }
+let _activeThreadByAnima = {};  // { [animaName]: threadId }
 const _HISTORY_PAGE_SIZE = 50;
 const _TOOL_RESULT_TRUNCATE = 500;
 let _imageInputManager = null;
 let _bustupUrl = null;
 let _pendingQueue = [];       // Array<{ text, images, displayImages }>
 let _chatAbortController = null;
+let _chatUiStateSaveTimer = null;
 
 // ── Chat Draft Persistence ───────────────────
 
@@ -56,6 +59,89 @@ function _clearDraft(animaName) {
   localStorage.removeItem(_getDraftKey(animaName));
 }
 
+// ── Chat UI State Persistence ────────────────
+
+function _getTabEntry(animaName) {
+  return _animaTabs.find((tab) => tab.name === animaName) || null;
+}
+
+function _isTabOpen(animaName) {
+  return Boolean(_getTabEntry(animaName));
+}
+
+function _setThreadUnread(animaName, threadId, unread) {
+  const list = _threads[animaName];
+  if (!Array.isArray(list)) return;
+  const item = list.find((t) => t.id === threadId);
+  if (item) item.unread = Boolean(unread);
+}
+
+function _refreshAnimaUnread(animaName) {
+  const tab = _getTabEntry(animaName);
+  if (!tab) return;
+  const list = _threads[animaName] || [];
+  tab.unreadStar = list.some((t) => t.unread);
+}
+
+function _clearUnreadForActiveThread(animaName, threadId) {
+  _setThreadUnread(animaName, threadId, false);
+  _refreshAnimaUnread(animaName);
+}
+
+function _serializeChatUiState() {
+  const threadState = {};
+  for (const tab of _animaTabs) {
+    const name = tab.name;
+    const list = _threads[name] || [{ id: "default", label: "メイン", unread: false }];
+    threadState[name] = {
+      active_thread_id: _activeThreadByAnima[name] || "default",
+      threads: list.map((t) => ({
+        id: t.id,
+        label: t.label,
+        unread: Boolean(t.unread),
+      })),
+    };
+  }
+  return {
+    version: 1,
+    active_anima: _selectedAnima,
+    anima_tabs: _animaTabs.map((tab) => ({
+      name: tab.name,
+      unread_star: Boolean(tab.unreadStar),
+    })),
+    thread_state: threadState,
+  };
+}
+
+async function _saveChatUiStateNow() {
+  try {
+    await api("/api/chat/ui-state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: _serializeChatUiState() }),
+    });
+  } catch (err) {
+    logger.debug("Failed to persist chat ui state", err);
+  }
+}
+
+function _scheduleSaveChatUiState() {
+  if (_chatUiStateSaveTimer) clearTimeout(_chatUiStateSaveTimer);
+  _chatUiStateSaveTimer = setTimeout(() => {
+    _chatUiStateSaveTimer = null;
+    _saveChatUiStateNow();
+  }, 300);
+}
+
+async function _fetchChatUiState() {
+  try {
+    const data = await api("/api/chat/ui-state");
+    return data?.state || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── DOM refs (local) ───────────────────────
 
 function _$(id) { return document.getElementById(id); }
@@ -68,8 +154,10 @@ export function render(container) {
   _selectedAnima = null;
   _chatHistories = {};
   _historyState = {};
+  _animaTabs = [];
   _selectedThreadId = "default";
   _threads = {};
+  _activeThreadByAnima = {};
   _animaDetail = null;
   _activeRightTab = "state";
   _activeMemoryTab = "episodes";
@@ -93,6 +181,8 @@ export function render(container) {
             <option value="" disabled selected>${t("chat.anima_select")}</option>
           </select>
         </div>
+
+        <div class="anima-tabs" id="chatAnimaTabs"></div>
 
         <div class="thread-tabs" id="chatThreadTabs">
           <button class="thread-tab active" data-thread="default">メイン</button>
@@ -197,6 +287,10 @@ export function render(container) {
 export function destroy() {
   for (const id of _intervals) clearInterval(id);
   _intervals = [];
+  if (_chatUiStateSaveTimer) {
+    clearTimeout(_chatUiStateSaveTimer);
+    _chatUiStateSaveTimer = null;
+  }
   for (const { el, event, handler } of _boundListeners) {
     el.removeEventListener(event, handler);
   }
@@ -211,8 +305,10 @@ export function destroy() {
   _selectedAnima = null;
   _chatHistories = {};
   _historyState = {};
+  _animaTabs = [];
   _selectedThreadId = "default";
   _threads = {};
+  _activeThreadByAnima = {};
   _animaDetail = null;
   _imageInputManager = null;
 }
@@ -239,7 +335,7 @@ function _bindEvents() {
   // Anima selector
   _addListener("chatPageAnimaSelect", "change", (e) => {
     const name = e.target.value;
-    if (name) _selectAnima(name);
+    if (name) _openOrSelectAnima(name);
   });
 
   // New thread button
@@ -355,13 +451,70 @@ function _addListener(id, event, handler) {
 
 async function _loadAnimas() {
   try {
-    _animas = await api("/api/animas");
+    const [animas, uiState] = await Promise.all([
+      api("/api/animas"),
+      _fetchChatUiState(),
+    ]);
+    _animas = animas || [];
+    _restoreChatUiState(uiState);
     _renderAnimaDropdown();
-    if (_animas.length > 0 && !_selectedAnima) {
-      _selectAnima(_animas[0].name);
+    _renderAnimaTabs();
+    if (_animas.length > 0 && !_selectedAnima && !_isChatStreaming) {
+      const firstTab = _animaTabs[0]?.name;
+      _openOrSelectAnima(firstTab || _animas[0].name);
+    } else if (_selectedAnima) {
+      _selectAnima(_selectedAnima);
     }
   } catch (err) {
     logger.error("Failed to load animas", err);
+  }
+}
+
+function _restoreChatUiState(uiState) {
+  if (!uiState || typeof uiState !== "object") return;
+  const known = new Set((_animas || []).map((a) => a.name));
+
+  _animaTabs = [];
+  _threads = {};
+  _activeThreadByAnima = {};
+
+  const tabs = Array.isArray(uiState.anima_tabs) ? uiState.anima_tabs : [];
+  const threadState = uiState.thread_state && typeof uiState.thread_state === "object"
+    ? uiState.thread_state
+    : {};
+
+  for (const tab of tabs) {
+    const name = tab?.name;
+    if (!name || !known.has(name)) continue;
+    _animaTabs.push({
+      name,
+      unreadStar: Boolean(tab.unread_star),
+    });
+  }
+
+  for (const tab of _animaTabs) {
+    const name = tab.name;
+    const persisted = threadState[name] || {};
+    const list = Array.isArray(persisted.threads) ? persisted.threads : [];
+    const normalized = list
+      .filter((t) => t && typeof t.id === "string")
+      .map((t) => ({
+        id: t.id,
+        label: typeof t.label === "string" && t.label ? t.label : "新しいスレッド",
+        unread: Boolean(t.unread),
+      }));
+    if (!normalized.some((t) => t.id === "default")) {
+      normalized.unshift({ id: "default", label: "メイン", unread: false });
+    }
+    _threads[name] = normalized;
+    _activeThreadByAnima[name] = persisted.active_thread_id || "default";
+    _refreshAnimaUnread(name);
+  }
+
+  const active = uiState.active_anima;
+  if (typeof active === "string" && _isTabOpen(active)) {
+    _selectedAnima = active;
+    _selectedThreadId = _activeThreadByAnima[active] || "default";
   }
 }
 
@@ -389,20 +542,31 @@ async function _selectAnima(name) {
   const currentInput = _$("chatPageInput");
   if (prevAnima && currentInput) {
     _saveDraft(prevAnima, currentInput.value || "");
+    _activeThreadByAnima[prevAnima] = _selectedThreadId || "default";
   }
 
   _selectedAnima = name;
   _pendingQueue = [];
   _hidePendingIndicator();
-  _selectedThreadId = "default";
+  _selectedThreadId = _activeThreadByAnima[name] || "default";
+  _clearUnreadForActiveThread(name, _selectedThreadId);
   _updateVoiceAnima(name);
 
   if (!_threads[name]) {
     _threads[name] = [{ id: "default", label: "メイン", unread: false }];
   }
+  if (!_threads[name].some((t) => t.id === _selectedThreadId)) {
+    _selectedThreadId = "default";
+  }
+  _activeThreadByAnima[name] = _selectedThreadId;
+  if (!_isTabOpen(name)) {
+    _animaTabs.push({ name, unreadStar: false });
+  }
+  _refreshAnimaUnread(name);
 
   const select = _$("chatPageAnimaSelect");
   if (select) select.value = name;
+  _renderAnimaTabs();
 
   const input = _$("chatPageInput");
   const sendBtn = _$("chatPageSendBtn");
@@ -461,6 +625,70 @@ async function _selectAnima(name) {
   if (selectedAnimaObj && (selectedAnimaObj.status === "thinking" || selectedAnimaObj.status === "processing")) {
     _resumeActiveStream(name);
   }
+  _scheduleSaveChatUiState();
+}
+
+function _openOrSelectAnima(name) {
+  if (!name) return;
+  if (!_isTabOpen(name)) {
+    _animaTabs.push({ name, unreadStar: false });
+    if (!_threads[name]) {
+      _threads[name] = [{ id: "default", label: "メイン", unread: false }];
+    }
+    _activeThreadByAnima[name] = _activeThreadByAnima[name] || "default";
+  }
+  _renderAnimaTabs();
+  _selectAnima(name);
+}
+
+function _closeAnimaTab(name) {
+  if (!name || _animaTabs.length <= 1) return;
+  const idx = _animaTabs.findIndex((t) => t.name === name);
+  if (idx < 0) return;
+  const wasSelected = _selectedAnima === name;
+  _animaTabs.splice(idx, 1);
+
+  if (wasSelected) {
+    const next = _animaTabs[Math.max(0, idx - 1)];
+    if (next) {
+      _openOrSelectAnima(next.name);
+    }
+  } else {
+    _renderAnimaTabs();
+  }
+  _scheduleSaveChatUiState();
+}
+
+function _renderAnimaTabs() {
+  const container = _$("chatAnimaTabs");
+  if (!container) return;
+  if (_animaTabs.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  const html = _animaTabs.map((tab) => {
+    const activeClass = tab.name === _selectedAnima ? " active" : "";
+    const star = tab.unreadStar ? '<span class="tab-star" aria-label="unread">★</span>' : "";
+    const closeBtn = _animaTabs.length > 1
+      ? ` <button type="button" class="anima-tab-close" data-anima="${escapeHtml(tab.name)}" title="タブを閉じる" aria-label="閉じる">&times;</button>`
+      : "";
+    return `<span class="anima-tab-wrap"><button type="button" class="anima-tab${activeClass}" data-anima="${escapeHtml(tab.name)}">${escapeHtml(tab.name)}${star}</button>${closeBtn}</span>`;
+  }).join("");
+  container.innerHTML = html;
+
+  container.querySelectorAll(".anima-tab").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const anima = e.currentTarget?.dataset?.anima;
+      if (anima) _openOrSelectAnima(anima);
+    });
+  });
+  container.querySelectorAll(".anima-tab-close").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const anima = e.currentTarget?.dataset?.anima;
+      if (anima) _closeAnimaTab(anima);
+    });
+  });
 }
 
 async function _resumeActiveStream(animaName) {
@@ -526,6 +754,7 @@ async function _resumeActiveStream(animaName) {
         streamingMsg.streaming = false;
         streamingMsg.activeTool = null;
         _renderChat();
+        _markResponseComplete(animaName, tid);
       },
     });
 
@@ -555,10 +784,11 @@ function _renderThreadTabs() {
   let html = "";
   for (const t of list) {
     const activeClass = t.id === _selectedThreadId ? " active" : "";
+    const star = t.unread ? ' <span class="tab-star" aria-label="unread">★</span>' : "";
     const closeBtn = t.id !== "default"
       ? ` <button type="button" class="thread-tab-close" data-thread="${escapeHtml(t.id)}" title="スレッドを閉じる" aria-label="閉じる">&times;</button>`
       : "";
-    html += `<span class="thread-tab-wrap"><button type="button" class="thread-tab${activeClass}" data-thread="${escapeHtml(t.id)}">${escapeHtml(t.label)}</button>${closeBtn}</span>`;
+    html += `<span class="thread-tab-wrap"><button type="button" class="thread-tab${activeClass}" data-thread="${escapeHtml(t.id)}">${escapeHtml(t.label)}${star}</button>${closeBtn}</span>`;
   }
   html += `<button type="button" class="thread-tab-new" id="chatNewThreadBtn" title="新しいスレッド">＋</button>`;
 
@@ -584,6 +814,10 @@ function _renderThreadTabs() {
 async function _selectThread(threadId) {
   if (threadId === _selectedThreadId) return;
   _selectedThreadId = threadId;
+  _activeThreadByAnima[_selectedAnima] = threadId;
+  _clearUnreadForActiveThread(_selectedAnima, threadId);
+  _refreshAnimaUnread(_selectedAnima);
+  _renderAnimaTabs();
   _renderThreadTabs();
 
   const name = _selectedAnima;
@@ -613,6 +847,7 @@ async function _selectThread(threadId) {
     }
   }
   _renderChat();
+  _scheduleSaveChatUiState();
 }
 
 function _createNewThread() {
@@ -630,6 +865,7 @@ function _createNewThread() {
 
   _renderThreadTabs();
   _selectThread(threadId);
+  _scheduleSaveChatUiState();
 }
 
 function _closeThread(threadId) {
@@ -647,9 +883,13 @@ function _closeThread(threadId) {
 
   if (_selectedThreadId === threadId) {
     _selectedThreadId = "default";
+    _activeThreadByAnima[_selectedAnima] = "default";
   }
+  _refreshAnimaUnread(_selectedAnima);
+  _renderAnimaTabs();
   _renderThreadTabs();
   _renderChat();
+  _scheduleSaveChatUiState();
 }
 
 // ── Avatar ─────────────────────────────────
@@ -844,6 +1084,18 @@ function _renderStreamingBubble(msg) {
 
   bubble.innerHTML = html;
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function _markResponseComplete(animaName, threadId) {
+  if (!animaName || !threadId) return;
+  const isActive = _selectedAnima === animaName && _selectedThreadId === threadId;
+  _setThreadUnread(animaName, threadId, !isActive);
+  _refreshAnimaUnread(animaName);
+  if (animaName === _selectedAnima) {
+    _renderThreadTabs();
+  }
+  _renderAnimaTabs();
+  _scheduleSaveChatUiState();
 }
 
 // ── Infinite Scroll ─────────────────────────────
@@ -1124,6 +1376,7 @@ async function _sendChat(message, overrideImages = null) {
   if (threadEntry && threadEntry.label === "新しいスレッド" && message.trim()) {
     threadEntry.label = message.trim().slice(0, 20) + (message.trim().length > 20 ? "..." : "");
     _renderThreadTabs();
+    _scheduleSaveChatUiState();
   }
 
   const sendTs = new Date().toISOString();
@@ -1228,6 +1481,7 @@ async function _sendChat(message, overrideImages = null) {
         logger.debug(`onDone: final text_len=${streamingMsg.text.length}`);
         _renderChat();
         _addLocalActivity("chat", name, `${t("chat.response_prefix")} ${streamingMsg.text.slice(0, 100)}`);
+        _markResponseComplete(name, tid);
       },
     });
 
