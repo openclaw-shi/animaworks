@@ -12,6 +12,7 @@ import {
 } from "../../shared/chat/render-utils.js";
 import { createScrollObserver } from "../../shared/chat/scroll-observer.js";
 import { mergePolledHistory } from "../../shared/chat/history-loader.js";
+import { initTextArtifactHandlers } from "../../shared/text-artifact.js";
 
 export function createChatRenderer(ctx) {
   const { state, deps } = ctx;
@@ -88,6 +89,7 @@ export function createChatRenderer(ctx) {
 
     messagesEl.innerHTML = topHtml + sessionsHtml + liveHtml;
     bindToolCallHandlers(messagesEl);
+    initTextArtifactHandlers();
 
     if (scrollToBottom) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -167,7 +169,8 @@ export function createChatRenderer(ctx) {
   async function fetchConversationHistory(animaName, limit = CONSTANTS.HISTORY_PAGE_SIZE, before = null, threadId = "default") {
     let url = `/api/animas/${encodeURIComponent(animaName)}/conversation/history?limit=${limit}`;
     if (before) url += `&before=${encodeURIComponent(before)}`;
-    url += `&thread_id=${encodeURIComponent(threadId)}&strict_thread=1`;
+    url += `&thread_id=${encodeURIComponent(threadId)}`;
+    if (threadId !== "default") url += `&strict_thread=1`;
     return await api(url);
   }
 

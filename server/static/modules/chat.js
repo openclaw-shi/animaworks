@@ -5,6 +5,7 @@ import { addActivity } from "./activity.js";
 import { streamChat, fetchActiveStream, fetchStreamProgress } from "../shared/chat-stream.js";
 import { createLogger } from "../shared/logger.js";
 import { createImageInput, initLightbox, renderChatImages } from "../shared/image-input.js";
+import { initTextArtifactHandlers } from "../shared/text-artifact.js";
 import { initVoiceUI, updateVoiceUIAnima } from "./voice-ui.js";
 import { api } from "./api.js";
 
@@ -672,6 +673,7 @@ export function initImageInput() {
 
   // Initialize lightbox for image clicks
   initLightbox();
+  initTextArtifactHandlers();
 
   // Initialize voice input
   const chatInputFormEl = document.querySelector('.chat-input-form');

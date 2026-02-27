@@ -1685,6 +1685,169 @@
   background: var(--aw-color-bg-tertiary, #1e2126);
 }
 
+/* ── Text Artifact Card ──────────────────────────── */
+
+.text-artifact-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin: 4px 0;
+  background: var(--aw-color-code-bg);
+  border: 1px solid var(--aw-color-border-dark);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.15s;
+  max-width: 100%;
+}
+
+.text-artifact-card:hover {
+  filter: brightness(1.2);
+}
+
+.text-artifact-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.text-artifact-name {
+  color: var(--aw-color-code-text);
+  font-size: 0.88rem;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Text Artifact Modal ─────────────────────────── */
+
+.text-artifact-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 16px;
+}
+
+.text-artifact-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: 85vh;
+  background: var(--aw-color-bg-primary);
+  border: 1px solid var(--aw-color-border-medium);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.text-artifact-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--aw-color-border);
+  background: var(--aw-color-bg-secondary);
+}
+
+.text-artifact-modal-filename {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--aw-color-text-primary);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-artifact-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--aw-color-text-muted);
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.text-artifact-modal-close:hover {
+  color: var(--aw-color-text-primary);
+}
+
+.text-artifact-modal-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+}
+
+.text-artifact-modal-textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  max-height: 60vh;
+  resize: vertical;
+  border: none;
+  outline: none;
+  padding: 16px;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--aw-color-text-primary);
+  background: var(--aw-color-bg-primary);
+  tab-size: 4;
+}
+
+.text-artifact-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--aw-color-border);
+  background: var(--aw-color-bg-secondary);
+}
+
+.text-artifact-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border: 1px solid var(--aw-color-border-medium);
+  background: var(--aw-color-bg-primary);
+  color: var(--aw-color-text-primary);
+  transition: background 0.15s;
+}
+
+.text-artifact-btn:hover {
+  background: var(--aw-color-bg-hover);
+}
+
+.text-artifact-btn-download {
+  background: var(--aw-color-accent);
+  color: #fff;
+  border-color: var(--aw-color-accent);
+}
+
+.text-artifact-btn-download:hover {
+  background: var(--aw-color-accent-hover);
+}
+
+@media (max-width: 600px) {
+  .text-artifact-modal-overlay {
+    padding: 8px;
+  }
+  .text-artifact-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 8px;
+  }
+  .text-artifact-modal-textarea {
+    max-height: 70vh;
+  }
+}
+
 /* ── Mobile: prevent auto-zoom on input focus ── */
 @media (max-width: 768px) {
   .chat-input {

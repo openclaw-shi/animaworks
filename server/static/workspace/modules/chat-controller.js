@@ -9,6 +9,7 @@ import { getCurrentUser } from "./login.js";
 import { initBustup, setCharacter, setExpression, setTalking, onClick as onBustupClick, setLive2dAppearance } from "./live2d.js";
 import { streamChat, fetchActiveStream, fetchStreamProgress } from "../../shared/chat-stream.js";
 import { createImageInput, initLightbox, renderChatImages } from "../../shared/image-input.js";
+import { initTextArtifactHandlers } from "../../shared/text-artifact.js";
 import { initVoiceUI, destroyVoiceUI, updateVoiceUIAnima } from "../../modules/voice-ui.js";
 import { SwipeHandler } from "../../modules/touch.js";
 import { createLogger } from "../../shared/logger.js";
@@ -977,6 +978,7 @@ export function initChatController(dom) {
   }
 
   initLightbox();
+  initTextArtifactHandlers();
 
   // Mobile controls
   dom.mobileSidebarToggle?.addEventListener("click", () => {
