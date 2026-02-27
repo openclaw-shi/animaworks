@@ -154,7 +154,12 @@ async function _loadScheduler() {
   try {
     const data = await api("/api/system/scheduler");
 
-    const jobs = data.jobs || [];
+    const jobs = Array.isArray(data.jobs)
+      ? data.jobs
+      : [
+          ...(Array.isArray(data.system_jobs) ? data.system_jobs : []),
+          ...(Array.isArray(data.anima_jobs) ? data.anima_jobs : []),
+        ];
     if (jobsEl) jobsEl.textContent = jobs.length;
 
     if (jobs.length > 0) {
