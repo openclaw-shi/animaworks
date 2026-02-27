@@ -24,7 +24,7 @@ import { streamChat, fetchActiveStream, fetchStreamProgress } from "../../shared
 import { SwipeHandler } from "../../modules/touch.js";
 import { createLogger } from "../../shared/logger.js";
 import { createImageInput, initLightbox, renderChatImages } from "../../shared/image-input.js";
-import { initVoiceUI, destroyVoiceUI } from "../../modules/voice-ui.js";
+import { initVoiceUI, destroyVoiceUI, updateVoiceUIAnima } from "../../modules/voice-ui.js";
 import { getIcon } from "../../shared/activity-types.js";
 import { initOrgDashboard, disposeOrgDashboard, updateAnimaStatus, addActivityItem } from "./org-dashboard.js";
 
@@ -375,7 +375,7 @@ async function openConversation(animaName) {
   if (!dom.convOverlay) return;
 
   _wsSaveDraft();
-  destroyVoiceUI();
+  const wasVoiceActive = updateVoiceUIAnima(animaName);
   setState({ conversationOpen: true, conversationAnima: animaName, activeThreadId: "default" });
 
   const { threads } = getState();
@@ -427,7 +427,7 @@ async function openConversation(animaName) {
   // Initialize voice input for conversation
   const convInputArea = document.querySelector(".ws-conv-input-area");
   if (convInputArea && animaName) {
-    initVoiceUI(convInputArea, animaName, _buildVoiceChatCallbacks(animaName));
+    initVoiceUI(convInputArea, animaName, _buildVoiceChatCallbacks(animaName), { autoConnect: wasVoiceActive });
   }
 }
 

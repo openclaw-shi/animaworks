@@ -29,6 +29,7 @@ export class VoiceManager {
     this._reconnectTimer = null;
     this._reconnectAttempts = 0;
     this._maxReconnectAttempts = 5;
+    this._connGen = 0; // connection generation to ignore stale WS events
   }
 
   on(event, fn) {
@@ -48,6 +49,7 @@ export class VoiceManager {
   connect(animaName) {
     this.disconnect();
     this._animaName = animaName;
+    const gen = ++this._connGen;
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${location.host}/ws/voice/${encodeURIComponent(animaName)}`;
@@ -58,6 +60,7 @@ export class VoiceManager {
       this._ws.binaryType = 'arraybuffer';
 
       this._ws.onopen = () => {
+        if (gen !== this._connGen) return;
         settled = true;
         this._connected = true;
         this._reconnectAttempts = 0;
@@ -65,6 +68,7 @@ export class VoiceManager {
         resolve();
       };
       this._ws.onclose = (e) => {
+        if (gen !== this._connGen) return;
         this._connected = false;
         if (!settled) {
           settled = true;
@@ -75,9 +79,13 @@ export class VoiceManager {
         this._tryReconnect();
       };
       this._ws.onerror = () => {
+        if (gen !== this._connGen) return;
         this._emit('error', { message: 'WebSocket error' });
       };
-      this._ws.onmessage = (e) => this._handleMessage(e);
+      this._ws.onmessage = (e) => {
+        if (gen !== this._connGen) return;
+        this._handleMessage(e);
+      };
     });
   }
 

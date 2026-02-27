@@ -2326,10 +2326,10 @@ function _buildVoiceChatCallbacks(animaName) {
 }
 
 function _updateVoiceAnima(animaName) {
-  updateVoiceUIAnima(animaName);
+  const wasActive = updateVoiceUIAnima(animaName);
   const chatInputForm = _$("chatPageForm") || document.querySelector(".chat-input-form");
   if (chatInputForm && animaName) {
-    initVoiceUI(chatInputForm, animaName, _buildVoiceChatCallbacks(animaName));
+    initVoiceUI(chatInputForm, animaName, _buildVoiceChatCallbacks(animaName), { autoConnect: wasActive });
   }
 }
 

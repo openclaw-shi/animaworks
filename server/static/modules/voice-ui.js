@@ -30,8 +30,9 @@ function _unbindAllVoiceListeners() {
  * @param {object} [callbacks] Chat bubble callbacks:
  *   addUserBubble(text), addStreamingBubble() => msgRef,
  *   updateStreamingBubble(msgRef), finalizeStreamingBubble(msgRef)
+ * @param {object} [opts] Options: { autoConnect: boolean }
  */
-export function initVoiceUI(chatInputForm, animaName, callbacks) {
+export function initVoiceUI(chatInputForm, animaName, callbacks, opts) {
   if (_uiElements) destroyVoiceUI();
   _chatCallbacks = callbacks || null;
 
@@ -298,6 +299,11 @@ export function initVoiceUI(chatInputForm, animaName, callbacks) {
     console.warn('[VoiceUI] Error:', message);
   });
 
+  // Auto-connect if voice was active before anima switch
+  if (opts?.autoConnect) {
+    _ensureConnected().catch(() => {});
+  }
+
   return _uiElements;
 }
 
@@ -312,8 +318,14 @@ export function destroyVoiceUI() {
   _chatCallbacks = null;
 }
 
+/**
+ * Called when switching Anima tabs.
+ * Returns true if voice was previously active (caller should auto-reconnect).
+ */
 export function updateVoiceUIAnima(animaName) {
-  if (voiceManager.isConnected) {
+  const wasActive = voiceManager.isConnected;
+  if (wasActive) {
     voiceManager.disconnect();
   }
+  return wasActive;
 }
