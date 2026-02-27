@@ -30,6 +30,7 @@ let _threads = {};  // { [animaName]: [{ id, label, unread }] }
 let _activeThreadByAnima = {};  // { [animaName]: threadId }
 const _HISTORY_PAGE_SIZE = 50;
 const _TOOL_RESULT_TRUNCATE = 500;
+const _THREAD_VISIBLE_NON_DEFAULT = 5;
 let _imageInputManager = null;
 let _bustupUrl = null;
 let _pendingQueue = [];       // Array<{ text, images, displayImages }>
@@ -74,6 +75,62 @@ function _setThreadUnread(animaName, threadId, unread) {
   if (!Array.isArray(list)) return;
   const item = list.find((t) => t.id === threadId);
   if (item) item.unread = Boolean(unread);
+}
+
+function _threadTimeValue(ts) {
+  if (!ts) return 0;
+  const v = Date.parse(ts);
+  return Number.isNaN(v) ? 0 : v;
+}
+
+function _defaultThreadLabel(threadId, lastTs = "") {
+  if (threadId === "default") return "メイン";
+  if (!lastTs) return "スレッド";
+  const hhmm = timeStr(lastTs);
+  return `スレッド ${hhmm}`;
+}
+
+function _mergeThreadsFromSessions(animaName, sessionsData) {
+  if (!animaName || !sessionsData) return;
+  const existing = _threads[animaName] || [{ id: "default", label: "メイン", unread: false }];
+  const byId = new Map(existing.map((t) => [t.id, { ...t }]));
+
+  // Ensure default always exists.
+  if (!byId.has("default")) {
+    byId.set("default", { id: "default", label: "メイン", unread: false, lastTs: 0 });
+  }
+
+  for (const t of sessionsData.threads || []) {
+    const id = t?.thread_id;
+    if (!id || id === "default") continue;
+    const prev = byId.get(id) || { id, unread: false };
+    const nextTs = _threadTimeValue(t.last_timestamp || "");
+    const prevTs = _threadTimeValue(prev.lastTs || "");
+    byId.set(id, {
+      ...prev,
+      id,
+      label: prev.label || _defaultThreadLabel(id, t.last_timestamp || ""),
+      lastTs: Math.max(prevTs, nextTs),
+    });
+  }
+
+  const defaultThread = byId.get("default") || { id: "default", label: "メイン", unread: false, lastTs: 0 };
+  byId.delete("default");
+  const rest = Array.from(byId.values()).sort((a, b) => {
+    const diff = _threadTimeValue(b.lastTs || "") - _threadTimeValue(a.lastTs || "");
+    if (diff !== 0) return diff;
+    return String(a.label || "").localeCompare(String(b.label || ""), "ja");
+  });
+  _threads[animaName] = [defaultThread, ...rest];
+}
+
+function _getAnimaTabIcon(name) {
+  const anima = _animas.find((a) => a.name === name);
+  const status = anima?.status || "";
+  if (status === "thinking" || status === "processing") return "✦";
+  if (status === "bootstrapping") return "⏳";
+  if (status === "stopped" || status === "not_found") return "☾";
+  return "◉";
 }
 
 function _refreshAnimaUnread(animaName) {
@@ -586,8 +643,9 @@ async function _selectAnima(name) {
     ? _fetchConversationHistory(name, _HISTORY_PAGE_SIZE, null, tid).catch(() => null)
     : Promise.resolve(null);
   const detailPromise = api(`/api/animas/${encodeURIComponent(name)}`).catch(() => null);
+  const sessionsPromise = api(`/api/animas/${encodeURIComponent(name)}/sessions`).catch(() => null);
 
-  const [conv, detail] = await Promise.all([convPromise, detailPromise]);
+  const [conv, detail, sessionsData] = await Promise.all([convPromise, detailPromise, sessionsPromise]);
 
   // Apply conversation history
   if (!_historyState[name]) _historyState[name] = {};
@@ -600,6 +658,14 @@ async function _selectAnima(name) {
     };
   } else if (needConv) {
     _historyState[name][tid] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
+  }
+
+  if (sessionsData) {
+    _mergeThreadsFromSessions(name, sessionsData);
+  }
+  if (!_threads[name].some((t) => t.id === _selectedThreadId)) {
+    _selectedThreadId = "default";
+    _activeThreadByAnima[name] = "default";
   }
 
   _renderThreadTabs();
@@ -669,10 +735,11 @@ function _renderAnimaTabs() {
   const html = _animaTabs.map((tab) => {
     const activeClass = tab.name === _selectedAnima ? " active" : "";
     const star = tab.unreadStar ? '<span class="tab-star" aria-label="unread">★</span>' : "";
+    const icon = _getAnimaTabIcon(tab.name);
     const closeBtn = _animaTabs.length > 1
       ? ` <button type="button" class="anima-tab-close" data-anima="${escapeHtml(tab.name)}" title="タブを閉じる" aria-label="閉じる">&times;</button>`
       : "";
-    return `<span class="anima-tab-wrap"><button type="button" class="anima-tab${activeClass}" data-anima="${escapeHtml(tab.name)}">${escapeHtml(tab.name)}${star}</button>${closeBtn}</span>`;
+    return `<span class="anima-tab-wrap"><button type="button" class="anima-tab${activeClass}" data-anima="${escapeHtml(tab.name)}"><span class="anima-tab-icon" aria-hidden="true">${icon}</span><span class="anima-tab-name">${escapeHtml(tab.name)}</span>${star}</button>${closeBtn}</span>`;
   }).join("");
   container.innerHTML = html;
 
@@ -781,14 +848,46 @@ function _renderThreadTabs() {
   if (!container || !_selectedAnima) return;
 
   const list = _threads[_selectedAnima] || [{ id: "default", label: "メイン", unread: false }];
+  const defaultThread = list.find((t) => t.id === "default") || { id: "default", label: "メイン", unread: false };
+  const nonDefault = list.filter((t) => t.id !== "default").sort((a, b) => {
+    const diff = _threadTimeValue(b.lastTs || "") - _threadTimeValue(a.lastTs || "");
+    if (diff !== 0) return diff;
+    return String(a.label || "").localeCompare(String(b.label || ""), "ja");
+  });
+
+  let visibleNonDefault = nonDefault.slice(0, _THREAD_VISIBLE_NON_DEFAULT);
+  const activeHidden = _selectedThreadId !== "default" && !visibleNonDefault.some((t) => t.id === _selectedThreadId);
+  if (activeHidden) {
+    const activeThread = nonDefault.find((t) => t.id === _selectedThreadId);
+    if (activeThread) {
+      visibleNonDefault = [activeThread, ...visibleNonDefault.slice(0, Math.max(0, _THREAD_VISIBLE_NON_DEFAULT - 1))];
+      const unique = new Map();
+      for (const t of visibleNonDefault) unique.set(t.id, t);
+      visibleNonDefault = Array.from(unique.values());
+    }
+  }
+  const visibleIds = new Set(visibleNonDefault.map((t) => t.id));
+  const hiddenThreads = nonDefault.filter((t) => !visibleIds.has(t.id));
+
   let html = "";
-  for (const t of list) {
+  const visible = [defaultThread, ...visibleNonDefault];
+  for (const t of visible) {
     const activeClass = t.id === _selectedThreadId ? " active" : "";
     const star = t.unread ? ' <span class="tab-star" aria-label="unread">★</span>' : "";
     const closeBtn = t.id !== "default"
       ? ` <button type="button" class="thread-tab-close" data-thread="${escapeHtml(t.id)}" title="スレッドを閉じる" aria-label="閉じる">&times;</button>`
       : "";
     html += `<span class="thread-tab-wrap"><button type="button" class="thread-tab${activeClass}" data-thread="${escapeHtml(t.id)}">${escapeHtml(t.label)}${star}</button>${closeBtn}</span>`;
+  }
+
+  if (hiddenThreads.length > 0) {
+    html += `<span class="thread-more-wrap">
+      <label class="thread-more-label" for="chatThreadMoreSelect">他 ${hiddenThreads.length} 件</label>
+      <select id="chatThreadMoreSelect" class="thread-more-select">
+        <option value="">スレッドを選択...</option>
+        ${hiddenThreads.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}${t.unread ? " ★" : ""}</option>`).join("")}
+      </select>
+    </span>`;
   }
   html += `<button type="button" class="thread-tab-new" id="chatNewThreadBtn" title="新しいスレッド">＋</button>`;
 
@@ -809,6 +908,15 @@ function _renderThreadTabs() {
   });
   const newBtn = _$("chatNewThreadBtn");
   if (newBtn) newBtn.addEventListener("click", () => _createNewThread());
+
+  const moreSelect = _$("chatThreadMoreSelect");
+  if (moreSelect) {
+    moreSelect.addEventListener("change", (e) => {
+      const tid = e.target.value;
+      if (tid) _selectThread(tid);
+      e.target.value = "";
+    });
+  }
 }
 
 async function _selectThread(threadId) {
@@ -1011,10 +1119,8 @@ function _renderChat(scrollToBottom = true) {
       if (m.role === "assistant") {
         const streamClass = m.streaming ? " streaming" : "";
         let thinkingHtml = "";
-        if (m.thinkingText) {
-          const thSummary = `Thinking (${m.thinkingText.length} chars)`;
-          const thRendered = renderSafeMarkdown(m.thinkingText);
-          thinkingHtml = `<details class="thinking-block"><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(thSummary)}</summary><div class="thinking-content">${thRendered}</div></details>`;
+        if (m.thinkingText && !m.text) {
+          thinkingHtml = `<div class="thinking-inline-preview">${escapeHtml(m.thinkingText)}</div>`;
         }
         let content = "";
         if (m.text) {
@@ -1056,27 +1162,24 @@ function _renderStreamingBubble(msg) {
   const bubble = messagesEl.querySelector(".chat-bubble.assistant.streaming");
   if (!bubble) return;
 
-  let html = "";
-
-  if (msg.thinkingText) {
-    const open = msg.thinking ? " open" : "";
-    const summary = msg.thinking ? "Thinking..." : `Thinking (${msg.thinkingText.length} chars)`;
-    const thHtml = renderSafeMarkdown(msg.thinkingText);
-    html += `<details class="thinking-block"${open}><summary class="thinking-summary"><span class="thinking-icon">💭</span> ${escapeHtml(summary)}</summary><div class="thinking-content">${thHtml}</div></details>`;
-  }
+  const thinkingHtml = (msg.thinkingText && !msg.text)
+    ? `<div class="thinking-inline-preview">${escapeHtml(msg.thinkingText)}</div>`
+    : "";
+  let mainHtml = "";
 
   if (msg.heartbeatRelay) {
-    html += `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay")}</div>`;
+    mainHtml += `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay")}</div>`;
     if (msg.heartbeatText) {
-      html += `<div class="heartbeat-relay-text">${escapeHtml(msg.heartbeatText)}</div>`;
+      mainHtml += `<div class="heartbeat-relay-text">${escapeHtml(msg.heartbeatText)}</div>`;
     }
   } else if (msg.afterHeartbeatRelay && !msg.text) {
-    html = `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay_done")}</div>`;
+    mainHtml = `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${t("chat.heartbeat_relay_done")}</div>`;
   } else if (msg.text) {
-    html = renderMarkdown(msg.text);
+    mainHtml = renderMarkdown(msg.text);
   } else {
-    html = '<span class="cursor-blink"></span>';
+    mainHtml = '<span class="cursor-blink"></span>';
   }
+  let html = `${thinkingHtml}${mainHtml}`;
 
   if (msg.activeTool) {
     html += `<div class="tool-indicator"><span class="tool-spinner"></span>${t("chat.tool_running", { tool: msg.activeTool })}</div>`;
@@ -1381,6 +1484,9 @@ async function _sendChat(message, overrideImages = null) {
 
   const sendTs = new Date().toISOString();
   history.push({ role: "user", text: message, images: displayImages, timestamp: sendTs });
+  if (threadEntry) {
+    threadEntry.lastTs = sendTs;
+  }
   const streamingMsg = { role: "assistant", text: "", streaming: true, activeTool: null, timestamp: sendTs, thinkingText: "", thinking: false };
   history.push(streamingMsg);
   _renderChat();

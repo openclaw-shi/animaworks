@@ -46,25 +46,41 @@
 }
 
 .anima-tab {
-  padding: 0.35rem 0.6rem;
+  padding: 0.42rem 0.72rem;
   font-size: 0.85rem;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
+  border: 1px solid var(--aw-color-border-dark);
+  border-radius: 999px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--aw-color-bg-secondary) 92%, white 8%), var(--aw-color-bg-secondary));
   color: var(--aw-color-text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background 0.18s, color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s;
 }
 
 .anima-tab:hover,
 .anima-tab:active {
   background: var(--aw-color-bg-hover);
   color: var(--aw-color-text-primary);
+  border-color: color-mix(in srgb, var(--aw-color-accent) 50%, var(--aw-color-border-dark) 50%);
+  transform: translateY(-1px);
 }
 
 .anima-tab.active {
-  background: var(--aw-color-accent);
-  color: var(--aw-color-bg-primary);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--aw-color-accent) 22%, var(--aw-color-bg-secondary) 78%), color-mix(in srgb, var(--aw-color-accent) 10%, var(--aw-color-bg-secondary) 90%));
+  color: var(--aw-color-text-primary);
+  border-color: color-mix(in srgb, var(--aw-color-accent) 70%, var(--aw-color-border-dark) 30%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--aw-color-accent) 22%, transparent 78%);
+}
+
+.anima-tab-icon {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.anima-tab-name {
+  letter-spacing: 0.01em;
 }
 
 .anima-tab-close {
@@ -157,6 +173,34 @@
 .thread-tab-new:active {
   background: var(--aw-color-bg-hover);
   color: var(--aw-color-accent);
+}
+
+.thread-more-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.25rem;
+}
+
+.thread-more-label {
+  font-size: 0.74rem;
+  color: var(--aw-color-text-muted);
+}
+
+.thread-more-select {
+  border: 1px solid var(--aw-color-border-dark);
+  border-radius: 8px;
+  background: var(--aw-color-bg-secondary);
+  color: var(--aw-color-text-primary);
+  padding: 0.28rem 0.45rem;
+  font-size: 0.78rem;
+  max-width: 230px;
+}
+
+.thread-more-select:focus {
+  outline: none;
+  border-color: var(--aw-color-accent);
 }
 
 .tab-star {
@@ -1153,6 +1197,17 @@
 .thinking-content p:last-child { margin-bottom: 0; }
 .thinking-content code { font-size: 0.78rem; }
 .thinking-content pre { font-size: 0.75rem; margin: 0.5em 0; overflow-x: auto; }
+
+/* Inline preview while thinking (hidden once main text arrives) */
+.thinking-inline-preview {
+  margin-bottom: 8px;
+  color: rgba(26, 26, 26, 0.48);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-style: italic;
+}
 
 /* Dark mode overrides */
 @media (prefers-color-scheme: dark) {
