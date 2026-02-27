@@ -1141,6 +1141,9 @@ function _wsSubmitConversation() {
         images: convImageInputManager?.getPendingImages() || [],
         displayImages: convImageInputManager?.getDisplayImages() || [],
       });
+      dom.convInput.value = "";
+      dom.convInput.style.height = "auto";
+      _wsSaveDraft();
       convImageInputManager?.clearImages();
     }
     if (convPendingQueue.length === 0) return;
@@ -1160,6 +1163,7 @@ function _wsSubmitConversation() {
     });
     dom.convInput.value = "";
     dom.convInput.style.height = "auto";
+    _wsSaveDraft();
     convImageInputManager?.clearImages();
     _wsShowPendingIndicator();
     _wsUpdateSendButton(true);
@@ -1188,9 +1192,6 @@ async function _sendConversation(text, overrideImages = null) {
   const animaName = getState().conversationAnima;
   const threadId = getState().activeThreadId || "default";
   if (!animaName) return;
-
-  // Capture display images (with dataUrl for rendering)
-  const displayImages = convImageInputManager?.getDisplayImages() || [];
 
   // Clear input
   dom.convInput.value = "";
@@ -1375,6 +1376,7 @@ function _wsAddToQueue() {
     displayImages: convImageInputManager?.getDisplayImages() || [],
   });
   if (dom.convInput) { dom.convInput.value = ""; dom.convInput.style.height = "auto"; }
+  _wsSaveDraft();
   convImageInputManager?.clearImages();
   _wsShowPendingIndicator();
   _wsUpdateSendButton(!!convStreamController);

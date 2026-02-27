@@ -964,6 +964,9 @@ function _submitChat() {
         images: _imageInputManager?.getPendingImages() || [],
         displayImages: _imageInputManager?.getDisplayImages() || [],
       });
+      input.value = "";
+      input.style.height = "auto";
+      _saveDraft(_selectedAnima, "");
       _imageInputManager?.clearImages();
     }
     if (_pendingQueue.length === 0) return;
@@ -983,6 +986,7 @@ function _submitChat() {
     });
     input.value = "";
     input.style.height = "auto";
+    _saveDraft(_selectedAnima, "");
     _imageInputManager?.clearImages();
     _showPendingIndicator();
     _updateSendButton();
@@ -1208,6 +1212,7 @@ function _addToQueue() {
   });
   input.value = "";
   input.style.height = "auto";
+  _saveDraft(_selectedAnima, "");
   _imageInputManager?.clearImages();
   _showPendingIndicator();
   _updateSendButton();
