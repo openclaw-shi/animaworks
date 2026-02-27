@@ -4,8 +4,7 @@ import { escapeHtml, renderMarkdown, renderSafeMarkdown, timeStr, smartTimestamp
 import { streamChat } from "../shared/chat-stream.js";
 import { createLogger } from "../shared/logger.js";
 import { createImageInput, initLightbox, renderChatImages } from "../shared/image-input.js";
-import { initVoiceUI } from "../modules/voice-ui.js";
-import { updateVoiceAnima } from "../modules/chat.js";
+import { initVoiceUI, updateVoiceUIAnima } from "../modules/voice-ui.js";
 import { getIcon, getDisplaySummary } from "../shared/activity-types.js";
 
 const logger = createLogger("chat-page");
@@ -320,7 +319,7 @@ function _renderAnimaDropdown() {
 
 async function _selectAnima(name) {
   _selectedAnima = name;
-  updateVoiceAnima(name);
+  _updateVoiceAnima(name);
 
   const select = _$("chatPageAnimaSelect");
   if (select) select.value = name;
@@ -1302,6 +1301,39 @@ async function _loadMemoryTab() {
   }
 }
 
+// ── Voice Chat Callbacks ────────────────────
+
+function _buildVoiceChatCallbacks(animaName) {
+  return {
+    addUserBubble(text) {
+      if (!_chatHistories[animaName]) _chatHistories[animaName] = [];
+      _chatHistories[animaName].push({ role: 'user', text, timestamp: new Date().toISOString() });
+      _renderChat();
+    },
+    addStreamingBubble() {
+      if (!_chatHistories[animaName]) _chatHistories[animaName] = [];
+      const msg = { role: 'assistant', text: '', streaming: true, activeTool: null, timestamp: new Date().toISOString() };
+      _chatHistories[animaName].push(msg);
+      _renderChat();
+      return msg;
+    },
+    updateStreamingBubble(msg) {
+      _renderStreamingBubble(msg);
+    },
+    finalizeStreamingBubble(_msg) {
+      _renderChat();
+    },
+  };
+}
+
+function _updateVoiceAnima(animaName) {
+  updateVoiceUIAnima(animaName);
+  const chatInputForm = _$("chatPageForm") || document.querySelector(".chat-input-form");
+  if (chatInputForm && animaName) {
+    initVoiceUI(chatInputForm, animaName, _buildVoiceChatCallbacks(animaName));
+  }
+}
+
 // ── Image Input Initialization ──────────────
 
 function _initImageInput() {
@@ -1323,7 +1355,7 @@ function _initImageInput() {
   // Initialize voice input
   const chatInputFormEl = _$("chatPageForm") || document.querySelector(".chat-input-form");
   if (chatInputFormEl && _selectedAnima) {
-    initVoiceUI(chatInputFormEl, _selectedAnima);
+    initVoiceUI(chatInputFormEl, _selectedAnima, _buildVoiceChatCallbacks(_selectedAnima));
   }
 }
 
