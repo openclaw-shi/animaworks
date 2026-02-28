@@ -259,7 +259,7 @@ class MemoryManager:
 
     # ── Write helpers ─────────────────────────────────────
 
-    def append_episode(self, entry: str) -> None:
+    def append_episode(self, entry: str, *, origin: str = "") -> None:
         path = self.episodes_dir / f"{date.today().isoformat()}.md"
         if not path.exists():
             path.write_text(
@@ -273,7 +273,7 @@ class MemoryManager:
         logger.debug("Episode appended, length=%d", len(entry))
 
         # Index the updated episode file (incremental)
-        self._rag.index_file(path, "episodes")
+        self._rag.index_file(path, "episodes", origin=origin)
 
     def update_state(self, content: str) -> None:
         atomic_write_text(self.state_dir / "current_task.md", content)
@@ -281,14 +281,14 @@ class MemoryManager:
     def update_pending(self, content: str) -> None:
         atomic_write_text(self.state_dir / "pending.md", content)
 
-    def write_knowledge(self, topic: str, content: str) -> None:
+    def write_knowledge(self, topic: str, content: str, *, origin: str = "") -> None:
         safe = re.sub(r"[^\w\-_]", "_", topic)
         path = self.knowledge_dir / f"{safe}.md"
         path.write_text(content, encoding="utf-8")
         logger.debug("Knowledge written topic='%s' length=%d", topic, len(content))
 
         # Index the new/updated knowledge file
-        self._rag.index_file(path, "knowledge")
+        self._rag.index_file(path, "knowledge", origin=origin)
 
     # ── Read helpers for Mode B (assisted) ────────────────
 

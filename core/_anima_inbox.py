@@ -361,8 +361,9 @@ class InboxMixin:
                 from_person=_m.from_person,
                 content=_m.content[:1000],
             ) + "\n"
+            _ep_origin = _SOURCE_TO_ORIGIN.get(_m.source, ORIGIN_UNKNOWN)
             try:
-                self.memory.append_episode(_episode)
+                self.memory.append_episode(_episode, origin=_ep_origin)
             except Exception:
                 logger.debug(
                     "[%s] Failed to record message episode from %s",

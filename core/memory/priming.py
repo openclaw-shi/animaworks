@@ -71,6 +71,7 @@ class PrimingResult:
     sender_profile: str = ""
     recent_activity: str = ""
     related_knowledge: str = ""
+    related_knowledge_untrusted: str = ""
     matched_skills: list[str] = field(default_factory=list)
     pending_tasks: str = ""
     recent_outbound: str = ""
@@ -81,6 +82,7 @@ class PrimingResult:
             not self.sender_profile
             and not self.recent_activity
             and not self.related_knowledge
+            and not self.related_knowledge_untrusted
             and not self.matched_skills
             and not self.pending_tasks
             and not self.recent_outbound
@@ -92,6 +94,7 @@ class PrimingResult:
             len(self.sender_profile)
             + len(self.recent_activity)
             + len(self.related_knowledge)
+            + len(self.related_knowledge_untrusted)
             + sum(len(s) for s in self.matched_skills)
             + len(self.pending_tasks)
             + len(self.recent_outbound)
@@ -192,8 +195,8 @@ class PrimingEngine:
         else:
             # All files injected: skip Channel C entirely
 
-            async def _noop() -> str:
-                return ""
+            async def _noop() -> tuple[str, str]:
+                return ("", "")
 
             channel_c_coro = _noop()
 
@@ -211,7 +214,14 @@ class PrimingEngine:
         # Unpack results (handle exceptions gracefully)
         sender_profile = results[0] if isinstance(results[0], str) else ""
         recent_activity = results[1] if isinstance(results[1], str) else ""
-        related_knowledge = results[2] if isinstance(results[2], str) else ""
+
+        # Channel C returns (medium, untrusted) tuple
+        if isinstance(results[2], tuple):
+            related_knowledge, related_knowledge_untrusted = results[2]
+        else:
+            related_knowledge = ""
+            related_knowledge_untrusted = ""
+
         matched_skills = results[3] if isinstance(results[3], list) else []
         pending_tasks = results[4] if isinstance(results[4], str) else ""
         recent_outbound = results[5] if isinstance(results[5], str) else ""
@@ -228,10 +238,19 @@ class PrimingEngine:
         budget_skills = int(_BUDGET_SKILL_MATCH * (token_budget / _DEFAULT_MAX_PRIMING_TOKENS))
         budget_tasks = int(_BUDGET_PENDING_TASKS * (token_budget / _DEFAULT_MAX_PRIMING_TOKENS))
 
+        # Split knowledge budget: trusted/medium gets priority, untrusted gets remainder
+        truncated_knowledge = self._truncate_head(related_knowledge, budget_knowledge)
+        knowledge_used_tokens = len(truncated_knowledge) // _CHARS_PER_TOKEN
+        remaining_knowledge_budget = max(0, budget_knowledge - knowledge_used_tokens)
+        truncated_untrusted = self._truncate_head(
+            related_knowledge_untrusted, remaining_knowledge_budget,
+        ) if remaining_knowledge_budget > 0 else ""
+
         result = PrimingResult(
             sender_profile=self._truncate_head(sender_profile, budget_profile),
             recent_activity=self._truncate_tail(recent_activity, budget_activity),
-            related_knowledge=self._truncate_head(related_knowledge, budget_knowledge),
+            related_knowledge=truncated_knowledge,
+            related_knowledge_untrusted=truncated_untrusted,
             matched_skills=matched_skills[:max(1, budget_skills // 50)],  # ~50 tokens per skill name
             pending_tasks=self._truncate_head(pending_tasks, budget_tasks),
             recent_outbound=recent_outbound,
@@ -619,12 +638,15 @@ class PrimingEngine:
         self,
         keywords: list[str],
         restrict_to: list[str] | None = None,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Channel C: Related knowledge search (vector search).
 
         Uses dense vector retrieval via MemoryRetriever.
         Searches both personal knowledge and shared common_knowledge,
         merging results by score.
+
+        Returns a ``(medium_text, untrusted_text)`` tuple where results
+        are split by their provenance-derived trust level.
 
         Args:
             keywords: Search keywords extracted from message.
@@ -634,13 +656,13 @@ class PrimingEngine:
         """
         if not self.knowledge_dir.is_dir() or not keywords:
             logger.debug("Channel C: No knowledge dir or no keywords")
-            return ""
+            return ("", "")
 
         try:
             retriever = self._get_or_create_retriever()
             if retriever is None:
                 logger.debug("Channel C: Retriever unavailable")
-                return ""
+                return ("", "")
 
             # Build query from keywords
             query = " ".join(keywords[:5])
@@ -668,37 +690,50 @@ class PrimingEngine:
                 ]
 
             if results:
+                from core.execution._sanitize import resolve_trust, ORIGIN_UNKNOWN
+
                 # Record access (Hebbian LTP: memories that fire together wire together)
                 retriever.record_access(results, anima_name)
 
-                # Format results
-                parts = []
+                # Classify results by trust level
+                medium_parts: list[str] = []
+                untrusted_parts: list[str] = []
+
                 for i, result in enumerate(results):
+                    chunk_origin = result.metadata.get("origin", "")
+                    chunk_trust = resolve_trust(chunk_origin or ORIGIN_UNKNOWN)
                     source_label = result.metadata.get("anima", anima_name)
                     label = "shared" if source_label == "shared" else "personal"
-                    parts.append(
+                    line = (
                         f"--- Result {i + 1} [{label}] "
-                        f"(score: {result.score:.3f}) ---"
+                        f"(score: {result.score:.3f}) ---\n"
+                        f"{result.content}\n"
                     )
-                    parts.append(result.content)
-                    parts.append("")
+                    if chunk_trust == "untrusted":
+                        untrusted_parts.append(line)
+                    else:
+                        medium_parts.append(line)
 
-                output = "\n".join(parts)
+                medium_output = "\n".join(medium_parts)
+                untrusted_output = "\n".join(untrusted_parts)
+
                 logger.debug(
-                    "Channel C: Vector search returned %d results (%d chars)%s",
+                    "Channel C: Vector search returned %d results "
+                    "(medium=%d, untrusted=%d)%s",
                     len(results),
-                    len(output),
+                    len(medium_parts),
+                    len(untrusted_parts),
                     f" (restricted to {len(restrict_to)} overflow files)"
                     if restrict_to else "",
                 )
-                return output
+                return (medium_output, untrusted_output)
             else:
                 logger.debug("Channel C: Vector search found no results")
-                return ""
+                return ("", "")
 
         except Exception as e:
             logger.warning("Channel C: Vector search failed: %s", e)
-            return ""
+            return ("", "")
 
     async def _channel_d_skill_match(
         self, message: str, keywords: list[str],
@@ -1128,11 +1163,29 @@ def format_priming_section(result: PrimingResult, sender_name: str = "human") ->
         parts.append(wrap_priming("recent_activity", result.recent_activity, trust="untrusted"))
         parts.append("")
 
-    if result.related_knowledge:
+    if result.related_knowledge or result.related_knowledge_untrusted:
+        from core.execution._sanitize import ORIGIN_CONSOLIDATION, ORIGIN_EXTERNAL_PLATFORM
+
         parts.append(t("priming.related_knowledge_header"))
         parts.append("")
-        parts.append(wrap_priming("related_knowledge", result.related_knowledge, trust="medium"))
-        parts.append("")
+        if result.related_knowledge:
+            if result.related_knowledge_untrusted:
+                parts.append(wrap_priming(
+                    "related_knowledge", result.related_knowledge,
+                    trust="medium", origin=ORIGIN_CONSOLIDATION,
+                ))
+            else:
+                parts.append(wrap_priming(
+                    "related_knowledge", result.related_knowledge,
+                    trust="medium",
+                ))
+            parts.append("")
+        if result.related_knowledge_untrusted:
+            parts.append(wrap_priming(
+                "related_knowledge_external", result.related_knowledge_untrusted,
+                trust="untrusted", origin=ORIGIN_EXTERNAL_PLATFORM,
+            ))
+            parts.append("")
 
     if result.matched_skills:
         parts.append(t("priming.matched_skills_header"))

@@ -266,7 +266,7 @@ class TestIndexFileDelegatesToIndexer:
 
         rag.index_file(test_path, "knowledge")
 
-        mock_indexer.index_file.assert_called_once_with(test_path, "knowledge")
+        mock_indexer.index_file.assert_called_once_with(test_path, "knowledge", origin="")
 
 
 class TestIndexFileNoIndexerNoError:

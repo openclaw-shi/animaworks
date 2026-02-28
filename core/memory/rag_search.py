@@ -292,11 +292,11 @@ class RAGMemorySearch:
             common_knowledge_dir=self._common_knowledge_dir,
         )
 
-    def index_file(self, path: Path, memory_type: str) -> None:
+    def index_file(self, path: Path, memory_type: str, *, origin: str = "") -> None:
         """Index a single file if indexer is available."""
         indexer = self._get_indexer()
         if indexer:
             try:
-                indexer.index_file(path, memory_type)
+                indexer.index_file(path, memory_type, origin=origin)
             except Exception as e:
                 logger.warning("Failed to index %s file: %s", memory_type, e)

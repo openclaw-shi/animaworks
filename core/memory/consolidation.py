@@ -368,11 +368,12 @@ class ConsolidationEngine:
 
     # ── RAG Index ────────────────────────────────────────────────
 
-    def _update_rag_index(self, filenames: list[str]) -> None:
+    def _update_rag_index(self, filenames: list[str], *, origin: str = "consolidation") -> None:
         """Update RAG index for the specified knowledge files.
 
         Args:
             filenames: List of knowledge file names (relative to knowledge/)
+            origin: Provenance origin for the indexed chunks.
         """
         if not filenames:
             return
@@ -387,7 +388,7 @@ class ConsolidationEngine:
             for filename in filenames:
                 filepath = self.knowledge_dir / filename
                 if filepath.exists():
-                    indexer.index_file(filepath, memory_type="knowledge")
+                    indexer.index_file(filepath, memory_type="knowledge", origin=origin)
                     logger.debug("Updated RAG index for: %s", filename)
 
         except ImportError:
@@ -404,12 +405,12 @@ class ConsolidationEngine:
             vector_store = self._rag_store or get_vector_store(self.anima_name)
             indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
 
-            # Re-index all knowledge files
+            # Re-index all knowledge files (consolidation-derived)
             for knowledge_file in self.knowledge_dir.rglob("*.md"):
-                indexer.index_file(knowledge_file, memory_type="knowledge")
+                indexer.index_file(knowledge_file, memory_type="knowledge", origin="consolidation")
                 logger.debug("Re-indexed knowledge: %s", knowledge_file.name)
 
-            # Re-index all episode files
+            # Re-index all episode files (origin unknown on rebuild)
             for episode_file in self.episodes_dir.glob("*.md"):
                 indexer.index_file(episode_file, memory_type="episodes")
                 logger.debug("Re-indexed episode: %s", episode_file.name)

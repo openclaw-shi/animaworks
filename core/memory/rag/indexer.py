@@ -129,6 +129,7 @@ class MemoryIndexer:
         file_path: Path,
         memory_type: str,
         force: bool = False,
+        origin: str = "",
     ) -> int:
         """Index a single memory file.
 
@@ -136,6 +137,8 @@ class MemoryIndexer:
             file_path: Path to the memory file
             memory_type: Memory type (knowledge, episodes, procedures, skills, shared_users)
             force: Force re-indexing even if file hasn't changed
+            origin: Provenance origin category (e.g. "consolidation", "external_platform").
+                Stored in chunk metadata for trust-level resolution at retrieval time.
 
         Returns:
             Number of chunks indexed
@@ -163,7 +166,7 @@ class MemoryIndexer:
             return 0
 
         # Chunk the content
-        chunks = self._chunk_file(file_path, content, memory_type)
+        chunks = self._chunk_file(file_path, content, memory_type, origin=origin)
 
         if not chunks:
             logger.debug("No chunks extracted from %s", file_path)
@@ -424,6 +427,8 @@ class MemoryIndexer:
         file_path: Path,
         content: str,
         memory_type: str,
+        *,
+        origin: str = "",
     ) -> list[MemoryChunk]:
         """Chunk file based on memory type.
 
@@ -435,17 +440,19 @@ class MemoryIndexer:
         - shared_users: Whole file
         """
         if memory_type in ("knowledge", "common_knowledge"):
-            return self._chunk_by_markdown_headings(file_path, content, memory_type)
+            return self._chunk_by_markdown_headings(file_path, content, memory_type, origin=origin)
         elif memory_type == "episodes":
-            return self._chunk_by_time_headings(file_path, content, memory_type)
+            return self._chunk_by_time_headings(file_path, content, memory_type, origin=origin)
         else:  # procedures, skills, shared_users
-            return self._chunk_whole_file(file_path, content, memory_type)
+            return self._chunk_whole_file(file_path, content, memory_type, origin=origin)
 
     def _chunk_by_markdown_headings(
         self,
         file_path: Path,
         content: str,
         memory_type: str,
+        *,
+        origin: str = "",
     ) -> list[MemoryChunk]:
         """Split by Markdown ## headings.
 
@@ -471,7 +478,7 @@ class MemoryIndexer:
             chunk_id = self._make_chunk_id(file_path, memory_type, chunk_idx)
             metadata = self._extract_metadata(
                 file_path, preamble, memory_type, chunk_idx, 1,
-                frontmatter=frontmatter,
+                frontmatter=frontmatter, origin=origin,
             )
             chunks.append(
                 MemoryChunk(
@@ -493,7 +500,7 @@ class MemoryIndexer:
                     chunk_id = self._make_chunk_id(file_path, memory_type, chunk_idx)
                     metadata = self._extract_metadata(
                         file_path, section_content, memory_type, chunk_idx, 1,
-                        frontmatter=frontmatter,
+                        frontmatter=frontmatter, origin=origin,
                     )
                     chunks.append(
                         MemoryChunk(
@@ -511,6 +518,8 @@ class MemoryIndexer:
         file_path: Path,
         content: str,
         memory_type: str,
+        *,
+        origin: str = "",
     ) -> list[MemoryChunk]:
         """Split by time headings (## HH:MM format)."""
         frontmatter = self._parse_frontmatter(content)
@@ -528,7 +537,7 @@ class MemoryIndexer:
                     chunk_id = self._make_chunk_id(file_path, memory_type, i // 2)
                     metadata = self._extract_metadata(
                         file_path, section_content, memory_type, i // 2, (i // 2) + 1,
-                        frontmatter=frontmatter,
+                        frontmatter=frontmatter, origin=origin,
                     )
                     chunks.append(
                         MemoryChunk(
@@ -545,6 +554,8 @@ class MemoryIndexer:
         file_path: Path,
         content: str,
         memory_type: str,
+        *,
+        origin: str = "",
     ) -> list[MemoryChunk]:
         """Return entire file as single chunk.
 
@@ -561,7 +572,7 @@ class MemoryIndexer:
         chunk_id = self._make_chunk_id(file_path, memory_type, 0)
         metadata = self._extract_metadata(
             file_path, content, memory_type, 0, 1,
-            frontmatter=frontmatter,
+            frontmatter=frontmatter, origin=origin,
         )
 
         return [
@@ -632,6 +643,7 @@ class MemoryIndexer:
         chunk_index: int,
         total_chunks: int,
         frontmatter: dict | None = None,
+        origin: str = "",
     ) -> dict[str, str | int | float | list[str]]:
         """Extract metadata from file and content.
 
@@ -643,6 +655,7 @@ class MemoryIndexer:
             total_chunks: Total number of chunks from this file
             frontmatter: Pre-parsed YAML frontmatter from the file.
                 If provided, ``valid_until`` is extracted from it.
+            origin: Provenance origin category for trust resolution.
         """
         metadata: dict[str, str | int | float | list[str]] = {
             "anima": self.collection_prefix,
@@ -693,6 +706,9 @@ class MemoryIndexer:
                 metadata["confidence"] = float(fm["confidence"])
             if "last_used" in fm and fm["last_used"]:
                 metadata["last_used"] = str(fm["last_used"])
+
+        if origin:
+            metadata["origin"] = origin
 
         return metadata
 

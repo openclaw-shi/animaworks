@@ -401,7 +401,7 @@ async def test_priming_empty_directories(tmp_path: Path):
 
     # Mock RAG retriever to return no results (empty anima has no indexed docs)
     with patch("core.memory.priming.PrimingEngine._channel_c_related_knowledge",
-               return_value=""):
+               return_value=("", "")):
         result = await engine.prime_memories(
             message="Test message",
             sender_name="unknown",

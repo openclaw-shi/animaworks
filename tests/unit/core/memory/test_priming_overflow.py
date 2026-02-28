@@ -35,12 +35,12 @@ class TestChannelCSkippedWhenAllInjected:
     async def test_channel_c_skipped_when_all_injected(
         self, priming_engine: PrimingEngine,
     ) -> None:
-        """restrict_to=[] -> Channel C returns empty string."""
+        """restrict_to=[] -> Channel C returns empty tuple."""
         result = await priming_engine._channel_c_related_knowledge(
             keywords=["test", "keyword"],
             restrict_to=[],
         )
-        assert result == ""
+        assert result == ("", "")
 
 
 class TestChannelCRunsWhenOverflowExists:
@@ -59,13 +59,12 @@ class TestChannelCRunsWhenOverflowExists:
         )
 
         # Channel C should NOT short-circuit (restrict_to is non-empty)
-        # It will attempt to run but return "" because retriever is unavailable
+        # It will attempt to run but return ("", "") because retriever is unavailable
         result = await priming_engine._channel_c_related_knowledge(
             keywords=["test"],
             restrict_to=["file1"],
         )
-        # The function ran (didn't skip), but retriever is None so returns ""
-        assert isinstance(result, str)
+        assert isinstance(result, tuple)
 
 
 class TestChannelCLegacyWhenNone:
@@ -87,8 +86,7 @@ class TestChannelCLegacyWhenNone:
             keywords=["legacy"],
             restrict_to=None,
         )
-        # Runs normally but returns "" because retriever is None in test
-        assert isinstance(result, str)
+        assert isinstance(result, tuple)
 
 
 class TestPrimeMemoriesPassesOverflowToChannelC:
@@ -103,7 +101,7 @@ class TestPrimeMemoriesPassesOverflowToChannelC:
             priming_engine,
             "_channel_c_related_knowledge",
             new_callable=AsyncMock,
-            return_value="",
+            return_value=("", ""),
         ) as mock_channel_c, \
              patch.object(
                  priming_engine,
