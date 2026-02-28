@@ -7,6 +7,12 @@ adhering to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-02-28
+
+### Fixed
+- Mode C (Codex SDK) session-chaining: add CodexResultMessage adapter for num_turns/session_id interface
+- Mode C prompt selection unified with Mode S via `_is_mcp_mode()` helper (communication_rules, messaging, hiring_rules, tool guides)
+
 ## [0.4.5] - 2026-02-28
 
 ### Added
@@ -391,8 +397,8 @@ memory, and decision-making criteria.
 - Moved model mode patterns from config.json to models.json
 - Tool permissions changed from whitelist to default-allow (blacklist) model
 
-[Unreleased]: https://github.com/xuiltul/animaworks/compare/v0.4.4...HEAD
-[0.4.4]: https://github.com/xuiltul/animaworks/compare/v0.4.3...v0.4.4
+[Unreleased]: https://github.com/xuiltul/animaworks/compare/v0.4.6...HEAD
+[0.4.6]: https://github.com/xuiltul/animaworks/compare/v0.4.5...v0.4.6[0.4.4]: https://github.com/xuiltul/animaworks/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/xuiltul/animaworks/compare/v0.4.2...v0.4.3
 [0.4.0]: https://github.com/xuiltul/animaworks/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/xuiltul/animaworks/compare/v0.3.0...v0.3.1
