@@ -64,6 +64,8 @@ class ActivityEntry:
     tool: str = ""
     via: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
+    origin: str = ""
+    origin_chain: list[str] = field(default_factory=list)
     _line_number: int = field(default=0, init=False, repr=False)
     _anima_name: str = field(default="", init=False, repr=False)
     _tool_result_data: dict[str, Any] | None = field(default=None, init=False, repr=False)

@@ -17,6 +17,12 @@ from typing import Any
 
 from core.time_utils import now_jst
 
+from core.execution._sanitize import (
+    ORIGIN_ANIMA,
+    ORIGIN_EXTERNAL_PLATFORM,
+    ORIGIN_HUMAN,
+    ORIGIN_UNKNOWN,
+)
 from core.memory.streaming_journal import StreamingJournal
 from core.messenger import InboxItem
 from core.paths import load_prompt
@@ -31,6 +37,13 @@ logger = logging.getLogger("animaworks.anima")
 # With a typical heartbeat interval of 5 min, a message gets ~2 chances
 # to be replied to before force-archival.
 _STALE_MESSAGE_TIMEOUT_SEC = 600
+
+_SOURCE_TO_ORIGIN: dict[str, str] = {
+    "slack": ORIGIN_EXTERNAL_PLATFORM,
+    "chatwork": ORIGIN_EXTERNAL_PLATFORM,
+    "human": ORIGIN_HUMAN,
+    "anima": ORIGIN_ANIMA,
+}
 
 
 @dataclass
@@ -356,9 +369,20 @@ class InboxMixin:
                     self.name, _m.from_person, exc_info=True,
                 )
 
-        # Activity log: message received from Anima (full content, summary truncated)
+        # Activity log: message received (full content, summary truncated)
         for _m in _recordable[:50]:
-            self._activity.log("message_received", content=_m.content, summary=_m.content[:200], from_person=_m.from_person, to_person=self.name, meta={"from_type": "anima"})
+            _msg_origin = _SOURCE_TO_ORIGIN.get(_m.source, ORIGIN_UNKNOWN)
+            _msg_origin_chain = _m.origin_chain if _m.origin_chain else [_msg_origin]
+            self._activity.log(
+                "message_received",
+                content=_m.content,
+                summary=_m.content[:200],
+                from_person=_m.from_person,
+                to_person=self.name,
+                meta={"from_type": _m.source},
+                origin=_msg_origin,
+                origin_chain=_msg_origin_chain,
+            )
 
         return InboxResult(
             inbox_items=inbox_items,

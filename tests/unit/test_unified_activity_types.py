@@ -216,7 +216,7 @@ class TestBackendActivityLogSummary:
 
     def test_message_received_has_summary(self) -> None:
         content = self._read_all()
-        pattern = r'activity\.log\("message_received",\s*content=content,\s*summary=content\[:100\]'
+        pattern = r'activity\.log\(\s*"message_received",\s*content=content,\s*summary=content\[:100\]'
         matches = re.findall(pattern, content)
         assert len(matches) == 2, (
             f"Expected 2 message_received calls with summary, found {len(matches)}"
@@ -224,7 +224,7 @@ class TestBackendActivityLogSummary:
 
     def test_message_received_from_anima_has_summary(self) -> None:
         content = self._read_all()
-        pattern = r'activity\.log\("message_received",\s*content=_m\.content,\s*summary=_m\.content\[:200\]'
+        pattern = r'activity\.log\(\s*"message_received",\s*content=_m\.content,\s*summary=_m\.content\[:200\]'
         assert re.search(pattern, content), (
             "message_received (from anima) activity.log() should use full content and summary=_m.content[:200]"
         )

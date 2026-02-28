@@ -119,6 +119,9 @@ class Message(BaseModel):
     external_user_id: str = ""  # user ID on external platform
     external_channel_id: str = ""  # channel/room ID on external platform
 
+    # Provenance tracking (Phase 2)
+    origin_chain: list[str] = Field(default_factory=list)
+
 
 class CycleResult(BaseModel):
     trigger: str

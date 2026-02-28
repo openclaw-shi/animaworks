@@ -18,6 +18,7 @@ from typing import Any
 
 from core.time_utils import now_jst
 
+from core.execution._sanitize import ORIGIN_HUMAN
 from core.memory.conversation import ConversationMemory, ToolRecord
 from core.memory.streaming_journal import StreamingJournal
 from core.paths import load_prompt
@@ -142,7 +143,15 @@ class MessagingMixin:
                 conv_memory.save()
 
                 # Activity log: message received
-                self._activity.log("message_received", content=content, summary=content[:100], from_person=from_person, channel="chat", meta={"from_type": "human", "thread_id": thread_id})
+                self._activity.log(
+                    "message_received",
+                    content=content,
+                    summary=content[:100],
+                    from_person=from_person,
+                    channel="chat",
+                    meta={"from_type": "human", "thread_id": thread_id},
+                    origin=ORIGIN_HUMAN,
+                )
 
                 try:
                     result = await self.agent.run_cycle(
@@ -274,7 +283,15 @@ class MessagingMixin:
                 conv_memory.save()
 
                 # Activity log: message received
-                self._activity.log("message_received", content=content, summary=content[:100], from_person=from_person, channel="chat", meta={"from_type": "human", "thread_id": thread_id})
+                self._activity.log(
+                    "message_received",
+                    content=content,
+                    summary=content[:100],
+                    from_person=from_person,
+                    channel="chat",
+                    meta={"from_type": "human", "thread_id": thread_id},
+                    origin=ORIGIN_HUMAN,
+                )
 
                 # Streaming journal: write-ahead log for crash recovery
                 journal = StreamingJournal(self.anima_dir, thread_id=thread_id)

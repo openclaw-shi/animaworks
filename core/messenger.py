@@ -446,6 +446,7 @@ class Messenger:
         Creates a Message with external source metadata and writes it to the
         anima's inbox directory.
         """
+        from core.execution._sanitize import ORIGIN_EXTERNAL_PLATFORM
         msg = Message(
             from_person=f"{source}:{external_user_id}" if external_user_id else source,
             to_person=self.anima_name,
@@ -454,6 +455,7 @@ class Messenger:
             source_message_id=source_message_id,
             external_user_id=external_user_id,
             external_channel_id=external_channel_id,
+            origin_chain=[ORIGIN_EXTERNAL_PLATFORM],
         )
         if not msg.thread_id:
             msg.thread_id = msg.id

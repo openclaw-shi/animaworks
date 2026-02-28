@@ -93,6 +93,8 @@ class ActivityLogger(
         tool: str = "",
         via: str = "",
         meta: dict[str, Any] | None = None,
+        origin: str = "",
+        origin_chain: list[str] | None = None,
     ) -> ActivityEntry:
         """Record an activity entry.
 
@@ -107,6 +109,8 @@ class ActivityLogger(
             tool: Tool name (for ``tool_use`` events).
             via: Delivery channel (for ``human_notify`` events).
             meta: Arbitrary metadata dict.
+            origin: Origin category (e.g. ``"human"``, ``"external_platform"``).
+            origin_chain: Intermediate origins the data traversed.
 
         Returns:
             The recorded :class:`ActivityEntry`.
@@ -122,6 +126,8 @@ class ActivityLogger(
             tool=tool,
             via=via,
             meta=meta or {},
+            origin=origin,
+            origin_chain=origin_chain or [],
         )
         self._append(entry)
         return entry
