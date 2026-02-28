@@ -65,7 +65,13 @@ class MemoryToolsMixin:
         if rel.startswith("common_knowledge/"):
             from core.paths import get_common_knowledge_dir
             suffix = rel[len("common_knowledge/"):]
-            path = get_common_knowledge_dir() / suffix
+            ck_dir = get_common_knowledge_dir()
+            path = (ck_dir / suffix).resolve()
+            if not path.is_relative_to(ck_dir.resolve()):
+                return _error_result(
+                    "PermissionDenied",
+                    "Path traversal detected — access denied.",
+                )
         else:
             path = self._anima_dir / rel
             resolved = path.resolve()
@@ -123,7 +129,13 @@ class MemoryToolsMixin:
             from core.paths import get_common_knowledge_dir
 
             suffix = rel[len("common_knowledge/"):]
-            path = get_common_knowledge_dir() / suffix
+            ck_dir = get_common_knowledge_dir()
+            path = (ck_dir / suffix).resolve()
+            if not path.is_relative_to(ck_dir.resolve()):
+                return _error_result(
+                    "PermissionDenied",
+                    "Path traversal detected — access denied.",
+                )
         else:
             path = self._anima_dir / rel
 

@@ -300,7 +300,10 @@ class PrimingEngine:
         from core.paths import get_shared_dir
 
         shared_users_dir = get_shared_dir() / "users"
-        profile_path = shared_users_dir / sender_name / "index.md"
+        profile_path = (shared_users_dir / sender_name / "index.md").resolve()
+        if not profile_path.is_relative_to(shared_users_dir.resolve()):
+            logger.warning("Channel A: path traversal in sender_name=%s", sender_name)
+            return ""
 
         if not profile_path.exists():
             logger.debug("Channel A: No profile found for sender=%s", sender_name)

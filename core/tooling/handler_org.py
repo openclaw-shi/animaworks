@@ -49,7 +49,19 @@ class OrgToolsMixin:
         elif sheet_path_raw:
             md_path = Path(sheet_path_raw).expanduser()
             if not md_path.is_absolute():
-                md_path = self._anima_dir / md_path
+                md_path = (self._anima_dir / md_path).resolve()
+                if not md_path.is_relative_to(self._anima_dir.resolve()):
+                    return _error_result(
+                        "PermissionDenied",
+                        "character_sheet_path must be within anima directory.",
+                    )
+            else:
+                # Absolute paths are intentionally allowed without directory
+                # restriction — the CLI and human operators specify full paths.
+                # create_from_md validates the content as a character sheet,
+                # so passing an arbitrary file (e.g. /etc/passwd) will fail
+                # schema validation rather than leaking data.
+                md_path = md_path.resolve()
             if not md_path.exists():
                 return _error_result(
                     "FileNotFound",
