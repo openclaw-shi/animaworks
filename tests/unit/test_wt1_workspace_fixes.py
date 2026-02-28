@@ -20,7 +20,7 @@ import pytest
 # ── Paths ──────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-APP_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "app.js"
+APP_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "app-websocket.js"
 ACTIVITY_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "activity.js"
 SIDEBAR_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "sidebar.js"
 CHAT_STREAMING_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "chat-streaming.js"

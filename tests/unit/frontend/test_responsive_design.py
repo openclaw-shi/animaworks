@@ -316,8 +316,8 @@ class TestWorkspaceChatMobile:
         assert "mobile" in js.lower() or "max-width: 768px" in js
 
     def test_workspace_chat_visualviewport(self) -> None:
-        """Workspace app.js should handle visualViewport for mobile keyboard."""
-        js = _read(WORKSPACE_DIR / "modules" / "app.js")
+        """Workspace app-mobile.js should handle visualViewport for mobile keyboard."""
+        js = _read(WORKSPACE_DIR / "modules" / "app-mobile.js")
         assert "visualViewport" in js
 
     def test_workspace_chat_mobile_placeholder(self) -> None:
