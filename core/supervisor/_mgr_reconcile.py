@@ -11,12 +11,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING
 
 from core.supervisor.process_handle import ProcessState
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

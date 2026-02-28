@@ -10,15 +10,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from core.supervisor.process_handle import ProcessState
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

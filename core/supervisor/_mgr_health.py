@@ -12,13 +12,9 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from core.time_utils import ensure_aware, now_jst
 from core.supervisor.process_handle import ProcessHandle, ProcessState
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
