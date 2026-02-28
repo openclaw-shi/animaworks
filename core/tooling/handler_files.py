@@ -10,7 +10,7 @@ import shlex
 import subprocess
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from core.tooling.handler_base import (
     _NEEDS_SHELL_RE,
@@ -23,9 +23,6 @@ from core.tooling.handler_base import (
     _READ_MIN_LINES,
     _error_result,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger("animaworks.tool_handler")
 
