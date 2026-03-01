@@ -78,6 +78,7 @@ def _check_a1_file_access(
     write: bool,
     subordinate_activity_dirs: list[Path] | None = None,
     subordinate_management_files: list[Path] | None = None,
+    peer_activity_dirs: list[Path] | None = None,
     superuser: bool = False,
 ) -> str | None:
     """Check if a file path is allowed for Mode S tools.
@@ -100,6 +101,12 @@ def _check_a1_file_access(
             if not write and subordinate_activity_dirs:
                 for sub_activity in subordinate_activity_dirs:
                     if resolved.is_relative_to(sub_activity):
+                        return None
+
+            # Peers (same supervisor) can read each other's activity_log
+            if not write and peer_activity_dirs:
+                for peer_activity in peer_activity_dirs:
+                    if resolved.is_relative_to(peer_activity):
                         return None
 
             # Supervisor can read/write subordinate's cron.md & heartbeat.md

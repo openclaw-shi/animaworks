@@ -127,25 +127,27 @@ class TestSupervisorActivityLogPermission:
 
         assert result is not None, "Supervisor should NOT be allowed to write to subordinate's activity_log"
 
-    def test_non_supervisor_cannot_read_activity_log(self, tmp_path: Path):
-        """Non-supervisor rin cannot read yuki's activity_log."""
+    def test_unrelated_anima_cannot_read_activity_log(self, tmp_path: Path):
+        """Anima under a different supervisor cannot read yuki's activity_log."""
         sub_activity_dir = tmp_path / "animas" / "yuki" / "activity_log"
         sub_activity_dir.mkdir(parents=True, exist_ok=True)
         log_file = sub_activity_dir / "2026-02-22.jsonl"
         log_file.write_text('{"ts": "2026-02-22T10:00:00"}\n', encoding="utf-8")
 
-        # yuki's supervisor is mio, not rin
+        # yuki's supervisor is mio, rin's supervisor is sakura → different teams
         mock_cfg = _make_config_with_hierarchy("mio", ["yuki"])
-        # Add rin as a peer (no subordinates)
         rin_cfg = MagicMock()
-        rin_cfg.supervisor = "mio"
+        rin_cfg.supervisor = "sakura"
+        sakura_cfg = MagicMock()
+        sakura_cfg.supervisor = None
         mock_cfg.animas["rin"] = rin_cfg
+        mock_cfg.animas["sakura"] = sakura_cfg
 
         handler = _make_handler(tmp_path, "rin", mock_cfg=mock_cfg)
 
         result = handler._check_file_permission(str(log_file), write=False)
 
-        assert result is not None, "Non-supervisor should NOT be allowed to read another anima's activity_log"
+        assert result is not None, "Anima under different supervisor should NOT be allowed to read another's activity_log"
 
     def test_supervisor_can_read_grandchild_activity_log(self, tmp_path: Path):
         """Supervisor mio CAN read grandchild (yuki's subordinate) activity_log.
@@ -219,3 +221,140 @@ class TestSupervisorActivityLogPermission:
         # Cache should contain exactly one path
         assert len(handler._subordinate_activity_dirs) == 1
         assert handler._subordinate_activity_dirs[0] == (tmp_path / "animas" / "yuki" / "activity_log").resolve()
+
+
+class TestPeerActivityLogPermission:
+    """Peers (same supervisor) can read each other's activity_log."""
+
+    def test_peer_can_read_peer_activity_log(self, tmp_path: Path):
+        """Top-level peer sakura can read ritsu's activity_log."""
+        ritsu_activity_dir = tmp_path / "animas" / "ritsu" / "activity_log"
+        ritsu_activity_dir.mkdir(parents=True, exist_ok=True)
+        log_file = ritsu_activity_dir / "2026-03-01.jsonl"
+        log_file.write_text('{"ts": "2026-03-01T10:00:00"}\n', encoding="utf-8")
+
+        # Both sakura and ritsu are top-level (supervisor=None)
+        mock_cfg = MagicMock()
+        sakura_cfg = MagicMock()
+        sakura_cfg.supervisor = None
+        ritsu_cfg = MagicMock()
+        ritsu_cfg.supervisor = None
+        mock_cfg.animas = {"sakura": sakura_cfg, "ritsu": ritsu_cfg}
+
+        handler = _make_handler(tmp_path, "sakura", mock_cfg=mock_cfg)
+
+        result = handler._check_file_permission(str(log_file), write=False)
+
+        assert result is None, "Peer should be allowed to read peer's activity_log"
+
+    def test_peer_cannot_write_peer_activity_log(self, tmp_path: Path):
+        """Peer sakura cannot WRITE to ritsu's activity_log."""
+        ritsu_activity_dir = tmp_path / "animas" / "ritsu" / "activity_log"
+        ritsu_activity_dir.mkdir(parents=True, exist_ok=True)
+        log_file = ritsu_activity_dir / "2026-03-01.jsonl"
+        log_file.write_text('{"ts": "2026-03-01T10:00:00"}\n', encoding="utf-8")
+
+        mock_cfg = MagicMock()
+        sakura_cfg = MagicMock()
+        sakura_cfg.supervisor = None
+        ritsu_cfg = MagicMock()
+        ritsu_cfg.supervisor = None
+        mock_cfg.animas = {"sakura": sakura_cfg, "ritsu": ritsu_cfg}
+
+        handler = _make_handler(tmp_path, "sakura", mock_cfg=mock_cfg)
+
+        result = handler._check_file_permission(str(log_file), write=True)
+
+        assert result is not None, "Peer should NOT be allowed to write to peer's activity_log"
+
+    def test_peer_cannot_read_peer_episodes(self, tmp_path: Path):
+        """Peer sakura cannot read ritsu's episodes/ (only activity_log)."""
+        ritsu_episodes_dir = tmp_path / "animas" / "ritsu" / "episodes"
+        ritsu_episodes_dir.mkdir(parents=True, exist_ok=True)
+        episode_file = ritsu_episodes_dir / "2026-03-01.md"
+        episode_file.write_text("private episode", encoding="utf-8")
+
+        mock_cfg = MagicMock()
+        sakura_cfg = MagicMock()
+        sakura_cfg.supervisor = None
+        ritsu_cfg = MagicMock()
+        ritsu_cfg.supervisor = None
+        mock_cfg.animas = {"sakura": sakura_cfg, "ritsu": ritsu_cfg}
+
+        handler = _make_handler(tmp_path, "sakura", mock_cfg=mock_cfg)
+
+        result = handler._check_file_permission(str(episode_file), write=False)
+
+        assert result is not None, "Peer should NOT be allowed to read peer's episodes"
+
+    def test_non_peer_different_supervisor_denied(self, tmp_path: Path):
+        """Animas with different supervisors are not peers and cannot access each other."""
+        hinata_activity_dir = tmp_path / "animas" / "hinata" / "activity_log"
+        hinata_activity_dir.mkdir(parents=True, exist_ok=True)
+        log_file = hinata_activity_dir / "2026-03-01.jsonl"
+        log_file.write_text('{"ts": "2026-03-01T10:00:00"}\n', encoding="utf-8")
+
+        # yuki's supervisor is mio, hinata's supervisor is rin → not peers
+        mock_cfg = MagicMock()
+        yuki_cfg = MagicMock()
+        yuki_cfg.supervisor = "mio"
+        hinata_cfg = MagicMock()
+        hinata_cfg.supervisor = "rin"
+        mio_cfg = MagicMock()
+        mio_cfg.supervisor = "sakura"
+        rin_cfg = MagicMock()
+        rin_cfg.supervisor = "sakura"
+        mock_cfg.animas = {"yuki": yuki_cfg, "hinata": hinata_cfg, "mio": mio_cfg, "rin": rin_cfg}
+
+        handler = _make_handler(tmp_path, "yuki", mock_cfg=mock_cfg)
+
+        result = handler._check_file_permission(str(log_file), write=False)
+
+        assert result is not None, "Non-peer (different supervisor) should NOT be allowed to read activity_log"
+
+    def test_peers_under_same_supervisor(self, tmp_path: Path):
+        """Non-top-level peers under the same supervisor can read each other's activity_log."""
+        tsumugi_activity_dir = tmp_path / "animas" / "tsumugi" / "activity_log"
+        tsumugi_activity_dir.mkdir(parents=True, exist_ok=True)
+        log_file = tsumugi_activity_dir / "2026-03-01.jsonl"
+        log_file.write_text('{"ts": "2026-03-01T10:00:00"}\n', encoding="utf-8")
+
+        # Both yuki and tsumugi have supervisor=mio → peers
+        mock_cfg = MagicMock()
+        yuki_cfg = MagicMock()
+        yuki_cfg.supervisor = "mio"
+        tsumugi_cfg = MagicMock()
+        tsumugi_cfg.supervisor = "mio"
+        shizuku_cfg = MagicMock()
+        shizuku_cfg.supervisor = "mio"
+        mio_cfg = MagicMock()
+        mio_cfg.supervisor = "sakura"
+        mock_cfg.animas = {
+            "yuki": yuki_cfg, "tsumugi": tsumugi_cfg,
+            "shizuku": shizuku_cfg, "mio": mio_cfg,
+        }
+
+        handler = _make_handler(tmp_path, "yuki", mock_cfg=mock_cfg)
+
+        result = handler._check_file_permission(str(log_file), write=False)
+
+        assert result is None, "Peers under same supervisor should be allowed to read each other's activity_log"
+
+    def test_peer_activity_dirs_cached_at_init(self, tmp_path: Path):
+        """Verify _peer_activity_dirs is populated at init."""
+        (tmp_path / "animas" / "ritsu" / "activity_log").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "animas" / "mei" / "activity_log").mkdir(parents=True, exist_ok=True)
+
+        mock_cfg = MagicMock()
+        sakura_cfg = MagicMock()
+        sakura_cfg.supervisor = None
+        ritsu_cfg = MagicMock()
+        ritsu_cfg.supervisor = None
+        mei_cfg = MagicMock()
+        mei_cfg.supervisor = None
+        mock_cfg.animas = {"sakura": sakura_cfg, "ritsu": ritsu_cfg, "mei": mei_cfg}
+
+        handler = _make_handler(tmp_path, "sakura", mock_cfg=mock_cfg)
+
+        # sakura has 2 peers: ritsu and mei
+        assert len(handler._peer_activity_dirs) == 2

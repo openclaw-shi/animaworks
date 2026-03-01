@@ -42,6 +42,7 @@ class PermissionsMixin:
     _descendant_activity_dirs: list[Path]
     _descendant_state_files: list[Path]
     _descendant_state_dirs: list[Path]
+    _peer_activity_dirs: list[Path]
     _dispatch: dict[str, Any]
     _external: ExternalToolDispatcher
 
@@ -84,6 +85,8 @@ class PermissionsMixin:
             file_read.append(t("handler.descendant_state"))
         if self._descendant_state_dirs:
             file_read.append(t("handler.descendant_pending"))
+        if self._peer_activity_dirs:
+            file_read.append(t("handler.peer_activity"))
 
         file_header = self._find_section_header(permissions_text, self._FILE_SECTION_HEADERS)
         if file_header:
@@ -179,6 +182,12 @@ class PermissionsMixin:
         if not write:
             for desc_activity in self._descendant_activity_dirs:
                 if resolved.is_relative_to(desc_activity):
+                    return None
+
+        # Peers (same supervisor) can read each other's activity_log
+        if not write:
+            for peer_activity in self._peer_activity_dirs:
+                if resolved.is_relative_to(peer_activity):
                     return None
 
         # Supervisor can read any descendant's state files

@@ -56,15 +56,17 @@ def _collect_all_subordinates(
 
 def _cache_subordinate_paths(
     anima_dir: Path,
-) -> tuple[list[Path], list[Path]]:
-    """Cache subordinate paths for permission checks at hook build time.
+) -> tuple[list[Path], list[Path], list[Path]]:
+    """Cache subordinate and peer paths for permission checks at hook build time.
 
     Collects paths for **all** hierarchical subordinates (not just direct
     reports) so that a top-level supervisor can access cron.md, heartbeat.md,
     and activity_log of any anima beneath them in the org tree.
+    Also collects peer activity_log dirs (same supervisor) for verification.
     """
     sub_activity_dirs: list[Path] = []
     sub_mgmt_files: list[Path] = []
+    peer_activity_dirs: list[Path] = []
     try:
         from core.config.models import load_config
         from core.paths import get_animas_dir
@@ -78,9 +80,17 @@ def _cache_subordinate_paths(
             sub_activity_dirs.append(sub_dir / "activity_log")
             sub_mgmt_files.append(sub_dir / "cron.md")
             sub_mgmt_files.append(sub_dir / "heartbeat.md")
+        # Collect peer activity_log dirs (same supervisor, excluding self)
+        my_supervisor = None
+        if anima_name in cfg.animas:
+            my_supervisor = cfg.animas[anima_name].supervisor
+        for peer_name, peer_cfg in cfg.animas.items():
+            if peer_name != anima_name and peer_cfg.supervisor == my_supervisor:
+                peer_dir = (animas_dir / peer_name).resolve()
+                peer_activity_dirs.append(peer_dir / "activity_log")
     except Exception:
         logger.debug("Failed to cache subordinate paths for Mode S hook", exc_info=True)
-    return sub_activity_dirs, sub_mgmt_files
+    return sub_activity_dirs, sub_mgmt_files, peer_activity_dirs
 
 
 # ── Task interception ────────────────────────────────────────
@@ -174,8 +184,8 @@ def _build_pre_tool_hook(
         SyncHookJSONOutput,
     )
 
-    # Cache subordinate paths once at hook build time
-    _sub_activity_dirs, _sub_mgmt_files = _cache_subordinate_paths(anima_dir)
+    # Cache subordinate and peer paths once at hook build time
+    _sub_activity_dirs, _sub_mgmt_files, _peer_activity_dirs = _cache_subordinate_paths(anima_dir)
     intercepted_task_ids: set[str] = set()
     _trust_order = {"trusted": 2, "medium": 1, "untrusted": 0}
 
@@ -307,6 +317,7 @@ def _build_pre_tool_hook(
                 file_path, anima_dir, write=True,
                 subordinate_activity_dirs=_sub_activity_dirs,
                 subordinate_management_files=_sub_mgmt_files,
+                peer_activity_dirs=_peer_activity_dirs,
                 superuser=superuser,
             )
             if violation:
@@ -326,6 +337,7 @@ def _build_pre_tool_hook(
                 file_path, anima_dir, write=False,
                 subordinate_activity_dirs=_sub_activity_dirs,
                 subordinate_management_files=_sub_mgmt_files,
+                peer_activity_dirs=_peer_activity_dirs,
                 superuser=superuser,
             )
             if violation:

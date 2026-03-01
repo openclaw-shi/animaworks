@@ -85,6 +85,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "handler.descendant_activity": {"ja": "配下のactivity_log", "en": "Descendant activity_log"},
     "handler.descendant_state": {"ja": "配下のstatus.json, identity.md, injection.md, state/, task_queue.jsonl", "en": "Descendant status.json, identity.md, injection.md, state/, task_queue.jsonl"},
     "handler.descendant_pending": {"ja": "配下のstate/pending/", "en": "Descendant state/pending/"},
+    "handler.peer_activity": {"ja": "同僚のactivity_log（読み取り専用）", "en": "Peer activity_log (read-only)"},
     "handler.cmd_denied": {"ja": "{cmd} 禁止", "en": "{cmd} blocked"},
     "handler.delegation_dm_content": {"ja": "[タスク委譲]\n{instruction}\n\n期限: {deadline}\nタスクID: {task_id}", "en": "[Task delegation]\n{instruction}\n\nDeadline: {deadline}\nTask ID: {task_id}"},
     "handler.dm_sent": {"ja": "DM送信済み", "en": "DM sent"},

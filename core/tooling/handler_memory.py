@@ -44,6 +44,7 @@ class MemoryToolsMixin:
     _descendant_activity_dirs: list[Path]
     _descendant_state_files: list[Path]
     _descendant_state_dirs: list[Path]
+    _peer_activity_dirs: list[Path]
     _state_file_lock: threading.Lock | None
     _on_schedule_changed: Callable[[str], Any] | None
     _min_trust_seen: int
