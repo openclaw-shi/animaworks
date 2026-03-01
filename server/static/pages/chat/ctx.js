@@ -14,6 +14,7 @@ import {
   threadTimeValue, defaultThreadLabel as _defaultThreadLabel,
   mergeThreadsFromSessions as _mergeThreads,
 } from "../../shared/chat/thread-logic.js";
+import { ChatSessionManager } from "../../shared/chat/session-manager.js";
 
 const logger = createLogger("chat-page");
 
@@ -25,32 +26,43 @@ export const CONSTANTS = Object.freeze({
 });
 
 export function createChatContext() {
+  const mgr = ChatSessionManager.getInstance();
+  mgr.configure({
+    streamChat, fetchActiveStream, fetchStreamProgress,
+    getUser: () => localStorage.getItem("animaworks_user") || "human",
+    fetchHistory: async (animaName, limit, before, threadId) => {
+      let url = `/api/animas/${encodeURIComponent(animaName)}/conversation/history?limit=${limit}`;
+      if (before) url += `&before=${encodeURIComponent(before)}`;
+      url += `&thread_id=${encodeURIComponent(threadId)}`;
+      if (threadId !== "default") url += `&strict_thread=1`;
+      return await api(url);
+    },
+  });
+
   const state = {
     container: null,
     animas: [],
     selectedAnima: null,
-    chatHistories: {},
     animaDetail: null,
     animaTabs: [],
     activeRightTab: "state",
     activeMemoryTab: "episodes",
     intervals: [],
     boundListeners: [],
-    historyState: {},
     chatObserver: null,
-    activeStreams: {},
     selectedThreadId: "default",
     threads: {},
     activeThreadByAnima: {},
     animaLastAccess: {},
     imageInputManager: null,
     bustupUrl: null,
-    pendingQueue: [],
     chatUiStateSaveTimer: null,
     animaTabAvatarUrls: {},
     animaTabAvatarLoading: {},
     chatPollingInFlight: false,
     rightPaneVisible: true,
+    /** @type {ChatSessionManager} */
+    manager: mgr,
   };
 
   const deps = {

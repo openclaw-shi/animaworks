@@ -187,11 +187,12 @@ class StreamRegistry:
 
     def __init__(self) -> None:
         self._streams: dict[str, ResponseStream] = {}
-        self._anima_active: dict[str, str] = {}  # anima_name -> response_id
+        self._anima_active: dict[str, dict[str, str]] = {}  # anima_name -> {thread_id: response_id}
         self._cleanup_task: asyncio.Task[None] | None = None
 
     def register(
         self, anima_name: str, *, from_person: str = "human",
+        thread_id: str = "default",
     ) -> ResponseStream:
         """Create a new ResponseStream and register it."""
         response_id = secrets.token_urlsafe(24)
@@ -201,10 +202,12 @@ class StreamRegistry:
             from_person=from_person,
         )
         self._streams[response_id] = stream
-        self._anima_active[anima_name] = response_id
+        if anima_name not in self._anima_active:
+            self._anima_active[anima_name] = {}
+        self._anima_active[anima_name][thread_id] = response_id
         logger.info(
-            "[SSE-REG] register stream=%s anima=%s from=%s total_streams=%d",
-            response_id, anima_name, from_person, len(self._streams),
+            "[SSE-REG] register stream=%s anima=%s thread=%s from=%s total_streams=%d",
+            response_id, anima_name, thread_id, from_person, len(self._streams),
         )
         return stream
 
@@ -212,17 +215,36 @@ class StreamRegistry:
         """Look up a stream by response ID."""
         return self._streams.get(response_id)
 
-    def get_active(self, anima_name: str) -> ResponseStream | None:
-        """Return the most recent (possibly still active) stream for an anima."""
-        response_id = self._anima_active.get(anima_name)
-        if response_id is None:
+    def get_active(
+        self, anima_name: str, thread_id: str | None = None,
+    ) -> ResponseStream | None:
+        """Return the most recent (possibly still active) stream for an anima.
+
+        If *thread_id* is given, only that thread's stream is returned.
+        Otherwise falls back to the "default" thread, then any thread.
+        """
+        threads = self._anima_active.get(anima_name)
+        if not threads:
             logger.info("[SSE-REG] get_active anima=%s -> no active stream", anima_name)
             return None
+
+        if thread_id is not None:
+            response_id = threads.get(thread_id)
+        else:
+            response_id = threads.get("default") or next(iter(threads.values()), None)
+
+        if response_id is None:
+            logger.info(
+                "[SSE-REG] get_active anima=%s thread=%s -> no matching stream",
+                anima_name, thread_id,
+            )
+            return None
+
         stream = self._streams.get(response_id)
         if stream:
             logger.info(
-                "[SSE-REG] get_active anima=%s -> stream=%s status=%s events=%d",
-                anima_name, response_id, stream.status, stream.event_count,
+                "[SSE-REG] get_active anima=%s thread=%s -> stream=%s status=%s events=%d",
+                anima_name, thread_id, response_id, stream.status, stream.event_count,
             )
         return stream
 
@@ -238,7 +260,12 @@ class StreamRegistry:
                 len(stream.full_text), done,
             )
             # Clear the active mapping if this is still the active stream
-            if self._anima_active.get(stream.anima_name) == response_id:
+            threads = self._anima_active.get(stream.anima_name, {})
+            for tid, rid in list(threads.items()):
+                if rid == response_id:
+                    del threads[tid]
+                    break
+            if not threads:
                 self._anima_active.pop(stream.anima_name, None)
         else:
             logger.info(
@@ -304,11 +331,14 @@ class StreamRegistry:
         for rid in expired:
             stream = self._streams.pop(rid, None)
             if stream:
-                # Cancel producer task if still running
                 if stream.producer_task and not stream.producer_task.done():
                     stream.producer_task.cancel()
-                # Clean up active mapping if it points to this expired stream
-                if self._anima_active.get(stream.anima_name) == rid:
+                threads = self._anima_active.get(stream.anima_name, {})
+                for tid, active_rid in list(threads.items()):
+                    if active_rid == rid:
+                        del threads[tid]
+                        break
+                if not threads:
                     self._anima_active.pop(stream.anima_name, None)
         if expired:
             logger.info("Cleaned up %d expired stream(s)", len(expired))

@@ -6,20 +6,17 @@ export function createImageVoiceController(ctx) {
   const { createImageInput, initLightbox, initVoiceUI, updateVoiceUIAnima } = deps;
 
   function buildVoiceChatCallbacks(animaName) {
+    const mgr = state.manager;
     return {
       addUserBubble(text) {
         const tid = state.selectedThreadId;
-        if (!state.chatHistories[animaName]) state.chatHistories[animaName] = {};
-        if (!state.chatHistories[animaName][tid]) state.chatHistories[animaName][tid] = [];
-        state.chatHistories[animaName][tid].push({ role: "user", text, timestamp: new Date().toISOString() });
+        mgr.addMessage(animaName, tid, { role: "user", text, timestamp: new Date().toISOString() });
         ctx.controllers.renderer.renderChat();
       },
       addStreamingBubble() {
         const tid = state.selectedThreadId;
-        if (!state.chatHistories[animaName]) state.chatHistories[animaName] = {};
-        if (!state.chatHistories[animaName][tid]) state.chatHistories[animaName][tid] = [];
         const msg = { role: "assistant", text: "", streaming: true, activeTool: null, timestamp: new Date().toISOString() };
-        state.chatHistories[animaName][tid].push(msg);
+        mgr.addMessage(animaName, tid, msg);
         ctx.controllers.renderer.renderChat();
         return msg;
       },

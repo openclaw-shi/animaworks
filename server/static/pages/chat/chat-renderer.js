@@ -51,8 +51,9 @@ export function createChatRenderer(ctx) {
 
     const name = state.selectedAnima;
     const tid = state.selectedThreadId;
-    const history = state.chatHistories[name]?.[tid] || [];
-    const hs = state.historyState[name]?.[tid] || { sessions: [], hasMore: false, nextBefore: null, loading: false };
+    const mgr = state.manager;
+    const history = name ? mgr.getMessages(name, tid) : [];
+    const hs = name ? mgr.getHistoryState(name, tid) : { sessions: [], hasMore: false, nextBefore: null, loading: false };
 
     if (hs.sessions.length === 0 && history.length === 0) {
       messagesEl.innerHTML = hs.loading
@@ -147,27 +148,17 @@ export function createChatRenderer(ctx) {
     const name = state.selectedAnima;
     const tid = state.selectedThreadId;
     if (!name) return;
-    const hs = state.historyState[name]?.[tid];
+    const mgr = state.manager;
+    const hs = mgr.getHistoryState(name, tid);
     if (!hs || !hs.hasMore || hs.loading) return;
-    const activeS = state.activeStreams[name];
-    if (activeS && activeS.thread === tid) return;
+    if (mgr.isStreamingForAnima(name)) {
+      const streamCtx = mgr.getStreamingContext(name);
+      if (streamCtx && streamCtx.thread === tid) return;
+    }
 
-    hs.loading = true;
     renderChat(false);
 
-    try {
-      const data = await fetchConversationHistory(name, CONSTANTS.HISTORY_PAGE_SIZE, hs.nextBefore, tid);
-      if (data && data.sessions && data.sessions.length > 0) {
-        hs.sessions = [...data.sessions, ...hs.sessions];
-        hs.hasMore = data.has_more || false;
-        hs.nextBefore = data.next_before || null;
-      } else {
-        hs.hasMore = false;
-      }
-    } catch (err) {
-      deps.logger.error("Failed to load older messages", { error: err.message });
-    }
-    hs.loading = false;
+    await mgr.loadMoreHistory(name, tid, CONSTANTS.HISTORY_PAGE_SIZE);
     renderChat(false);
   }
 
@@ -187,9 +178,8 @@ export function createChatRenderer(ctx) {
     const name = state.selectedAnima;
     const tid = state.selectedThreadId || "default";
     if (!name || state.chatPollingInFlight) return;
-    const activeS = state.activeStreams[name];
-    if (activeS && activeS.thread === tid) return;
-    if (Object.keys(state.activeStreams).length > 0 && state.activeStreams[name]) return;
+    const mgr = state.manager;
+    if (mgr.isStreamingForAnima(name)) return;
 
     state.chatPollingInFlight = true;
     try {
@@ -216,17 +206,10 @@ export function createChatRenderer(ctx) {
 
       if (!conv || !Array.isArray(conv.sessions)) return;
 
-      if (!state.historyState[name]) state.historyState[name] = {};
-      const prev = state.historyState[name][tid];
+      const { changed } = mgr.mergePolledHistory(name, tid, conv);
+      if (!changed) return;
 
-      const { changed, merged: mergedHs } = mergePolledHistory(prev, conv);
-      if (!changed && prev) return;
-
-      state.historyState[name][tid] = mergedHs;
-
-      if (state.chatHistories[name]?.[tid]) {
-        state.chatHistories[name][tid] = state.chatHistories[name][tid].filter(m => m.streaming);
-      }
+      mgr.keepOnlyStreaming(name, tid);
 
       const messagesEl = $("chatPageMessages");
       const shouldStick = messagesEl

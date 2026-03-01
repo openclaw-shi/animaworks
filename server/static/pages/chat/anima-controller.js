@@ -103,7 +103,7 @@ export function createAnimaController(ctx) {
 
     const html = state.animaTabs.map(tab => {
       const activeClass = tab.name === state.selectedAnima ? " active" : "";
-      const streamingClass = state.activeStreams[tab.name] ? " is-streaming" : "";
+      const streamingClass = state.manager.isStreamingForAnima(tab.name) ? " is-streaming" : "";
       const completedClass = tab.unreadStar ? " has-unread-complete" : "";
       const avatar = buildAnimaTabAvatar(tab.name);
       const closeBtn = state.animaTabs.length > 1
@@ -147,7 +147,6 @@ export function createAnimaController(ctx) {
     state.selectedAnima = name;
     state.animaLastAccess[name] = Date.now();
     state.bustupUrl = null;
-    state.pendingQueue = [];
     ctx.controllers.streaming.hidePendingIndicator();
     state.selectedThreadId = state.activeThreadByAnima[name] || "default";
     clearUnreadForActiveThread(ctx, name, state.selectedThreadId);
@@ -184,7 +183,9 @@ export function createAnimaController(ctx) {
 
     ctx.controllers.renderer.renderChat();
 
-    const needConv = !state.historyState[name]?.[tid] || state.historyState[name][tid].sessions.length === 0;
+    const mgr = state.manager;
+    const existingHs = mgr.getHistoryState(name, tid);
+    const needConv = !existingHs || existingHs.sessions.length === 0;
     const convPromise = needConv
       ? ctx.controllers.renderer.fetchConversationHistory(name, 50, null, tid).catch(() => null)
       : Promise.resolve(null);
@@ -195,14 +196,14 @@ export function createAnimaController(ctx) {
 
     if (gen !== _selectGen) return;
 
-    if (!state.historyState[name]) state.historyState[name] = {};
     if (conv && conv.sessions && conv.sessions.length > 0) {
-      state.historyState[name][tid] = {
-        sessions: conv.sessions, hasMore: conv.has_more || false,
-        nextBefore: conv.next_before || null, loading: false,
-      };
+      const { createHistoryState, applyHistoryData } = await import("../../shared/chat/session-manager.js");
+      const hs = createHistoryState();
+      applyHistoryData(hs, conv);
+      mgr.setHistoryState(name, tid, hs);
     } else if (needConv) {
-      state.historyState[name][tid] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
+      const { createHistoryState } = await import("../../shared/chat/session-manager.js");
+      mgr.setHistoryState(name, tid, createHistoryState());
     }
 
     if (sessionsData) mergeThreadsFromSessions(ctx, name, sessionsData);
@@ -319,7 +320,7 @@ export function createAnimaController(ctx) {
       restoreChatUiState(uiState);
       renderAddConversationMenu();
       renderAnimaTabs();
-      if (state.animas.length > 0 && !state.selectedAnima && Object.keys(state.activeStreams).length === 0) {
+      if (state.animas.length > 0 && !state.selectedAnima) {
         const firstTab = state.animaTabs[0]?.name;
         openOrSelectAnima(firstTab || state.animas[0].name);
       } else if (state.selectedAnima) {

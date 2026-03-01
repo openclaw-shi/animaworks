@@ -7,7 +7,7 @@ import { initBustup, setCharacter, setExpression, setTalking, onClick as onBustu
 import { createImageInput, initLightbox } from "../../shared/image-input.js";
 import { initTextArtifactHandlers } from "../../shared/text-artifact.js";
 
-import { initHistory, renderConvMessages, loadAndRenderConvMessages, disconnectScrollObserver, getHistoryState, refreshSentinel } from "./chat-history.js";
+import { initHistory, renderConvMessages, loadAndRenderConvMessages, disconnectScrollObserver, refreshSentinel } from "./chat-history.js";
 import { initStreaming, submitConversation, addToQueue, resumeConversationStream, wsUpdateSendButton, wsHidePendingIndicator, updateStreamingBubble } from "./chat-streaming.js";
 import { initThreads, renderWsThreadTabs } from "./chat-thread.js";
 import {
@@ -16,28 +16,43 @@ import {
   updateConvInputPlaceholder, wsSaveDraft, wsLoadDraft,
   triggerGreeting, buildVoiceChatCallbacks, initVoiceUI, updateVoiceUIAnima,
 } from "./chat-mobile.js";
+import { ChatSessionManager } from "../../shared/chat/session-manager.js";
+import { streamChat, fetchActiveStream, fetchStreamProgress } from "../../shared/chat-stream.js";
+import { getCurrentUser } from "./login.js";
+import { fetchConversationHistory } from "./api.js";
 
 export { submitConversation, addToQueue };
 
 // ── Module State ──────────────────────
 let _dom = {};
 let bustupInitialized = false;
-let convStreamController = null;
 let convImageInputManager = null;
-let convPendingQueue = [];
 
 // ── State Accessors ──────────────────────
 
 function _getDom() { return _dom; }
-function _getStreamController() { return convStreamController; }
-function _setStreamController(v) { convStreamController = v; }
 function _getImageManager() { return convImageInputManager; }
-function _getPendingQueue() { return convPendingQueue; }
+
+// ── Manager Setup ──────────────────────
+
+function _ensureManagerConfigured() {
+  const mgr = ChatSessionManager.getInstance();
+  mgr.configure({
+    streamChat, fetchActiveStream, fetchStreamProgress,
+    getUser: () => getCurrentUser() || "guest",
+    fetchHistory: async (animaName, limit, before, threadId) => {
+      return fetchConversationHistory(animaName, limit, before, threadId);
+    },
+  });
+  return mgr;
+}
 
 // ── Conversation Lifecycle ──────────────────────
 
 export async function openConversation(animaName) {
   if (!_dom.convOverlay) return;
+
+  _ensureManagerConfigured();
 
   wsSaveDraft();
   const wasVoiceActive = updateVoiceUIAnima(animaName);
@@ -100,20 +115,21 @@ export function closeConversation() {
   disconnectScrollObserver();
 
   const animaName = getState().conversationAnima;
-  const historyState = getHistoryState();
-  if (animaName) delete historyState[animaName];
+  if (animaName) {
+    const mgr = ChatSessionManager.getInstance();
+    mgr.destroyAllForAnima(animaName);
+  }
 
   setState({ conversationOpen: false, conversationAnima: null });
   setTalking(false);
 
-  convPendingQueue = [];
   wsHidePendingIndicator();
-
-  if (convStreamController) { convStreamController.abort(); convStreamController = null; }
 }
 
 export function isConvStreaming() {
-  return !!convStreamController;
+  const animaName = getState().conversationAnima;
+  if (!animaName) return false;
+  return ChatSessionManager.getInstance().isStreamingForAnima(animaName);
 }
 
 // ── Initialization ──────────────────────
@@ -121,17 +137,15 @@ export function isConvStreaming() {
 export function initChatController(dom) {
   _dom = dom;
 
+  _ensureManagerConfigured();
+
   initHistory({ getDom: _getDom });
   initStreaming({
     getDom: _getDom,
-    getStreamController: _getStreamController,
-    setStreamController: _setStreamController,
     getImageManager: _getImageManager,
-    getPendingQueue: _getPendingQueue,
   });
   initThreads({
     getDom: _getDom,
-    getHistoryState,
     renderConvMessages,
     refreshSentinel,
   });
@@ -158,9 +172,13 @@ export function initChatController(dom) {
   convInputWrap?.addEventListener("click", focusHandler);
 
   dom.convPendingCancel?.addEventListener("click", () => {
-    convPendingQueue = [];
+    const animaName = getState().conversationAnima;
+    if (animaName) {
+      const threadId = getState().activeThreadId || "default";
+      ChatSessionManager.getInstance().clearQueue(animaName, threadId);
+    }
     wsHidePendingIndicator();
-    wsUpdateSendButton(!!convStreamController);
+    wsUpdateSendButton(isConvStreaming());
   });
 
   dom.convInput?.addEventListener("input", () => {
@@ -168,7 +186,7 @@ export function initChatController(dom) {
     const maxH = isMobileView() ? 140 : 220;
     dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, maxH) + "px";
     wsSaveDraft();
-    wsUpdateSendButton(!!convStreamController);
+    wsUpdateSendButton(isConvStreaming());
   });
 
   if (dom.convAttachBtn && dom.convFileInput) {

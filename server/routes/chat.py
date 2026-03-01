@@ -837,7 +837,9 @@ def create_chat_router() -> APIRouter:
             last_event_id = body.last_event_id or request.headers.get("Last-Event-ID", "")
             return _handle_resume(registry, body.resume, last_event_id, name, from_person=body.from_person)
 
-        stream = registry.register(name, from_person=body.from_person)
+        stream = registry.register(
+            name, from_person=body.from_person, thread_id=body.thread_id,
+        )
 
         # Launch producer task (runs in background, independent of SSE)
         ws_manager = getattr(request.app.state, "ws_manager", None)
@@ -864,7 +866,8 @@ def create_chat_router() -> APIRouter:
     async def get_active_stream(name: str, request: Request):
         """Return the active (or most recent) stream for an anima."""
         registry: StreamRegistry = request.app.state.stream_registry
-        stream = registry.get_active(name)
+        thread_id = request.query_params.get("thread_id")
+        stream = registry.get_active(name, thread_id=thread_id)
         if stream is None:
             return JSONResponse({"active": False}, status_code=200)
         return {

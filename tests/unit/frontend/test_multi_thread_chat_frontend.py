@@ -23,6 +23,7 @@ CHAT_RENDERER_JS = PROJECT_ROOT / "server" / "static" / "pages" / "chat" / "chat
 WORKSPACE_APP_JS = PROJECT_ROOT / "server" / "static" / "workspace" / "modules" / "app.js"
 WORKSPACE_CHAT_THREAD_JS = PROJECT_ROOT / "server" / "static" / "workspace" / "modules" / "chat-thread.js"
 WORKSPACE_CHAT_STREAMING_JS = PROJECT_ROOT / "server" / "static" / "workspace" / "modules" / "chat-streaming.js"
+SESSION_MANAGER_JS = PROJECT_ROOT / "server" / "static" / "shared" / "chat" / "session-manager.js"
 WORKSPACE_STATE_JS = PROJECT_ROOT / "server" / "static" / "workspace" / "modules" / "state.js"
 CHAT_CSS = PROJECT_ROOT / "server" / "static" / "styles" / "chat.css"
 WORKSPACE_STYLE = PROJECT_ROOT / "server" / "static" / "workspace" / "style.css"
@@ -70,11 +71,11 @@ class TestChatJsThreadIdInSendChat:
     """Verify thread_id is included in send and fetch calls."""
 
     def test_send_chat_includes_thread_id_in_body(self) -> None:
-        """Streaming controller includes thread_id: tid in the body JSON."""
-        js = _read(CHAT_STREAMING_JS)
-        assert "thread_id: tid" in js
+        """Session manager includes thread_id: thread in the body JSON."""
+        js = _read(SESSION_MANAGER_JS)
+        assert "thread_id: thread" in js
         assert "bodyObj" in js or "body" in js
-        assert re.search(r"thread_id\s*:\s*tid", js)
+        assert re.search(r"thread_id\s*:\s*thread", js)
 
     def test_fetch_conversation_history_includes_thread_id_param(self) -> None:
         """Chat renderer includes thread_id parameter in URL."""
@@ -92,16 +93,14 @@ class TestChatJsChatHistoryRefactored:
     """Verify _chatHistories and _historyState use per-thread structure."""
 
     def test_render_chat_accesses_chat_histories_by_name_and_tid(self) -> None:
-        """Chat renderer accesses chatHistories[name]?.[tid]."""
+        """Chat renderer accesses messages via mgr.getMessages(name, tid)."""
         js = _read(CHAT_RENDERER_JS)
-        assert "chatHistories[name]" in js
-        assert "?.[tid]" in js or "chatHistories[name][tid]" in js
+        assert "mgr.getMessages(name, tid)" in js
 
     def test_render_chat_accesses_history_state_by_name_and_tid(self) -> None:
-        """History state is accessed as historyState[name]?.[tid]."""
+        """History state is accessed via mgr.getHistoryState(name, tid)."""
         js = _read(CHAT_RENDERER_JS)
-        assert "historyState[name]" in js
-        assert "?.[tid]" in js or "?.[threadId]" in js or "historyState[name][" in js
+        assert "mgr.getHistoryState(name, tid)" in js
 
 
 # ── TestWorkspaceStateFields ────────────────────────────────
@@ -141,10 +140,10 @@ class TestWorkspaceAppJsThreadTabs:
         assert "wsThreadTabs" in js or "threadTabs" in js
 
     def test_send_conversation_message_includes_thread_id_in_body(self) -> None:
-        """chat-streaming.js includes thread_id in the body."""
-        js = _read(WORKSPACE_CHAT_STREAMING_JS)
-        assert "thread_id" in js
-        assert re.search(r"thread_id\s*:\s*threadId", js)
+        """session-manager.js includes thread_id: thread in the body."""
+        js = _read(SESSION_MANAGER_JS)
+        assert "thread_id: thread" in js
+        assert re.search(r"thread_id\s*:\s*thread", js)
 
 
 # ── TestChatCssThreadStyles ──────────────────────────────────

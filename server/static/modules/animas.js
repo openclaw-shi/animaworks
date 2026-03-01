@@ -3,9 +3,7 @@
 import { state, dom, escapeHtml } from "./state.js";
 import { t } from "/shared/i18n.js";
 import { api } from "./api.js";
-import { renderChat, resumeActiveStream, loadConversationHistory, setupScrollObserver, updateVoiceAnima } from "./chat.js";
 import { loadMemoryTab } from "./memory.js";
-import { hideHistoryDetail, loadSessionList } from "./history.js";
 import { animaHashColor } from "../shared/avatar-utils.js";
 
 export async function loadAnimas() {
@@ -75,35 +73,14 @@ export async function selectAnima(name) {
   }
 
   state.selectedAnima = name;
-  updateVoiceAnima(name);
 
   // Update dropdown
   const dropdown = dom.animaDropdown || document.getElementById("animaDropdown");
   if (dropdown) dropdown.value = name;
 
-  // Enable chat
-  const chatInput = dom.chatInput || document.getElementById("chatInput");
-  const chatSendBtn = dom.chatSendBtn || document.getElementById("chatSendBtn");
-  if (chatInput) {
-    chatInput.disabled = false;
-    chatInput.placeholder = t("chat.message_to", { name });
-  }
-  if (chatSendBtn) chatSendBtn.disabled = false;
-
-  // Load conversation history (activity_log API) + anima detail in parallel
-  const convPromise = loadConversationHistory(name);
+  // Load anima detail
   const detailPromise = api(`/api/animas/${encodeURIComponent(name)}`).catch(() => null);
-
-  const [, detail] = await Promise.all([convPromise, detailPromise]);
-
-  // Setup infinite scroll observer for chat history
-  setupScrollObserver();
-
-  // Check if anima is currently processing — resume stream
-  const selectedAnimaObj = state.animas.find((p) => p.name === name);
-  if (selectedAnimaObj && (selectedAnimaObj.status === "thinking" || selectedAnimaObj.status === "processing")) {
-    resumeActiveStream(name);
-  }
+  const detail = await detailPromise;
 
   // Apply anima detail
   if (detail) {
@@ -117,13 +94,8 @@ export async function selectAnima(name) {
     if (memoryList) memoryList.innerHTML = `<div class="loading-placeholder">${t("animas.detail_load_failed")}</div>`;
   }
 
-  // Load memory, session list, and avatar in parallel
-  const secondaryPromises = [loadMemoryTab(state.activeMemoryTab), updateAnimaAvatar()];
-  if (state.activeRightTab === "history") {
-    hideHistoryDetail();
-    secondaryPromises.push(loadSessionList());
-  }
-  await Promise.all(secondaryPromises);
+  // Load memory and avatar in parallel
+  await Promise.all([loadMemoryTab(state.activeMemoryTab), updateAnimaAvatar()]);
 }
 
 // ── Anima Avatar ───────────────────────────

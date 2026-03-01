@@ -192,11 +192,11 @@ export function destroy() {
   state.boundListeners = [];
 
   if (state.chatObserver) { state.chatObserver.disconnect(); state.chatObserver = null; }
-  for (const [, s] of Object.entries(state.activeStreams)) {
-    if (s.abortController) s.abortController.abort();
+  if (state.manager) {
+    for (const anima of state.animas) {
+      state.manager.destroyAllForAnima(anima.name);
+    }
   }
-  state.activeStreams = {};
-  state.pendingQueue = [];
   _ctx.controllers.avatar.removeBustupOverlay();
 
   // Reset all state
@@ -204,8 +204,6 @@ export function destroy() {
   state.container = null;
   state.animas = [];
   state.selectedAnima = null;
-  state.chatHistories = {};
-  state.historyState = {};
   state.animaTabs = [];
   state.selectedThreadId = "default";
   state.threads = {};

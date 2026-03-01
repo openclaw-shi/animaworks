@@ -1,27 +1,25 @@
 // ── Workspace Chat Threads ──────────────────────
 // Thread tab rendering, selection, creation, and closing.
+// Now delegates history state to ChatSessionManager.
 
 import { getState, setState } from "./state.js";
-import { fetchConversationHistory } from "./api.js";
 import { escapeHtml } from "./utils.js";
 import {
   renderThreadTabsHtml, createThread as sharedCreateThread,
   closeThread as sharedCloseThread,
 } from "../../shared/chat/thread-logic.js";
-import { createHistoryState, applyHistoryData } from "../../shared/chat/history-loader.js";
+import { ChatSessionManager } from "../../shared/chat/session-manager.js";
 import { HISTORY_PAGE_SIZE } from "./chat-history.js";
 
 // ── Module State ──────────────────────
 let _getDom = () => ({});
-let _getHistoryState = () => ({});
 let _renderConvMessages = () => {};
 let _refreshSentinel = () => {};
 
 // ── Init ──────────────────────
 
-export function initThreads({ getDom, getHistoryState, renderConvMessages, refreshSentinel }) {
+export function initThreads({ getDom, renderConvMessages, refreshSentinel }) {
   _getDom = getDom;
-  _getHistoryState = getHistoryState;
   _renderConvMessages = renderConvMessages;
   _refreshSentinel = refreshSentinel;
 }
@@ -70,22 +68,12 @@ export async function selectWsThread(threadId) {
   const animaName = getState().conversationAnima;
   if (!animaName) return;
 
-  const historyState = _getHistoryState();
-  const hs = historyState[animaName]?.[threadId];
+  const mgr = ChatSessionManager.getInstance();
+  const hs = mgr.getHistoryState(animaName, threadId);
   const needLoad = !hs || hs.sessions.length === 0;
 
   if (needLoad) {
-    if (!historyState[animaName]) historyState[animaName] = {};
-    historyState[animaName][threadId] = { ...createHistoryState(), loading: true };
-    _renderConvMessages();
-
-    try {
-      const data = await fetchConversationHistory(animaName, HISTORY_PAGE_SIZE, null, threadId);
-      historyState[animaName][threadId] = createHistoryState();
-      applyHistoryData(historyState[animaName][threadId], data);
-    } catch {
-      historyState[animaName][threadId] = createHistoryState();
-    }
+    await mgr.loadHistory(animaName, threadId, HISTORY_PAGE_SIZE);
   }
 
   _renderConvMessages();
@@ -96,20 +84,15 @@ export function createWsNewThread() {
   const animaName = getState().conversationAnima;
   if (!animaName) return;
 
-  const { threads, chatMessagesByThread } = getState();
+  const { threads } = getState();
   const list = threads[animaName] || [{ id: "default", label: "メイン", unread: false }];
   const { updatedList, newThreadId } = sharedCreateThread(list, animaName);
 
   const nextThreads = { ...threads, [animaName]: updatedList };
-  const nextByThread = { ...chatMessagesByThread };
-  if (!nextByThread[animaName]) nextByThread[animaName] = {};
-  nextByThread[animaName][newThreadId] = [];
+  setState({ threads: nextThreads, activeThreadId: newThreadId });
 
-  setState({ threads: nextThreads, chatMessagesByThread: nextByThread, activeThreadId: newThreadId });
-
-  const historyState = _getHistoryState();
-  if (!historyState[animaName]) historyState[animaName] = {};
-  historyState[animaName][newThreadId] = createHistoryState();
+  const mgr = ChatSessionManager.getInstance();
+  mgr.setMessages(animaName, newThreadId, []);
 
   renderWsThreadTabs();
   _renderConvMessages();
@@ -121,25 +104,18 @@ export function closeWsThread(threadId) {
   const animaName = getState().conversationAnima;
   if (!animaName) return;
 
-  const { threads, chatMessagesByThread, activeThreadId } = getState();
+  const { threads, activeThreadId } = getState();
   const list = threads[animaName];
   if (!list || !list.some(t => t.id === threadId)) return;
 
   const nextList = sharedCloseThread(list, threadId);
   const nextThreads = { ...threads, [animaName]: nextList };
-  const nextByThread = { ...chatMessagesByThread };
-  if (nextByThread[animaName]) {
-    const { [threadId]: _, ...rest } = nextByThread[animaName];
-    nextByThread[animaName] = rest;
-  }
 
-  const historyState = _getHistoryState();
-  delete historyState[animaName]?.[threadId];
+  ChatSessionManager.getInstance().destroySession(animaName, threadId);
 
   const switchToDefault = activeThreadId === threadId;
   setState({
     threads: nextThreads,
-    chatMessagesByThread: nextByThread,
     ...(switchToDefault ? { activeThreadId: "default" } : {}),
   });
 

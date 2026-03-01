@@ -1,46 +1,45 @@
 // ── Workspace Chat Streaming ──────────────────────
 // Message sending, streaming connection/resume, send button UI, queue management.
+// Now delegates stream/queue state to ChatSessionManager; keeps Live2D hooks.
 
 import { getState, setState } from "./state.js";
 import { getCurrentUser } from "./login.js";
 import { escapeHtml } from "./utils.js";
 import { setExpression, setTalking } from "./live2d.js";
-import { streamChat, fetchActiveStream, fetchStreamProgress } from "../../shared/chat-stream.js";
 import { createLogger } from "../../shared/logger.js";
 import { renderConvMessages, renderOpts } from "./chat-history.js";
 import { renderStreamingBubbleInner } from "../../shared/chat/render-utils.js";
 import { renderWsThreadTabs } from "./chat-thread.js";
 import { wsSaveDraft, wsClearDraft, isMobileView } from "./chat-mobile.js";
+import { ChatSessionManager } from "../../shared/chat/session-manager.js";
 
 const logger = createLogger("ws-chat-streaming");
 let _getDom = () => ({});
-let _getStreamController = () => null;
-let _setStreamController = (_v) => {};
 let _getImageManager = () => null;
-let _getPendingQueue = () => [];
 let _convRafPending = false;
 let _convLatestStreamingMsg = null;
 
-export function initStreaming({ getDom, getStreamController, setStreamController, getImageManager, getPendingQueue }) {
-  _getDom = getDom; _getStreamController = getStreamController; _setStreamController = setStreamController;
-  _getImageManager = getImageManager; _getPendingQueue = getPendingQueue;
+export function initStreaming({ getDom, getImageManager }) {
+  _getDom = getDom;
+  _getImageManager = getImageManager;
 }
 
-function _commitThread(animaName, threadId) {
+function _mgr() { return ChatSessionManager.getInstance(); }
+
+function _animaThread() {
   const st = getState();
-  const arr = st.chatMessagesByThread?.[animaName]?.[threadId] || [];
-  const nbt = { ...st.chatMessagesByThread };
-  if (!nbt[animaName]) nbt[animaName] = {};
-  nbt[animaName] = { ...nbt[animaName], [threadId]: [...arr] };
-  setState({ chatMessagesByThread: nbt });
+  return { anima: st.conversationAnima, thread: st.activeThreadId || "default" };
 }
 
 function _drainQueue() {
-  const q = _getPendingQueue();
+  const { anima, thread } = _animaThread();
+  if (!anima) return;
+  const mgr = _mgr();
+  const q = mgr.getPendingQueue(anima, thread);
   if (q.length === 0) return;
-  const next = q.shift();
+  const next = mgr.dequeue(anima, thread);
   wsShowPendingIndicator();
-  if (q.length === 0) wsHidePendingIndicator();
+  if (mgr.getPendingQueue(anima, thread).length === 0) wsHidePendingIndicator();
   setTimeout(() => _sendConversation(next.text, { images: next.images, displayImages: next.displayImages }), 150);
 }
 
@@ -56,20 +55,18 @@ function _baseCallbacks(streamingMsg) {
   };
 }
 
-function _finalize(msg, animaName, threadId) {
-  msg.streaming = false;
-  if (!msg.text) msg.text = "(空の応答)";
-  _commitThread(animaName, threadId); renderConvMessages();
-}
-
 function _enqueueInput() {
   const dom = _getDom();
   const text = dom.convInput?.value?.trim();
   const im = _getImageManager();
   const hasImages = im && im.getImageCount() > 0;
   if (!text && !hasImages) return null;
+
+  const { anima, thread } = _animaThread();
+  if (!anima) return null;
+
   const entry = { text: text || "", images: im?.getPendingImages() || [], displayImages: im?.getDisplayImages() || [] };
-  _getPendingQueue().push(entry);
+  _mgr().enqueue(anima, thread, entry);
   if (dom.convInput) { dom.convInput.value = ""; dom.convInput.style.height = "auto"; }
   wsSaveDraft(); im?.clearImages();
   return entry;
@@ -93,14 +90,18 @@ export function updateStreamingBubble(msg) {
 }
 
 export function submitConversation() {
-  const isStreaming = !!_getStreamController();
-  const q = _getPendingQueue();
+  const { anima, thread } = _animaThread();
+  if (!anima) return;
+  const mgr = _mgr();
+  const isStreaming = mgr.isStreamingForAnima(anima);
+
   if (!isStreaming) {
     _enqueueInput();
+    const q = mgr.getPendingQueue(anima, thread);
     if (q.length === 0) return;
-    const next = q.shift();
+    const next = mgr.dequeue(anima, thread);
     wsShowPendingIndicator();
-    if (q.length === 0) wsHidePendingIndicator();
+    if (mgr.getPendingQueue(anima, thread).length === 0) wsHidePendingIndicator();
     _sendConversation(next.text, { images: next.images, displayImages: next.displayImages });
     return;
   }
@@ -110,7 +111,8 @@ export function submitConversation() {
 
 export function addToQueue() {
   if (!_enqueueInput()) return;
-  wsShowPendingIndicator(); wsUpdateSendButton(!!_getStreamController());
+  const { anima } = _animaThread();
+  wsShowPendingIndicator(); wsUpdateSendButton(anima ? _mgr().isStreamingForAnima(anima) : false);
 }
 
 async function _sendConversation(text, overrideImages = null) {
@@ -119,122 +121,131 @@ async function _sendConversation(text, overrideImages = null) {
   const images = overrideImages?.images || im?.getPendingImages() || [];
   const displayImages = overrideImages?.displayImages || im?.getDisplayImages() || [];
   if (!text && images.length === 0) return;
-  const animaName = getState().conversationAnima;
-  const threadId = getState().activeThreadId || "default";
-  if (!animaName) return;
+  const { anima, thread } = _animaThread();
+  if (!anima) return;
 
   dom.convInput.value = ""; dom.convInput.disabled = true; dom.convSend.disabled = true;
-  const { chatMessagesByThread } = getState();
-  const current = chatMessagesByThread?.[animaName]?.[threadId] || [];
-  const sendTs = new Date().toISOString();
-  const userMsg = { role: "user", text: text || "", images: displayImages, timestamp: sendTs };
-  const streamingMsg = { role: "assistant", text: "", streaming: true, activeTool: null, timestamp: sendTs, thinkingText: "", thinking: false };
-  const nbt = { ...chatMessagesByThread };
-  if (!nbt[animaName]) nbt[animaName] = {};
-  nbt[animaName][threadId] = [...current, userMsg, streamingMsg];
-  setState({ chatMessagesByThread: nbt }); renderConvMessages();
   if (!overrideImages) im?.clearImages();
-  const ctrl = new AbortController();
-  _setStreamController(ctrl); wsUpdateSendButton(true);
+  wsUpdateSendButton(true);
 
-  try {
-    const bodyObj = { message: text || "", from_person: getCurrentUser() || "guest", thread_id: threadId };
-    if (images.length > 0) bodyObj.images = images;
-    let talkingStarted = false;
-    await streamChat(animaName, JSON.stringify(bodyObj), ctrl.signal, {
-      ..._baseCallbacks(streamingMsg),
+  const mgr = _mgr();
+  let talkingStarted = false;
+
+  const { streamingMsg, success, error } = await mgr.sendChat(anima, thread, text, {
+    images,
+    displayImages,
+    callbacks: {
       onTextDelta: (d) => {
+        if (!streamingMsg?.streaming) return;
         streamingMsg.afterHeartbeatRelay = false;
         if (!talkingStarted) { setTalking(true); setExpression("neutral"); talkingStarted = true; }
         streamingMsg.text += d; scheduleStreamingUpdate(streamingMsg);
       },
-      onHeartbeatRelayStart: () => { streamingMsg.heartbeatRelay = true; streamingMsg.heartbeatText = ""; scheduleStreamingUpdate(streamingMsg); },
-      onHeartbeatRelay: ({ text: t }) => { streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + t; scheduleStreamingUpdate(streamingMsg); },
-      onHeartbeatRelayDone: () => { streamingMsg.heartbeatRelay = false; streamingMsg.heartbeatText = ""; streamingMsg.afterHeartbeatRelay = true; scheduleStreamingUpdate(streamingMsg); },
+      onCompressionStart: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = true; updateStreamingBubble(streamingMsg); } },
+      onCompressionEnd: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = false; updateStreamingBubble(streamingMsg); } },
+      onToolStart: (n) => { if (streamingMsg?.streaming) { streamingMsg.activeTool = n; setExpression("thinking"); updateStreamingBubble(streamingMsg); } },
+      onToolEnd: () => { if (streamingMsg?.streaming) { streamingMsg.activeTool = null; setExpression("neutral"); updateStreamingBubble(streamingMsg); } },
+      onThinkingStart: () => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = ""; streamingMsg.thinking = true; updateStreamingBubble(streamingMsg); } },
+      onThinkingDelta: (t) => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + t; scheduleStreamingUpdate(streamingMsg); } },
+      onThinkingEnd: () => { if (streamingMsg?.streaming) { streamingMsg.thinking = false; updateStreamingBubble(streamingMsg); } },
+      onHeartbeatRelayStart: () => { if (streamingMsg?.streaming) { streamingMsg.heartbeatRelay = true; streamingMsg.heartbeatText = ""; scheduleStreamingUpdate(streamingMsg); } },
+      onHeartbeatRelay: ({ text: t }) => { if (streamingMsg?.streaming) { streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + t; scheduleStreamingUpdate(streamingMsg); } },
+      onHeartbeatRelayDone: () => { if (streamingMsg?.streaming) { streamingMsg.heartbeatRelay = false; streamingMsg.heartbeatText = ""; streamingMsg.afterHeartbeatRelay = true; scheduleStreamingUpdate(streamingMsg); } },
       onDone: ({ summary, emotion, images: di }) => {
-        if (summary) { streamingMsg.text = summary; updateStreamingBubble(streamingMsg); }
-        streamingMsg.images = di || [];
+        if (streamingMsg) {
+          if (summary) { streamingMsg.text = summary; updateStreamingBubble(streamingMsg); }
+          streamingMsg.images = di || [];
+          streamingMsg.streaming = false; streamingMsg.activeTool = null;
+        }
         setExpression(emotion); setTimeout(() => setExpression("neutral"), 3000);
       },
-      onError: ({ message: m }) => { setExpression("troubled"); streamingMsg.text += `\n[エラー: ${m}]`; updateStreamingBubble(streamingMsg); },
-    });
-    setTalking(false);
-    _finalize(streamingMsg, animaName, threadId);
-    const st = getState();
-    const threadList = st.threads[animaName] || [];
-    const entry = threadList.find(t => t.id === threadId);
-    if (entry && entry.label === "新しいスレッド" && (text || "").trim()) {
-      const lbl = (text || "").trim().slice(0, 20) + ((text || "").trim().length > 20 ? "..." : "");
-      setState({ threads: { ...st.threads, [animaName]: threadList.map(t => t.id === threadId ? { ...t, label: lbl } : t) } });
-      renderWsThreadTabs();
-    }
-    if (dom.convInput && dom.convInput.value.trim() === text.trim()) {
-      dom.convInput.value = ""; dom.convInput.style.height = "auto"; wsClearDraft(animaName);
-    }
-  } catch (err) {
-    if (err.name === "AbortError") {
-      streamingMsg.streaming = false; streamingMsg.activeTool = null;
-      if (!streamingMsg.text) streamingMsg.text = "(中断されました)";
-    } else {
-      logger.error("Conversation stream error", { anima: animaName, error: err.message });
-      streamingMsg.text = `[エラー] ${err.message}`; streamingMsg.streaming = false; streamingMsg.activeTool = null;
-      setExpression("troubled");
-    }
-    setTalking(false); _commitThread(animaName, threadId); renderConvMessages();
-  } finally {
-    if (dom.convInput) dom.convInput.disabled = false;
-    _setStreamController(null); wsUpdateSendButton(false); wsSaveDraft(); dom.convInput?.focus();
-    _drainQueue();
+      onError: ({ message: m }) => {
+        setExpression("troubled");
+        if (streamingMsg) { streamingMsg.text += `\n[エラー: ${m}]`; updateStreamingBubble(streamingMsg); }
+      },
+      onAbort: () => {
+        if (streamingMsg) {
+          streamingMsg.streaming = false; streamingMsg.activeTool = null;
+          if (!streamingMsg.text) streamingMsg.text = "(中断されました)";
+        }
+      },
+    },
+    onFinally: () => {
+      setTalking(false);
+      if (streamingMsg?.streaming) {
+        streamingMsg.streaming = false;
+        if (!streamingMsg.text) streamingMsg.text = "(空の応答)";
+      }
+      renderConvMessages();
+      if (dom.convInput) dom.convInput.disabled = false;
+      wsUpdateSendButton(false); wsSaveDraft(); dom.convInput?.focus();
+
+      const st = getState();
+      const threadList = st.threads[anima] || [];
+      const entry = threadList.find(t => t.id === thread);
+      if (entry && entry.label === "新しいスレッド" && (text || "").trim()) {
+        const lbl = (text || "").trim().slice(0, 20) + ((text || "").trim().length > 20 ? "..." : "");
+        setState({ threads: { ...st.threads, [anima]: threadList.map(t => t.id === thread ? { ...t, label: lbl } : t) } });
+        renderWsThreadTabs();
+      }
+
+      _drainQueue();
+    },
+  });
+
+  renderConvMessages();
+
+  if (!success && error && error.name !== "AbortError") {
+    logger.error("Conversation stream error", { anima, error: error.message });
+    setExpression("troubled");
   }
 }
 
 export async function resumeConversationStream(animaName) {
-  if (_getStreamController()) return;
+  const mgr = _mgr();
+  if (mgr.isStreamingForAnima(animaName)) return;
   const dom = _getDom();
-  try {
-    const active = await fetchActiveStream(animaName);
-    if (!active || active.status !== "streaming") return;
-    const progress = await fetchStreamProgress(animaName, active.response_id);
-    if (!progress) return;
-    const { activeThreadId, chatMessagesByThread } = getState();
-    const threadId = activeThreadId || "default";
-    const current = chatMessagesByThread?.[animaName]?.[threadId] || [];
-    const last = current.length > 0 ? current[current.length - 1] : null;
-    let streamingMsg = (last && last.role === "assistant" && last.streaming) ? last : null;
-    if (!streamingMsg) {
-      streamingMsg = { role: "assistant", text: progress.full_text || "", streaming: true, activeTool: progress.active_tool || null };
-    } else {
-      Object.assign(streamingMsg, { text: progress.full_text || streamingMsg.text || "", activeTool: progress.active_tool || streamingMsg.activeTool || null, streaming: true });
-    }
-    const nbt = { ...chatMessagesByThread };
-    if (!nbt[animaName]) nbt[animaName] = {};
-    nbt[animaName][threadId] = streamingMsg === last ? [...current] : [...current, streamingMsg];
-    setState({ chatMessagesByThread: nbt }); renderConvMessages();
-    const ctrl = new AbortController();
-    _setStreamController(ctrl); wsUpdateSendButton(true);
-    const resumeBody = JSON.stringify({ message: "", from_person: getCurrentUser() || "guest", resume: active.response_id, last_event_id: progress.last_event_id || "" });
-    await streamChat(animaName, resumeBody, ctrl.signal, {
-      ..._baseCallbacks(streamingMsg),
-      onTextDelta: (d) => { streamingMsg.text += d; scheduleStreamingUpdate(streamingMsg); },
+  const threadId = getState().activeThreadId || "default";
+
+  wsUpdateSendButton(true);
+
+  const { streamingMsg, success, error } = await mgr.resumeStream(animaName, threadId, {
+    callbacks: {
+      onTextDelta: (d) => { if (streamingMsg?.streaming) { streamingMsg.text += d; scheduleStreamingUpdate(streamingMsg); } },
+      onCompressionStart: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = true; updateStreamingBubble(streamingMsg); } },
+      onCompressionEnd: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = false; updateStreamingBubble(streamingMsg); } },
+      onToolStart: (n) => { if (streamingMsg?.streaming) { streamingMsg.activeTool = n; setExpression("thinking"); updateStreamingBubble(streamingMsg); } },
+      onToolEnd: () => { if (streamingMsg?.streaming) { streamingMsg.activeTool = null; setExpression("neutral"); updateStreamingBubble(streamingMsg); } },
+      onThinkingStart: () => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = ""; streamingMsg.thinking = true; updateStreamingBubble(streamingMsg); } },
+      onThinkingDelta: (t) => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + t; scheduleStreamingUpdate(streamingMsg); } },
+      onThinkingEnd: () => { if (streamingMsg?.streaming) { streamingMsg.thinking = false; updateStreamingBubble(streamingMsg); } },
       onDone: ({ summary, emotion, images: di }) => {
-        if (summary) streamingMsg.text = summary;
-        streamingMsg.images = di || [];
-        _finalize(streamingMsg, animaName, threadId);
+        if (streamingMsg) {
+          if (summary) streamingMsg.text = summary;
+          streamingMsg.images = di || [];
+          streamingMsg.streaming = false; streamingMsg.activeTool = null;
+        }
         setExpression(emotion); setTimeout(() => setExpression("neutral"), 3000);
       },
       onError: ({ message: m }) => {
-        streamingMsg.text += `\n[エラー: ${m}]`;
-        _finalize(streamingMsg, animaName, threadId); setExpression("troubled");
+        if (streamingMsg) { streamingMsg.text += `\n[エラー: ${m}]`; streamingMsg.streaming = false; }
+        setExpression("troubled");
       },
-    });
-    setTalking(false);
-    if (streamingMsg.streaming) _finalize(streamingMsg, animaName, threadId);
-  } catch (err) {
-    if (err.name !== "AbortError") logger.error("Resume stream error", { anima: animaName, error: err.message });
-  } finally {
-    _setStreamController(null); wsUpdateSendButton(false); dom.convInput?.focus();
-    _drainQueue();
-  }
+    },
+    onFinally: () => {
+      setTalking(false);
+      if (streamingMsg?.streaming) {
+        streamingMsg.streaming = false;
+        if (!streamingMsg.text) streamingMsg.text = "(空の応答)";
+      }
+      renderConvMessages();
+      wsUpdateSendButton(false); dom.convInput?.focus();
+      _drainQueue();
+    },
+  });
+
+  if (streamingMsg) renderConvMessages();
+  if (!success && !streamingMsg) wsUpdateSendButton(false);
 }
 
 // ── Send Button / Pending Queue UI ──────────────────────
@@ -246,7 +257,10 @@ const _ICONS = {
 };
 
 export function wsUpdateSendButton(isStreaming) {
-  const dom = _getDom(), q = _getPendingQueue();
+  const dom = _getDom();
+  const { anima, thread } = _animaThread();
+  const mgr = _mgr();
+  const q = anima ? mgr.getPendingQueue(anima, thread) : [];
   const hasInput = (dom.convInput?.value?.trim() || "").length > 0;
   if (dom.convQueueBtn) dom.convQueueBtn.disabled = !hasInput;
   if (!dom.convSend) return;
@@ -258,7 +272,11 @@ export function wsUpdateSendButton(isStreaming) {
 }
 
 export function wsShowPendingIndicator() {
-  const dom = _getDom(), q = _getPendingQueue();
+  const dom = _getDom();
+  const { anima, thread } = _animaThread();
+  if (!anima) return;
+  const mgr = _mgr();
+  const q = mgr.getPendingQueue(anima, thread);
   if (!dom.convPending || !dom.convPendingList) return;
   if (q.length === 0) { dom.convPending.style.display = "none"; return; }
   if (dom.convPendingLabel) dom.convPendingLabel.textContent = `キュー (${q.length})`;
@@ -270,16 +288,22 @@ export function wsShowPendingIndicator() {
   dom.convPending.style.display = "";
   dom.convPendingList.onclick = (e) => {
     const delBtn = e.target.closest(".pending-queue-item-del");
-    if (delBtn) { e.stopPropagation(); q.splice(parseInt(delBtn.dataset.idx, 10), 1); wsShowPendingIndicator(); wsUpdateSendButton(!!_getStreamController()); return; }
+    if (delBtn) {
+      e.stopPropagation();
+      mgr.removeFromQueue(anima, thread, parseInt(delBtn.dataset.idx, 10));
+      wsShowPendingIndicator();
+      wsUpdateSendButton(mgr.isStreamingForAnima(anima));
+      return;
+    }
     const item = e.target.closest(".pending-queue-item");
     if (!item) return;
-    const removed = q.splice(parseInt(item.dataset.idx, 10), 1)[0];
+    const removed = mgr.removeFromQueue(anima, thread, parseInt(item.dataset.idx, 10));
     if (removed && dom.convInput) {
       dom.convInput.value = removed.text; dom.convInput.style.height = "auto";
       dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, isMobileView() ? 100 : 120) + "px";
       dom.convInput.focus();
     }
-    wsShowPendingIndicator(); wsUpdateSendButton(!!_getStreamController());
+    wsShowPendingIndicator(); wsUpdateSendButton(mgr.isStreamingForAnima(anima));
   };
 }
 
@@ -291,7 +315,5 @@ export function wsHidePendingIndicator() {
 export function wsStopStreaming() {
   const animaName = getState().conversationAnima;
   if (!animaName) return;
-  const ctrl = _getStreamController();
-  if (ctrl) ctrl.abort();
-  fetch(`/api/animas/${encodeURIComponent(animaName)}/interrupt`, { method: "POST" }).catch(() => {});
+  _mgr().stopStreaming(animaName);
 }

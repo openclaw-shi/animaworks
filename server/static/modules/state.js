@@ -8,7 +8,7 @@ export const state = {
   animas: [],            // AnimaStatus[]
   selectedAnima: null,   // string (name)
   animaDetail: null,     // full detail object
-  chatHistories: {},      // { [name]: [{role, text}] }
+  // chatHistories removed — now managed by ChatSessionManager
   activeMemoryTab: "episodes",
   activeRightTab: "state",
   wsConnected: false,

@@ -62,26 +62,13 @@ export function createThreadController(ctx) {
     const name = state.selectedAnima;
     if (!name) return;
 
-    const hs = state.historyState[name]?.[threadId];
+    const mgr = state.manager;
+    const hs = mgr.getHistoryState(name, threadId);
     const needLoad = !hs || hs.sessions.length === 0;
     ctx.controllers.renderer.renderChat();
 
     if (needLoad) {
-      try {
-        const conv = await ctx.controllers.renderer.fetchConversationHistory(name, CONSTANTS.HISTORY_PAGE_SIZE, null, threadId);
-        if (!state.historyState[name]) state.historyState[name] = {};
-        if (conv && conv.sessions && conv.sessions.length > 0) {
-          state.historyState[name][threadId] = {
-            sessions: conv.sessions, hasMore: conv.has_more || false,
-            nextBefore: conv.next_before || null, loading: false,
-          };
-        } else {
-          state.historyState[name][threadId] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
-        }
-      } catch {
-        if (!state.historyState[name]) state.historyState[name] = {};
-        state.historyState[name][threadId] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
-      }
+      await mgr.loadHistory(name, threadId, CONSTANTS.HISTORY_PAGE_SIZE);
     }
     ctx.controllers.renderer.renderChat();
     scheduleSaveChatUiState(ctx);
@@ -93,11 +80,7 @@ export function createThreadController(ctx) {
     const { updatedList, newThreadId } = sharedCreateThread(list, state.selectedAnima);
     state.threads[state.selectedAnima] = updatedList;
 
-    if (!state.chatHistories[state.selectedAnima]) state.chatHistories[state.selectedAnima] = {};
-    state.chatHistories[state.selectedAnima][newThreadId] = [];
-
-    if (!state.historyState[state.selectedAnima]) state.historyState[state.selectedAnima] = {};
-    state.historyState[state.selectedAnima][newThreadId] = { sessions: [], hasMore: false, nextBefore: null, loading: false };
+    state.manager.setMessages(state.selectedAnima, newThreadId, []);
 
     renderThreadTabs();
     selectThread(newThreadId);
@@ -111,8 +94,7 @@ export function createThreadController(ctx) {
     if (!list.some(th => th.id === threadId)) return;
 
     state.threads[state.selectedAnima] = sharedCloseThread(list, threadId);
-    delete state.chatHistories[state.selectedAnima]?.[threadId];
-    delete state.historyState[state.selectedAnima]?.[threadId];
+    state.manager.destroySession(state.selectedAnima, threadId);
 
     if (state.selectedThreadId === threadId) {
       state.selectedThreadId = "default";

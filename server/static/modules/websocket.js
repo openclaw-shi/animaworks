@@ -5,7 +5,7 @@ import { state, dom } from "./state.js";
 import { addActivity } from "./activity.js";
 import { renderAnimaDropdown, updateAnimaAvatar, refreshSelectedAnima } from "./animas.js";
 import { updateSystemStatus } from "./status.js";
-import { renderChat } from "./chat.js";
+import { ChatSessionManager } from "../shared/chat/session-manager.js";
 import { createLogger } from "../shared/logger.js";
 
 const logger = createLogger("websocket");
@@ -133,17 +133,11 @@ function handleWsMessage(raw) {
       const animaName = data.anima || data.name;
       const response = data.response || data.message;
       if (animaName && response) {
-        if (state.chatHistories[animaName]) {
-          const history = state.chatHistories[animaName];
-          const isStreaming = history.some((m) => m.streaming);
-          if (isStreaming) break;
-          const thinkIdx = history.findIndex((m) => m.role === "thinking");
-          if (thinkIdx !== -1) history.splice(thinkIdx, 1);
-          const last = history[history.length - 1];
-          if (!last || last.text !== response) {
-            history.push({ role: "assistant", text: response });
-          }
-          if (animaName === state.selectedAnima) renderChat();
+        const mgr = ChatSessionManager.getInstance();
+        if (!mgr.isStreamingForAnima(animaName)) {
+          mgr.addMessage(animaName, "default", {
+            role: "assistant", text: response, timestamp: new Date().toISOString(),
+          });
         }
         addActivity("chat", animaName, `応答: ${response.slice(0, 100)}`);
       }
@@ -220,25 +214,17 @@ function handleWsMessage(raw) {
     }
 
     case "anima.proactive_message": {
-      // Proactive message from call_human — insert into chat conversation
       const pmAnimaName = data.anima || data.name;
       const pmSubject = data.subject || "";
       const pmBody = data.body || "";
       const pmPriority = data.priority || "normal";
       if (pmAnimaName) {
-        if (!state.chatHistories[pmAnimaName]) {
-          state.chatHistories[pmAnimaName] = [];
-        }
+        const mgr = ChatSessionManager.getInstance();
         const pmText = pmSubject ? `**${pmSubject}**\n${pmBody}` : pmBody;
-        state.chatHistories[pmAnimaName].push({
-          role: "assistant",
-          text: pmText,
-          proactive: true,
-          priority: pmPriority,
+        mgr.addMessage(pmAnimaName, "default", {
+          role: "assistant", text: pmText, proactive: true,
+          priority: pmPriority, timestamp: new Date().toISOString(),
         });
-        if (pmAnimaName === state.selectedAnima) {
-          renderChat();
-        }
       }
       break;
     }

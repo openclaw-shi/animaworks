@@ -9,6 +9,7 @@ import { initVoiceUI, destroyVoiceUI, updateVoiceUIAnima } from "../../modules/v
 import { SwipeHandler } from "../../modules/touch.js";
 import { getDraftKey, saveDraft, loadDraft, clearDraft } from "../../shared/chat/draft.js";
 import { createLogger } from "../../shared/logger.js";
+import { ChatSessionManager } from "../../shared/chat/session-manager.js";
 
 const logger = createLogger("ws-chat-mobile");
 
@@ -146,18 +147,11 @@ export async function triggerGreeting(animaName, { renderConvMessages }) {
     _lastGreetTime[animaName] = Date.now();
     const now = new Date().toISOString();
 
-    const { conversationAnima, activeThreadId, chatMessagesByThread } = getState();
+    const { conversationAnima, activeThreadId } = getState();
     const threadId = activeThreadId || "default";
-    const current = chatMessagesByThread?.[conversationAnima]?.[threadId] || [];
-    const newMessages = [
-      ...current,
-      { role: "system", text: "デスクを訪問しました", timestamp: now },
-      { role: "assistant", text: data.response, timestamp: now },
-    ];
-    const nextByThread = { ...chatMessagesByThread };
-    if (!nextByThread[conversationAnima]) nextByThread[conversationAnima] = {};
-    nextByThread[conversationAnima][threadId] = newMessages;
-    setState({ chatMessagesByThread: nextByThread });
+    const mgr = ChatSessionManager.getInstance();
+    mgr.addMessage(conversationAnima, threadId, { role: "system", text: "デスクを訪問しました", timestamp: now });
+    mgr.addMessage(conversationAnima, threadId, { role: "assistant", text: data.response, timestamp: now });
     renderConvMessages();
 
     if (data.emotion) {
@@ -174,40 +168,27 @@ export async function triggerGreeting(animaName, { renderConvMessages }) {
 // ── Voice Chat Callbacks ──────────────────────
 
 export function buildVoiceChatCallbacks(animaName, { renderConvMessages, updateStreamingBubble }) {
+  const mgr = ChatSessionManager.getInstance();
+
   return {
     addUserBubble(text) {
-      const { conversationAnima, activeThreadId, chatMessagesByThread } = getState();
+      const { conversationAnima, activeThreadId } = getState();
       const threadId = activeThreadId || "default";
-      const current = chatMessagesByThread?.[conversationAnima]?.[threadId] || [];
       const ts = new Date().toISOString();
-      const nextByThread = { ...chatMessagesByThread };
-      if (!nextByThread[conversationAnima]) nextByThread[conversationAnima] = {};
-      nextByThread[conversationAnima][threadId] = [...current, { role: "user", text, timestamp: ts }];
-      setState({ chatMessagesByThread: nextByThread });
+      mgr.addMessage(conversationAnima, threadId, { role: "user", text, timestamp: ts });
       renderConvMessages();
     },
     addStreamingBubble() {
-      const { conversationAnima, activeThreadId, chatMessagesByThread } = getState();
+      const { conversationAnima, activeThreadId } = getState();
       const threadId = activeThreadId || "default";
-      const current = chatMessagesByThread?.[conversationAnima]?.[threadId] || [];
       const ts = new Date().toISOString();
       const msg = { role: "assistant", text: "", streaming: true, activeTool: null, timestamp: ts, thinkingText: "", thinking: false };
-      const nextByThread = { ...chatMessagesByThread };
-      if (!nextByThread[conversationAnima]) nextByThread[conversationAnima] = {};
-      nextByThread[conversationAnima][threadId] = [...current, msg];
-      setState({ chatMessagesByThread: nextByThread });
+      mgr.addMessage(conversationAnima, threadId, msg);
       renderConvMessages();
       return msg;
     },
     updateStreamingBubble(msg) { updateStreamingBubble(msg); },
     finalizeStreamingBubble() {
-      const { conversationAnima, activeThreadId, chatMessagesByThread } = getState();
-      const threadId = activeThreadId || "default";
-      const arr = chatMessagesByThread?.[conversationAnima]?.[threadId] || [];
-      const nextByThread = { ...chatMessagesByThread };
-      if (!nextByThread[conversationAnima]) nextByThread[conversationAnima] = {};
-      nextByThread[conversationAnima][threadId] = [...arr];
-      setState({ chatMessagesByThread: nextByThread });
       renderConvMessages();
     },
     applyEmotion(emotion) {

@@ -1,8 +1,8 @@
 // ── Workspace Chat History ──────────────────────
 // Conversation history rendering, infinite scroll, and load logic.
+// Now delegates data management to ChatSessionManager.
 
 import { getState, setState } from "./state.js";
-import { fetchConversationHistory } from "./api.js";
 import { escapeHtml, renderSimpleMarkdown, smartTimestamp } from "./utils.js";
 import { renderChatImages } from "../../shared/image-input.js";
 import {
@@ -10,14 +10,13 @@ import {
   renderLiveBubble, renderStreamingBubbleInner,
 } from "../../shared/chat/render-utils.js";
 import { createScrollObserver } from "../../shared/chat/scroll-observer.js";
-import { createHistoryState, applyHistoryData } from "../../shared/chat/history-loader.js";
+import { ChatSessionManager } from "../../shared/chat/session-manager.js";
 import { createLogger } from "../../shared/logger.js";
 
 const logger = createLogger("ws-chat-history");
 
 // ── Module State ──────────────────────
 let _getDom = () => ({});
-const _historyState = {};
 let _scrollObserver = null;
 export const HISTORY_PAGE_SIZE = 50;
 const TOOL_RESULT_TRUNCATE = 500;
@@ -55,8 +54,9 @@ export function renderConvMessages() {
 
   const { activeThreadId, conversationAnima } = getState();
   const animaName = conversationAnima;
-  const threadMessages = getState().chatMessagesByThread?.[animaName]?.[activeThreadId || "default"] || [];
-  const hs = animaName ? _historyState[animaName]?.[activeThreadId || "default"] : null;
+  const mgr = ChatSessionManager.getInstance();
+  const threadMessages = animaName ? mgr.getMessages(animaName, activeThreadId || "default") : [];
+  const hs = animaName ? mgr.getHistoryState(animaName, activeThreadId || "default") : null;
 
   if ((!hs || hs.sessions.length === 0) && threadMessages.length === 0) {
     if (hs && hs.loading) {
@@ -104,25 +104,12 @@ export async function loadAndRenderConvMessages(animaName, { resumeStream }) {
   if (!animaName) return;
 
   const threadId = getState().activeThreadId || "default";
+  const mgr = ChatSessionManager.getInstance();
 
-  if (!_historyState[animaName]) _historyState[animaName] = {};
-  _historyState[animaName][threadId] = { ...createHistoryState(), loading: true };
-
-  const { chatMessagesByThread } = getState();
-  const nextByThread = { ...chatMessagesByThread };
-  if (!nextByThread[animaName]) nextByThread[animaName] = {};
-  nextByThread[animaName][threadId] = [];
-  setState({ chatMessagesByThread: nextByThread });
+  mgr.setMessages(animaName, threadId, []);
   renderConvMessages();
 
-  try {
-    const data = await fetchConversationHistory(animaName, HISTORY_PAGE_SIZE, null, threadId);
-    _historyState[animaName][threadId] = createHistoryState();
-    applyHistoryData(_historyState[animaName][threadId], data);
-  } catch (err) {
-    logger.error("Failed to load conversation", { anima: animaName, error: err.message });
-    _historyState[animaName][threadId] = createHistoryState();
-  }
+  await mgr.loadHistory(animaName, threadId, HISTORY_PAGE_SIZE);
 
   renderConvMessages();
   setupScrollObserver();
@@ -149,10 +136,10 @@ export async function loadMoreHistory() {
   const threadId = getState().activeThreadId || "default";
   if (!animaName) return;
 
-  const hs = _historyState[animaName]?.[threadId];
+  const mgr = ChatSessionManager.getInstance();
+  const hs = mgr.getHistoryState(animaName, threadId);
   if (!hs || !hs.hasMore || hs.loading) return;
 
-  hs.loading = true;
   const existingIndicator = dom.convMessages.querySelector(".history-loading-more");
   if (!existingIndicator) {
     const indicator = document.createElement("div");
@@ -161,16 +148,8 @@ export async function loadMoreHistory() {
     dom.convMessages.insertBefore(indicator, dom.convMessages.firstChild);
   }
 
-  try {
-    const data = await fetchConversationHistory(animaName, HISTORY_PAGE_SIZE, hs.nextBefore, threadId);
-    applyHistoryData(hs, data, { prepend: true });
-  } catch (err) {
-    logger.error("Failed to load more history", { anima: animaName, error: err.message });
-    hs.hasMore = false;
-  }
-  hs.loading = false;
-
   const prevScrollHeight = dom.convMessages.scrollHeight;
+  await mgr.loadMoreHistory(animaName, threadId, HISTORY_PAGE_SIZE);
   renderConvMessages();
   const newScrollHeight = dom.convMessages.scrollHeight;
   dom.convMessages.scrollTop += (newScrollHeight - prevScrollHeight);
@@ -179,10 +158,9 @@ export async function loadMoreHistory() {
 // ── History State Access ──────────────────────
 
 export function getHistoryState() {
-  return _historyState;
+  return {};
 }
 
 export function disconnectScrollObserver() {
   if (_scrollObserver) { _scrollObserver.disconnect(); _scrollObserver = null; }
 }
-

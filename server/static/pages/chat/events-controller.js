@@ -69,7 +69,7 @@ export function createEventsController(ctx) {
     // Queue / pending
     addListener("chatPageQueueBtn", "click", () => ctx.controllers.streaming.addToQueue());
     addListener("chatPagePendingCancel", "click", () => {
-      state.pendingQueue = [];
+      if (state.selectedAnima) state.manager.clearQueue(state.selectedAnima, state.selectedThreadId);
       ctx.controllers.streaming.hidePendingIndicator();
       ctx.controllers.streaming.updateSendButton();
     });
