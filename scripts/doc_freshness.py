@@ -35,6 +35,7 @@ _SEV_LABEL = {"HIGH": "HIGH", "MEDIUM": "MED ", "LOW": "LOW "}
 CATEGORIES = (
     "common_skills",
     "common_knowledge",
+    "docs",
 )
 
 # ── ja → en path overrides (common_skills differ in structure) ───────
@@ -173,9 +174,27 @@ DOC_SOURCE_MAP: dict[str, list[str]] = {
         "core/tooling/schemas.py",
     ],
     "common_skills/tool-creator/SKILL.md": ["core/tooling/", "core/tools/"],
+    # ── docs (OSS公開リポジトリ同期ドキュメント) ──
+    # publish.sh で公開リポジトリに同期されるファイル。
+    # doc_key は "docs/{stem}" 形式。ja=docs/{stem}.ja.md, en=docs/{stem}.md
+    "docs/vision": ["core/"],
+    "docs/spec": ["core/", "server/"],
+    "docs/features": ["core/", "server/", "cli/"],
+    "docs/memory": ["core/memory/"],
+    "docs/brain-mapping": ["core/memory/", "core/prompt/"],
+    "docs/security": [
+        "core/execution/_sanitize.py",
+        "core/execution/_sdk_security.py",
+        "core/tooling/handler.py",
+        "core/prompt/builder.py",
+    ],
+    "docs/slack-socket-mode-setup": [
+        "core/tools/slack.py",
+        "server/routes/webhooks.py",
+    ],
 }
 
-# 対象は common_skills と common_knowledge のみ（純粋なガイド文書・スキル手順書）。
+# 対象は common_skills, common_knowledge, および OSS公開 docs/ 。
 # 以下はすべてマッピング対象外:
 # - prompts/ : システムプロンプトの一部。自動更新はリスク大
 # - roles/ : permissions.md（{name}プレースホルダー付き設定テンプレート）
@@ -183,6 +202,7 @@ DOC_SOURCE_MAP: dict[str, list[str]] = {
 # - anima_templates/_blank/* : Anima作成時にコピーされるスケルトン
 # - bootstrap.md, company/vision.md : ユーザー編集前提の初期テンプレート
 # - common_knowledge/00_index.md : ナビゲーションインデックス
+# - docs/paper/ : 評価データ（コード変更追従不要）
 
 
 # ── Data ─────────────────────────────────────────────────────────────
@@ -235,12 +255,19 @@ def _en_rel(doc_key: str) -> str | None:
     """Resolve en-locale relative path for a ja-canonical doc key."""
     if doc_key in _JA_ONLY:
         return None
+    if doc_key.startswith("docs/"):
+        stem = doc_key[len("docs/"):]
+        rel = f"docs/{stem}.md"
+        return rel if (WORKSPACE / rel).exists() else None
     en_key = _SKILL_JA_TO_EN.get(doc_key, doc_key)
     en_path = TEMPLATES / "en" / en_key
     return f"templates/en/{en_key}" if en_path.exists() else None
 
 
 def _ja_rel(doc_key: str) -> str:
+    if doc_key.startswith("docs/"):
+        stem = doc_key[len("docs/"):]
+        return f"docs/{stem}.ja.md"
     return f"templates/ja/{doc_key}"
 
 
@@ -308,16 +335,34 @@ def _check_one(
 # ── Discovery (--all) ────────────────────────────────────────────────
 
 
+_PUBLISH_EXCLUDED_DIRS = frozenset({
+    "implemented", "issues", "research", "records",
+    "reports", "drafts", "legacy", "testing",
+})
+_PUBLISH_EXCLUDED_FILES = frozenset({
+    "index.md", "oss-publication-strategy.md",
+})
+
+
 def _discover_unmapped() -> dict[str, list[str]]:
-    """Find template docs not in DOC_SOURCE_MAP; default code path = core/."""
+    """Find template/docs not in DOC_SOURCE_MAP; default code path = core/."""
     extra: dict[str, list[str]] = {}
     ja_dir = TEMPLATES / "ja"
-    if not ja_dir.is_dir():
-        return extra
-    for md in ja_dir.rglob("*.md"):
-        key = str(md.relative_to(ja_dir))
-        if key not in DOC_SOURCE_MAP:
-            extra[key] = ["core/"]
+    if ja_dir.is_dir():
+        for md in ja_dir.rglob("*.md"):
+            key = str(md.relative_to(ja_dir))
+            if key not in DOC_SOURCE_MAP:
+                extra[key] = ["core/"]
+    docs_dir = WORKSPACE / "docs"
+    if docs_dir.is_dir():
+        for md in docs_dir.rglob("*.ja.md"):
+            rel = md.relative_to(docs_dir)
+            if rel.parts[0] in _PUBLISH_EXCLUDED_DIRS:
+                continue
+            stem = str(rel).removesuffix(".ja.md")
+            key = f"docs/{stem}"
+            if key not in DOC_SOURCE_MAP:
+                extra[key] = ["core/"]
     return extra
 
 
