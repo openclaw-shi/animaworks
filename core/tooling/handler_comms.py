@@ -17,6 +17,7 @@ from core.tooling.handler_base import (
     OnMessageSentFn,
     _error_result,
     active_session_type,
+    build_outgoing_origin_chain,
     suppress_board_fanout,
 )
 
@@ -103,13 +104,9 @@ class CommsToolsMixin:
             )
 
         # ── Build outgoing origin_chain (provenance Phase 3) ──
-        from core.execution._sanitize import ORIGIN_ANIMA, MAX_ORIGIN_CHAIN_LENGTH
-        outgoing_chain = list(self._session_origin_chain)
-        if self._session_origin and self._session_origin not in outgoing_chain:
-            outgoing_chain.append(self._session_origin)
-        if ORIGIN_ANIMA not in outgoing_chain:
-            outgoing_chain.append(ORIGIN_ANIMA)
-        outgoing_chain = outgoing_chain[:MAX_ORIGIN_CHAIN_LENGTH]
+        outgoing_chain = build_outgoing_origin_chain(
+            self._session_origin, self._session_origin_chain,
+        )
 
         # ── External routing ──
         if resolved is not None and not resolved.is_internal:
@@ -268,12 +265,17 @@ class CommsToolsMixin:
             + t("handler.board_mention_content", from_name=from_name, channel=channel, text=text)
         )
 
+        outgoing_chain = build_outgoing_origin_chain(
+            self._session_origin, self._session_origin_chain,
+        )
+
         for target in sorted(targets):
             try:
                 self._messenger.send(
                     to=target,
                     content=fanout_content,
                     msg_type="board_mention",
+                    origin_chain=outgoing_chain,
                 )
                 logger.info(
                     "board_mention fanout: %s -> %s (channel=%s)",

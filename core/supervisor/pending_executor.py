@@ -331,7 +331,12 @@ class PendingTaskExecutor:
                             title=title,
                             result_summary=result_summary[:1000],
                         )
-                        self._anima.messenger.send(to=reply_to, content=notify_text)
+                        from core.execution._sanitize import ORIGIN_ANIMA
+                        self._anima.messenger.send(
+                            to=reply_to,
+                            content=notify_text,
+                            origin_chain=[ORIGIN_ANIMA],
+                        )
                         logger.info(
                             "[%s] Task completion notification sent to %s",
                             self._anima_name, reply_to,

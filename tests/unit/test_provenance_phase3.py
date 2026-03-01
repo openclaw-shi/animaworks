@@ -550,3 +550,46 @@ class TestE2EOriginChainScenarios:
         messages = messenger.receive()
         assert len(messages) == 1
         assert messages[0].origin_chain == []
+
+
+# ── build_outgoing_origin_chain helper ───────────────────────
+
+
+class TestBuildOutgoingOriginChain:
+    """Tests for the extracted build_outgoing_origin_chain helper."""
+
+    def test_empty_session_appends_anima(self):
+        from core.tooling.handler_base import build_outgoing_origin_chain
+
+        chain = build_outgoing_origin_chain("", [])
+        assert chain == [ORIGIN_ANIMA]
+
+    def test_human_origin_appends_both(self):
+        from core.tooling.handler_base import build_outgoing_origin_chain
+
+        chain = build_outgoing_origin_chain(ORIGIN_HUMAN, [])
+        assert chain == [ORIGIN_HUMAN, ORIGIN_ANIMA]
+
+    def test_existing_chain_preserved(self):
+        from core.tooling.handler_base import build_outgoing_origin_chain
+
+        chain = build_outgoing_origin_chain(
+            ORIGIN_HUMAN, [ORIGIN_EXTERNAL_PLATFORM],
+        )
+        assert chain == [ORIGIN_EXTERNAL_PLATFORM, ORIGIN_HUMAN, ORIGIN_ANIMA]
+
+    def test_dedup_existing_origin(self):
+        from core.tooling.handler_base import build_outgoing_origin_chain
+
+        chain = build_outgoing_origin_chain(
+            ORIGIN_ANIMA, [ORIGIN_EXTERNAL_PLATFORM, ORIGIN_ANIMA],
+        )
+        # ORIGIN_ANIMA already in chain, should not be duplicated
+        assert chain == [ORIGIN_EXTERNAL_PLATFORM, ORIGIN_ANIMA]
+
+    def test_truncation_at_max_length(self):
+        from core.tooling.handler_base import build_outgoing_origin_chain
+
+        long_chain = [f"hop_{i}" for i in range(MAX_ORIGIN_CHAIN_LENGTH + 5)]
+        chain = build_outgoing_origin_chain("extra", long_chain)
+        assert len(chain) <= MAX_ORIGIN_CHAIN_LENGTH

@@ -268,3 +268,33 @@ class TestBoardMentionFanout:
         assert targets == {"bob", "charlie"}
         # alice should NOT receive a DM (not mentioned)
         assert "alice" not in targets
+
+    def test_fanout_passes_origin_chain(
+        self,
+        handler_with_messenger: ToolHandler,
+        messenger: MagicMock,
+        sockets_dir: Path,
+        tmp_path: Path,
+    ):
+        """Fanout DMs must include origin_chain for provenance tracking."""
+        (sockets_dir / "bob.sock").touch()
+
+        # Set session origin to simulate an external-originated message
+        handler_with_messenger.set_session_origin(
+            "external_platform", ["external_platform"],
+        )
+
+        with patch("core.paths.get_data_dir", return_value=tmp_path):
+            handler_with_messenger.handle(
+                "post_channel", {"channel": "dev", "text": "Hey @bob"},
+            )
+
+        fanout_calls = [
+            c for c in messenger.send.call_args_list
+            if c.kwargs.get("msg_type") == "board_mention"
+        ]
+        assert len(fanout_calls) == 1
+        chain = fanout_calls[0].kwargs.get("origin_chain")
+        assert chain is not None
+        assert "external_platform" in chain
+        assert "anima" in chain

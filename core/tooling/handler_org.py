@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from core.i18n import t
 
-from core.tooling.handler_base import _error_result
+from core.tooling.handler_base import _error_result, build_outgoing_origin_chain
 
 if TYPE_CHECKING:
     from core.memory.activity import ActivityLogger
@@ -691,13 +691,9 @@ class OrgToolsMixin:
             return _error_result("InvalidArguments", str(e))
 
         # Build outgoing origin_chain (provenance Phase 3)
-        from core.execution._sanitize import ORIGIN_ANIMA, MAX_ORIGIN_CHAIN_LENGTH
-        outgoing_chain = list(self._session_origin_chain)
-        if self._session_origin and self._session_origin not in outgoing_chain:
-            outgoing_chain.append(self._session_origin)
-        if ORIGIN_ANIMA not in outgoing_chain:
-            outgoing_chain.append(ORIGIN_ANIMA)
-        outgoing_chain = outgoing_chain[:MAX_ORIGIN_CHAIN_LENGTH]
+        outgoing_chain = build_outgoing_origin_chain(
+            self._session_origin, self._session_origin_chain,
+        )
 
         dm_result = ""
         if self._messenger:

@@ -108,6 +108,26 @@ _READ_FILE_SAFETY_NOTICE = (
 
 # ── Helper functions ──────────────────────────────────────────
 
+
+def build_outgoing_origin_chain(
+    session_origin: str,
+    session_origin_chain: list[str],
+) -> list[str]:
+    """Build outgoing origin_chain for Anima-to-Anima messages.
+
+    Appends the session origin and ORIGIN_ANIMA to the chain,
+    deduplicating and truncating to MAX_ORIGIN_CHAIN_LENGTH.
+    """
+    from core.execution._sanitize import ORIGIN_ANIMA, MAX_ORIGIN_CHAIN_LENGTH
+
+    chain = list(session_origin_chain)
+    if session_origin and session_origin not in chain:
+        chain.append(session_origin)
+    if ORIGIN_ANIMA not in chain:
+        chain.append(ORIGIN_ANIMA)
+    return chain[:MAX_ORIGIN_CHAIN_LENGTH]
+
+
 def _error_result(
     error_type: str,
     message: str,
