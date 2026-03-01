@@ -85,24 +85,24 @@ export function chatInputMaxHeight() {
 }
 
 // ── Draft Persistence (delegates to shared/chat/draft.js) ──
-export function getDraftKey(animaName) {
+export function getDraftKey(animaName, threadId) {
   const user = localStorage.getItem("animaworks_user") || "guest";
-  return _getDraftKey("dashboard-chat", user, animaName);
+  return _getDraftKey("dashboard-chat", user, animaName, threadId);
 }
 
-export function saveDraft(animaName, text) {
+export function saveDraft(animaName, text, threadId) {
   if (!animaName) return;
-  _saveDraft(getDraftKey(animaName), text || "");
+  _saveDraft(getDraftKey(animaName, threadId), text || "");
 }
 
-export function loadDraft(animaName) {
+export function loadDraft(animaName, threadId) {
   if (!animaName) return "";
-  return _loadDraft(getDraftKey(animaName));
+  return _loadDraft(getDraftKey(animaName, threadId));
 }
 
-export function clearDraft(animaName) {
+export function clearDraft(animaName, threadId) {
   if (!animaName) return;
-  _clearDraft(getDraftKey(animaName));
+  _clearDraft(getDraftKey(animaName, threadId));
 }
 
 // ── Tab / Thread Helpers ──

@@ -138,16 +138,16 @@ export function createAnimaController(ctx) {
   async function selectAnima(name) {
     const gen = ++_selectGen;
     const prevAnima = state.selectedAnima;
+    const prevThread = state.selectedThreadId || "default";
     const currentInput = $("chatPageInput");
     if (prevAnima && currentInput) {
-      saveDraft(prevAnima, currentInput.value || "");
-      state.activeThreadByAnima[prevAnima] = state.selectedThreadId || "default";
+      saveDraft(prevAnima, currentInput.value || "", prevThread);
+      state.activeThreadByAnima[prevAnima] = prevThread;
     }
 
     state.selectedAnima = name;
     state.animaLastAccess[name] = Date.now();
     state.bustupUrl = null;
-    ctx.controllers.streaming.hidePendingIndicator();
     state.selectedThreadId = state.activeThreadByAnima[name] || "default";
     clearUnreadForActiveThread(ctx, name, state.selectedThreadId);
     ctx.controllers.imageVoice.updateVoiceAnima(name);
@@ -173,10 +173,11 @@ export function createAnimaController(ctx) {
     if (input) { input.disabled = false; input.placeholder = t("chat.message_to", { name }); }
     if (sendBtn) sendBtn.disabled = false;
     if (input) {
-      input.value = loadDraft(name);
+      input.value = loadDraft(name, state.selectedThreadId);
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, chatInputMaxHeight()) + "px";
     }
+    ctx.controllers.streaming.showPendingIndicator();
     ctx.controllers.streaming.updateSendButton();
 
     const tid = state.selectedThreadId;

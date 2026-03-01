@@ -7,9 +7,11 @@
  * @param {string} namespace - e.g. "dashboard-chat" or "workspace-conv"
  * @param {string} user
  * @param {string} animaName
+ * @param {string} [threadId] - optional thread id for per-thread drafts
  */
-export function getDraftKey(namespace, user, animaName) {
-  return `aw:draft:${namespace}:${user || "guest"}:${animaName || "_"}`;
+export function getDraftKey(namespace, user, animaName, threadId) {
+  const base = `aw:draft:${namespace}:${user || "guest"}:${animaName || "_"}`;
+  return threadId && threadId !== "default" ? `${base}:${threadId}` : base;
 }
 
 /**

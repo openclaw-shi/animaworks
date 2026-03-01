@@ -80,7 +80,7 @@ export function createEventsController(ctx) {
       if (el) {
         el.style.height = "auto";
         el.style.height = Math.min(el.scrollHeight, chatInputMaxHeight()) + "px";
-        saveDraft(state.selectedAnima, el.value || "");
+        saveDraft(state.selectedAnima, el.value || "", state.selectedThreadId);
       }
       ctx.controllers.streaming.updateSendButton();
     });

@@ -2,6 +2,7 @@
 import {
   $, isTabOpen, refreshAnimaUnread, clearUnreadForActiveThread,
   setThreadUnread, threadTimeValue, scheduleSaveChatUiState,
+  saveDraft, loadDraft, chatInputMaxHeight,
   CONSTANTS,
 } from "./ctx.js";
 import {
@@ -83,6 +84,13 @@ export function createThreadController(ctx) {
 
   async function selectThread(threadId) {
     if (threadId === state.selectedThreadId) return;
+    const prevThread = state.selectedThreadId;
+    const name = state.selectedAnima;
+    const input = $("chatPageInput");
+    if (name && input) {
+      saveDraft(name, input.value || "", prevThread);
+    }
+
     state.selectedThreadId = threadId;
     state.activeThreadByAnima[state.selectedAnima] = threadId;
     clearUnreadForActiveThread(ctx, state.selectedAnima, threadId);
@@ -90,8 +98,15 @@ export function createThreadController(ctx) {
     ctx.controllers.anima.renderAnimaTabs();
     renderThreadTabs();
 
-    const name = state.selectedAnima;
     if (!name) return;
+
+    if (input) {
+      input.value = loadDraft(name, threadId);
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, chatInputMaxHeight()) + "px";
+    }
+    ctx.controllers.streaming.showPendingIndicator();
+    ctx.controllers.streaming.updateSendButton();
 
     const mgr = state.manager;
     const hs = mgr.getHistoryState(name, threadId);

@@ -117,7 +117,7 @@ export function createStreamingController(ctx) {
     });
     input.value = "";
     input.style.height = "auto";
-    saveDraft(name, "");
+    saveDraft(name, "", tid);
     state.imageInputManager?.clearImages();
     showPendingIndicator();
     updateSendButton();
@@ -152,7 +152,7 @@ export function createStreamingController(ctx) {
         });
         input.value = "";
         input.style.height = "auto";
-        saveDraft(name, "");
+        saveDraft(name, "", tid);
         state.imageInputManager?.clearImages();
       }
       if (mgr.getPendingQueue(name, tid).length === 0) return;
@@ -171,7 +171,7 @@ export function createStreamingController(ctx) {
       });
       input.value = "";
       input.style.height = "auto";
-      saveDraft(name, "");
+      saveDraft(name, "", tid);
       state.imageInputManager?.clearImages();
       showPendingIndicator();
       updateSendButton();
@@ -336,7 +336,7 @@ export function createStreamingController(ctx) {
         const inputEl = $("chatPageInput");
         if (inputEl && state.selectedAnima === name) {
           inputEl.placeholder = t("chat.message_to", { name });
-          saveDraft(name, inputEl.value || "");
+          saveDraft(name, inputEl.value || "", tid);
           inputEl.focus();
         }
         updateSendButton();
