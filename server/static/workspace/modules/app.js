@@ -212,9 +212,17 @@ async function onAnimaSelected(name) {
 
 // ── Main Init ──────────────────────
 
+const ALL_THEMES = [
+  "business", "graphite", "ocean", "forest", "sunset",
+  "rose", "lavender", "nord", "monokai", "midnight", "solarized"
+];
+
 function applyTheme() {
   const theme = localStorage.getItem("aw-theme") || "default";
-  document.body.classList.toggle("theme-business", theme === "business");
+  ALL_THEMES.forEach(t => document.body.classList.remove(`theme-${t}`));
+  if (theme !== "default") {
+    document.body.classList.add(`theme-${theme}`);
+  }
 }
 
 export async function init() {

@@ -10,11 +10,19 @@ import { loadSystemStatus } from "./status.js";
 
 // ── Theme ────────────────────────────────────
 
+const ALL_THEMES = [
+  "business", "graphite", "ocean", "forest", "sunset",
+  "rose", "lavender", "nord", "monokai", "midnight", "solarized"
+];
+
 function applyTheme(theme) {
   state.uiTheme = theme;
-  document.body.classList.toggle("theme-business", theme === "business");
-  const toggle = document.getElementById("themeSwitch");
-  if (toggle) toggle.checked = theme === "business";
+  ALL_THEMES.forEach(t => document.body.classList.remove(`theme-${t}`));
+  if (theme !== "default") {
+    document.body.classList.add(`theme-${theme}`);
+  }
+  const select = document.getElementById("themeSelect");
+  if (select) select.value = theme;
   localStorage.setItem("aw-theme", theme);
 }
 
@@ -145,10 +153,11 @@ async function init() {
 
   // Theme (before auth so UI looks correct immediately)
   await initTheme();
-  const themeSwitch = document.getElementById("themeSwitch");
-  if (themeSwitch) {
-    themeSwitch.addEventListener("change", (e) => {
-      applyTheme(e.target.checked ? "business" : "default");
+  const themeSelect = document.getElementById("themeSelect");
+  if (themeSelect) {
+    themeSelect.value = state.uiTheme || "default";
+    themeSelect.addEventListener("change", (e) => {
+      applyTheme(e.target.value);
     });
   }
 
