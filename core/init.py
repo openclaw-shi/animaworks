@@ -457,7 +457,12 @@ def reset_runtime_dir(data_dir: Path, *, skip_animas: bool = False) -> Path:
 def _ensure_runtime_only_dirs(data_dir: Path) -> None:
     """Create runtime-only directories that have no template counterpart."""
     (data_dir / "animas").mkdir(parents=True, exist_ok=True)
-    (data_dir / "shared" / "inbox").mkdir(parents=True, exist_ok=True)
+    inbox_dir = data_dir / "shared" / "inbox"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        inbox_dir.chmod(0o700)
+    except OSError:
+        pass
     (data_dir / "shared" / "users").mkdir(parents=True, exist_ok=True)
     (data_dir / "shared" / "channels").mkdir(parents=True, exist_ok=True)
     (data_dir / "shared" / "dm_logs").mkdir(parents=True, exist_ok=True)

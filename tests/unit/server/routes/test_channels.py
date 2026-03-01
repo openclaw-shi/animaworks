@@ -324,7 +324,8 @@ class TestPostToChannel:
         last = json.loads(lines[-1])
         assert last["text"] == "Hello from human"
         assert last["source"] == "human"
-        assert last["from"] == "taka"
+        # Unauthenticated requests force from_name to "human"
+        assert last["from"] == "human"
 
     async def test_post_broadcasts_websocket_event(self, tmp_path: Path):
         shared_dir = tmp_path / "shared"

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.memory.activity import ActivityLogger
 from core.messenger import Messenger
@@ -35,8 +35,8 @@ def _validate_name(name: str) -> JSONResponse | None:
 
 
 class ChannelPostRequest(BaseModel):
-    text: str
-    from_name: str = "human"
+    text: str = Field(max_length=10000)
+    from_name: str = Field(default="human", min_length=1)
 
 
 def _get_messenger(shared_dir: Path) -> Messenger:
@@ -142,9 +142,11 @@ def create_channels_router() -> APIRouter:
         """Post a message to a channel (human-originated)."""
         if err := _validate_name(name):
             return err
-        # Override from_name with authenticated user
+        # Override from_name with authenticated user; force "human" when unauthenticated
         if hasattr(request.state, "user"):
             body.from_name = request.state.user.username
+        else:
+            body.from_name = "human"
         shared_dir: Path = request.app.state.shared_dir
         channels_dir = shared_dir / "channels"
 

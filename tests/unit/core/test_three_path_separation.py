@@ -377,6 +377,7 @@ class TestHeartbeatPlanFocus:
     async def test_heartbeat_leaves_inbox_untouched(self, data_dir, make_anima):
         """Heartbeat should NOT archive inbox messages."""
         anima_dir = make_anima("hb_leave")
+        make_anima("sender")
         shared_dir = data_dir / "shared"
 
         from core.messenger import Messenger
@@ -432,6 +433,7 @@ class TestProcessInboxMessage:
     async def test_processes_and_archives_messages(self, data_dir, make_anima):
         """Messages should be processed and archived."""
         anima_dir = make_anima("inbox_proc")
+        make_anima("sender")
         shared_dir = data_dir / "shared"
 
         from core.messenger import Messenger

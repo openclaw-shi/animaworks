@@ -53,6 +53,10 @@ class Messenger:
         self.anima_name = anima_name
         self.inbox_dir = shared_dir / "inbox" / anima_name
         self.inbox_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.inbox_dir.chmod(0o700)
+        except OSError:
+            pass
 
     def send(
         self,
@@ -162,6 +166,20 @@ class Messenger:
         _validate_name(channel, "channel name")
 
         poster = from_name or self.anima_name
+
+        # Validate from_name: must be a known anima or "human"
+        if poster != "human":
+            try:
+                from core.config.models import load_config
+                known_animas = set(load_config().animas.keys())
+                if known_animas and self.anima_name in known_animas and poster not in known_animas:
+                    logger.warning(
+                        "Rejecting channel post with unknown from_name=%r to #%s",
+                        poster, channel,
+                    )
+                    return
+            except Exception:
+                pass
         channels_dir = self.shared_dir / "channels"
         channels_dir.mkdir(parents=True, exist_ok=True)
         filepath = channels_dir / f"{channel}.jsonl"
@@ -321,11 +339,27 @@ class Messenger:
             f.write(entry + "\n")
 
     def receive(self) -> list[Message]:
+        known_animas: set[str] | None = None
+        try:
+            from core.config.models import load_config
+            cfg_animas = set(load_config().animas.keys())
+            if self.anima_name in cfg_animas:
+                known_animas = cfg_animas
+        except Exception:
+            logger.debug("load_config unavailable for inbox validation", exc_info=True)
+
         messages: list[Message] = []
         for f in sorted(self.inbox_dir.glob("*.json")):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
-                messages.append(Message(**data))
+                msg = Message(**data)
+                if known_animas is not None and msg.from_person not in known_animas:
+                    logger.warning(
+                        "Ignoring inbox message with unknown from_person=%r in %s",
+                        msg.from_person, f,
+                    )
+                    continue
+                messages.append(msg)
             except Exception as e:
                 logger.error("Failed to parse message %s: %s", f, e)
         return messages
@@ -337,11 +371,27 @@ class Messenger:
         via archive_paths() after processing.  Messages that arrive
         while the caller is working will remain in the inbox.
         """
+        known_animas: set[str] | None = None
+        try:
+            from core.config.models import load_config
+            cfg_animas = set(load_config().animas.keys())
+            if self.anima_name in cfg_animas:
+                known_animas = cfg_animas
+        except Exception:
+            logger.debug("load_config unavailable for inbox validation", exc_info=True)
+
         items: list[InboxItem] = []
         for f in sorted(self.inbox_dir.glob("*.json")):
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
-                items.append(InboxItem(msg=Message(**data), path=f))
+                msg = Message(**data)
+                if known_animas is not None and msg.from_person not in known_animas:
+                    logger.warning(
+                        "Ignoring inbox message with unknown from_person=%r in %s",
+                        msg.from_person, f,
+                    )
+                    continue
+                items.append(InboxItem(msg=msg, path=f))
             except Exception:
                 logger.warning("Failed to read inbox file: %s", f, exc_info=True)
         return items
