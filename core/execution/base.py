@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
@@ -32,25 +33,41 @@ from core.exceptions import StreamDisconnectedError  # noqa: F401 – re-export
 
 _ADAPTIVE_MODELS = frozenset({"claude-opus-4-6", "claude-sonnet-4-6"})
 
+_PROVIDER_PREFIX_RE = re.compile(
+    r"^(?:anthropic|bedrock|vertex_ai)/"
+    r"(?:[a-z]{2}\.anthropic\.)?"
+)
+
+
+def _bare_model_name(model: str) -> str:
+    """Strip provider and region prefixes to get the canonical model name.
+
+    ``bedrock/jp.anthropic.claude-sonnet-4-6`` → ``claude-sonnet-4-6``
+    ``anthropic/claude-opus-4-6``              → ``claude-opus-4-6``
+    ``claude-sonnet-4-6``                      → ``claude-sonnet-4-6``
+    ``openai/gpt-4o``                          → ``gpt-4o``
+    """
+    stripped = _PROVIDER_PREFIX_RE.sub("", model)
+    if "/" in stripped:
+        return stripped.split("/")[-1]
+    return stripped
+
 
 def is_adaptive_model(model: str) -> bool:
     """Return True if *model* supports Anthropic adaptive thinking (4.6 series)."""
-    bare = model.split("/")[-1] if "/" in model else model
-    return bare in _ADAPTIVE_MODELS
+    return _bare_model_name(model) in _ADAPTIVE_MODELS
 
 
 def is_anthropic_claude(model: str) -> bool:
     """Return True if *model* is an Anthropic Claude model."""
-    bare = model.split("/")[-1] if "/" in model else model
-    return bare.startswith("claude-")
+    return _bare_model_name(model).startswith("claude-")
 
 
 def resolve_thinking_effort(model: str, effort: str | None) -> str:
     """Resolve thinking effort, clamping ``"max"`` to ``"high"`` for non-Opus-4.6."""
     resolved = effort or "high"
     if resolved == "max":
-        bare = model.split("/")[-1] if "/" in model else model
-        if bare != "claude-opus-4-6":
+        if _bare_model_name(model) != "claude-opus-4-6":
             return "high"
     return resolved
 

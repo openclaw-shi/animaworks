@@ -208,6 +208,17 @@ class StreamingMixin:
                                 _iter_thinking_blocks = getattr(
                                     _msg_obj, "thinking_blocks", None,
                                 )
+                    # Fallback: build from reasoning_parts when response_uptil_now
+                    # doesn't provide thinking_blocks (e.g. Bedrock streaming).
+                    # Prevents LiteLLM from dropping thinking param on next turn.
+                    if _iter_thinking_blocks is None and _reasoning_parts:
+                        _iter_thinking_blocks = [
+                            {"type": "thinking", "thinking": "".join(_reasoning_parts)},
+                        ]
+                        logger.debug(
+                            "A stream: built thinking_blocks from reasoning_parts (%d chars)",
+                            sum(len(p) for p in _reasoning_parts),
+                        )
 
                 # Post-stream diagnostics
                 if not iter_text_parts and not tool_calls_acc:

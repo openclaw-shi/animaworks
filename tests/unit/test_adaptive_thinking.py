@@ -32,6 +32,15 @@ class TestIsAdaptiveModel:
     def test_with_provider_prefix(self):
         assert is_adaptive_model("anthropic/claude-opus-4-6") is True
 
+    def test_bedrock_region_prefix(self):
+        assert is_adaptive_model("bedrock/jp.anthropic.claude-sonnet-4-6") is True
+
+    def test_bedrock_region_prefix_opus(self):
+        assert is_adaptive_model("bedrock/us.anthropic.claude-opus-4-6") is True
+
+    def test_bedrock_without_region(self):
+        assert is_adaptive_model("bedrock/claude-sonnet-4-6") is True
+
     def test_old_sonnet(self):
         assert is_adaptive_model("claude-sonnet-4-5-20250929") is False
 
@@ -51,6 +60,12 @@ class TestIsAnthropicClaude:
 
     def test_with_prefix(self):
         assert is_anthropic_claude("anthropic/claude-opus-4-6") is True
+
+    def test_bedrock_region_prefix(self):
+        assert is_anthropic_claude("bedrock/jp.anthropic.claude-sonnet-4-6") is True
+
+    def test_bedrock_region_prefix_eu(self):
+        assert is_anthropic_claude("bedrock/eu.anthropic.claude-opus-4-6") is True
 
     def test_non_claude(self):
         assert is_anthropic_claude("openai/gpt-4o") is False
@@ -74,6 +89,12 @@ class TestResolveThinkingEffort:
 
     def test_max_clamped_on_non_opus(self):
         assert resolve_thinking_effort("claude-sonnet-4-6", "max") == "high"
+
+    def test_max_on_bedrock_opus(self):
+        assert resolve_thinking_effort("bedrock/jp.anthropic.claude-opus-4-6", "max") == "max"
+
+    def test_max_clamped_on_bedrock_sonnet(self):
+        assert resolve_thinking_effort("bedrock/jp.anthropic.claude-sonnet-4-6", "max") == "high"
 
     def test_low(self):
         assert resolve_thinking_effort("claude-sonnet-4-6", "low") == "low"
