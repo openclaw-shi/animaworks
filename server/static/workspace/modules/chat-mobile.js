@@ -111,25 +111,25 @@ export function cleanupMobileResources() {
 
 // ── Draft ──────────────────────
 
-export function wsDraftKey(animaName) {
-  return getDraftKey("workspace-conv", getCurrentUser() || "guest", animaName);
+export function wsDraftKey(animaName, threadId) {
+  return getDraftKey("workspace-conv", getCurrentUser() || "guest", animaName, threadId);
 }
 
 export function wsSaveDraft() {
   const dom = _getDom();
-  const animaName = getState().conversationAnima;
-  if (!animaName || !dom.convInput) return;
-  saveDraft(wsDraftKey(animaName), dom.convInput.value || "");
+  const { conversationAnima, activeThreadId } = getState();
+  if (!conversationAnima || !dom.convInput) return;
+  saveDraft(wsDraftKey(conversationAnima, activeThreadId || "default"), dom.convInput.value || "");
 }
 
-export function wsLoadDraft(animaName) {
+export function wsLoadDraft(animaName, threadId) {
   if (!animaName) return "";
-  return loadDraft(wsDraftKey(animaName));
+  return loadDraft(wsDraftKey(animaName, threadId || "default"));
 }
 
-export function wsClearDraft(animaName) {
+export function wsClearDraft(animaName, threadId) {
   if (!animaName) return;
-  clearDraft(wsDraftKey(animaName));
+  clearDraft(wsDraftKey(animaName, threadId || "default"));
 }
 
 // ── Greeting ──────────────────────

@@ -34,7 +34,7 @@ let _instance = null;
 /**
  * @typedef {object} ManagerConfig
  * @property {function} streamChat - (animaName, body, signal, callbacks) => Promise
- * @property {function} fetchActiveStream - (animaName) => Promise<object|null>
+ * @property {function} fetchActiveStream - (animaName, threadId?) => Promise<object|null>
  * @property {function} fetchStreamProgress - (animaName, responseId) => Promise<object|null>
  * @property {function} getUser - () => string
  * @property {function} fetchHistory - (animaName, limit, before, threadId) => Promise<object>
@@ -312,7 +312,7 @@ export class ChatSessionManager extends EventTarget {
     if (session.isStreaming) return { streamingMsg: null, success: false };
 
     try {
-      const active = await this.#config.fetchActiveStream(anima);
+      const active = await this.#config.fetchActiveStream(anima, thread);
       if (!active || active.status !== "streaming") return { streamingMsg: null, success: false };
 
       const progress = await this.#config.fetchStreamProgress(anima, active.response_id);

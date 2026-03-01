@@ -11,11 +11,14 @@ const logger = createLogger("chat-stream");
 /**
  * Fetch the active stream for an anima.
  * @param {string} animaName
+ * @param {string} [threadId] - Optional thread ID to filter by
  * @returns {Promise<object|null>} Active stream info or null
  */
-export async function fetchActiveStream(animaName) {
+export async function fetchActiveStream(animaName, threadId) {
   try {
-    const res = await fetch(`/api/animas/${encodeURIComponent(animaName)}/stream/active`);
+    let url = `/api/animas/${encodeURIComponent(animaName)}/stream/active`;
+    if (threadId) url += `?thread_id=${encodeURIComponent(threadId)}`;
+    const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
     return data.active ? data : null;

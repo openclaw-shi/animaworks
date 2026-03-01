@@ -67,7 +67,7 @@ export async function openConversation(animaName) {
   if (_dom.convAnimaName) _dom.convAnimaName.textContent = animaName;
   updateConvInputPlaceholder();
   if (_dom.convInput) {
-    _dom.convInput.value = wsLoadDraft(animaName);
+    _dom.convInput.value = wsLoadDraft(animaName, "default");
     _dom.convInput.style.height = "auto";
     const maxH = isMobileView() ? 100 : 120;
     _dom.convInput.style.height = Math.min(_dom.convInput.scrollHeight, maxH) + "px";

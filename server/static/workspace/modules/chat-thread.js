@@ -10,6 +10,7 @@ import {
 } from "../../shared/chat/thread-logic.js";
 import { ChatSessionManager } from "../../shared/chat/session-manager.js";
 import { HISTORY_PAGE_SIZE } from "./chat-history.js";
+import { wsSaveDraft, wsLoadDraft, isMobileView } from "./chat-mobile.js";
 
 // ── Module State ──────────────────────
 let _getDom = () => ({});
@@ -62,11 +63,21 @@ export async function selectWsThread(threadId) {
   const current = getState().activeThreadId;
   if (threadId === current) return;
 
+  wsSaveDraft();
+
   setState({ activeThreadId: threadId });
   renderWsThreadTabs();
 
   const animaName = getState().conversationAnima;
   if (!animaName) return;
+
+  const dom = _getDom();
+  if (dom.convInput) {
+    dom.convInput.value = wsLoadDraft(animaName, threadId);
+    dom.convInput.style.height = "auto";
+    const maxH = isMobileView() ? 100 : 120;
+    dom.convInput.style.height = Math.min(dom.convInput.scrollHeight, maxH) + "px";
+  }
 
   const mgr = ChatSessionManager.getInstance();
   const hs = mgr.getHistoryState(animaName, threadId);

@@ -290,7 +290,7 @@ export function createStreamingController(ctx) {
             void (async () => {
               let recoveredText = "";
               try {
-                const active = await fetchActiveStream(name);
+                const active = await fetchActiveStream(name, tid);
                 if (active?.response_id) {
                   const progress = await fetchStreamProgress(name, active.response_id);
                   recoveredText = progress?.full_text || "";

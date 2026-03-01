@@ -135,7 +135,8 @@ function handleWsMessage(raw) {
       if (animaName && response) {
         const mgr = ChatSessionManager.getInstance();
         if (!mgr.isStreamingForAnima(animaName)) {
-          mgr.addMessage(animaName, "default", {
+          const threadId = data.thread_id || "default";
+          mgr.addMessage(animaName, threadId, {
             role: "assistant", text: response, timestamp: new Date().toISOString(),
           });
         }
@@ -221,7 +222,8 @@ function handleWsMessage(raw) {
       if (pmAnimaName) {
         const mgr = ChatSessionManager.getInstance();
         const pmText = pmSubject ? `**${pmSubject}**\n${pmBody}` : pmBody;
-        mgr.addMessage(pmAnimaName, "default", {
+        const pmThreadId = data.thread_id || "default";
+        mgr.addMessage(pmAnimaName, pmThreadId, {
           role: "assistant", text: pmText, proactive: true,
           priority: pmPriority, timestamp: new Date().toISOString(),
         });
