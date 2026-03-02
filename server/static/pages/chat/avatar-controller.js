@@ -53,7 +53,7 @@ export function createAvatarController(ctx) {
   }
 
   function removeBustupOverlay() {
-    document.getElementById("chatBustupOverlay")?.remove();
+    document.querySelectorAll("#chatBustupOverlay").forEach(el => el.remove());
   }
 
   function onBustupEscape(e) {

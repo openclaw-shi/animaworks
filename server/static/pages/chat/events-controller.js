@@ -15,10 +15,6 @@ export function createEventsController(ctx) {
   }
 
   function bindPaneEvents() {
-    // Escape to dismiss bustup overlay
-    document.addEventListener("keydown", ctx.controllers.avatar.onBustupEscape);
-    state.boundListeners.push({ el: document, event: "keydown", handler: ctx.controllers.avatar.onBustupEscape });
-
     // Add conversation picker
     addListener("chatAddConversationBtn", "click", e => {
       e.stopPropagation();

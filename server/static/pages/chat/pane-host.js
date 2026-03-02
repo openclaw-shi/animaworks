@@ -103,6 +103,8 @@ function paneHtml() {
   `;
 }
 
+const MAX_PANES = 4;
+
 export function createPaneHost(rootContainer) {
   const panes = [];
   let focusedIdx = 0;
@@ -117,6 +119,7 @@ export function createPaneHost(rootContainer) {
   }
 
   function addPane() {
+    if (panes.length >= MAX_PANES) return null;
     if (_isMobile() && panes.length >= 1) return null;
 
     const id = nextId++;
@@ -129,7 +132,7 @@ export function createPaneHost(rootContainer) {
       const splitterEl = document.createElement("div");
       splitterEl.className = "chat-pane-splitter";
       hostEl.appendChild(splitterEl);
-      initSplitter(splitterEl, hostEl);
+      initSplitter(splitterEl, hostEl, { onResize: _saveSplitterWidths });
     }
     hostEl.appendChild(paneEl);
 
@@ -182,10 +185,12 @@ export function createPaneHost(rootContainer) {
     _destroyPane(pane);
     panes.splice(idx, 1);
 
-    const prev = paneEl(idx);
-    if (prev) {
-      const splitter = prev.previousElementSibling;
-      if (splitter?.classList.contains("chat-pane-splitter")) splitter.remove();
+    const splitterBefore = pane.el.previousElementSibling;
+    if (splitterBefore?.classList.contains("chat-pane-splitter")) {
+      splitterBefore.remove();
+    } else {
+      const splitterAfter = pane.el.nextElementSibling;
+      if (splitterAfter?.classList.contains("chat-pane-splitter")) splitterAfter.remove();
     }
     pane.el.remove();
 
@@ -255,6 +260,12 @@ export function createPaneHost(rootContainer) {
   function bindSharedEvents() {
     if (_sharedBound) return;
     _sharedBound = true;
+
+    const bustupEscapeHandler = (e) => {
+      if (e.key === "Escape") getFocused()?.ctx.controllers.avatar.dismissBustupOverlay();
+    };
+    document.addEventListener("keydown", bustupEscapeHandler);
+    _sharedListeners.push({ el: document, event: "keydown", handler: bustupEscapeHandler });
 
     const $r = (id) => rootContainer.querySelector(`[data-chat-id="${id}"]`);
 
@@ -367,6 +378,15 @@ export function createPaneHost(rootContainer) {
     } catch { /* quota exceeded */ }
   }
 
+  function _saveSplitterWidths(widths) {
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY);
+      const existing = raw ? JSON.parse(raw) : {};
+      existing.widths = widths;
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(existing));
+    } catch { /* quota exceeded */ }
+  }
+
   function restoreLayout() {
     try {
       const raw = localStorage.getItem(LAYOUT_KEY);
@@ -374,7 +394,7 @@ export function createPaneHost(rootContainer) {
       const layout = JSON.parse(raw);
       if (!layout || typeof layout.paneCount !== "number") return;
 
-      const count = _isMobile() ? 1 : Math.min(layout.paneCount, 4);
+      const count = _isMobile() ? 1 : Math.min(layout.paneCount, MAX_PANES);
       while (panes.length < count) addPane();
 
       if (layout.widths && Array.isArray(layout.widths)) {

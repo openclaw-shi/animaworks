@@ -1,6 +1,6 @@
 // ── Splitter — drag-resizable divider between chat panes ──
 
-export function initSplitter(splitterEl, hostEl) {
+export function initSplitter(splitterEl, hostEl, { onResize } = {}) {
   let dragging = false;
   let startX = 0;
   let leftPane = null;
@@ -65,13 +65,11 @@ export function initSplitter(splitterEl, hostEl) {
   }
 
   function _persistLayout() {
-    try {
+    if (onResize) {
       const allPanes = hostEl.querySelectorAll(".chat-pane");
       const widths = Array.from(allPanes).map(p => p.style.flex || "");
-      const existing = JSON.parse(localStorage.getItem("aw-chat-pane-layout") || "{}");
-      existing.widths = widths;
-      localStorage.setItem("aw-chat-pane-layout", JSON.stringify(existing));
-    } catch { /* ignore */ }
+      onResize(widths);
+    }
   }
 
   splitterEl.addEventListener("pointerdown", onPointerDown);
