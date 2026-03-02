@@ -46,6 +46,7 @@ class TestVibeImageOverridesConfig:
         config_style_path.write_bytes(b"CONFIG_STYLE_IMAGE")
 
         config = ImageGenConfig(
+            image_style="anime",
             style_reference=str(config_style_path),
             vibe_strength=0.3,
             vibe_info_extracted=0.5,
@@ -81,6 +82,7 @@ class TestVibeStrengthOverride:
     def test_vibe_strength_override(self, anima_dir: Path):
         """Direct vibe_strength overrides config value."""
         config = ImageGenConfig(
+            image_style="anime",
             vibe_strength=0.3,
             vibe_info_extracted=0.5,
         )
@@ -111,6 +113,7 @@ class TestVibeStrengthOverride:
     def test_falls_back_to_config_when_none(self, anima_dir: Path):
         """When vibe_strength/info are None, config values are used."""
         config = ImageGenConfig(
+            image_style="anime",
             vibe_strength=0.4,
             vibe_info_extracted=0.6,
         )
@@ -145,7 +148,7 @@ class TestProgressCallback:
 
     def test_progress_callback_called(self, anima_dir: Path):
         """progress_callback receives generating/completed for fullbody step."""
-        pipeline = ImageGenPipeline(anima_dir)
+        pipeline = ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
         callback = MagicMock()
 
         with (
@@ -171,7 +174,7 @@ class TestProgressCallback:
 
     def test_progress_callback_error_on_failure(self, anima_dir: Path):
         """progress_callback receives 'error' when a step fails."""
-        pipeline = ImageGenPipeline(anima_dir)
+        pipeline = ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
         callback = MagicMock()
 
         with (
@@ -203,7 +206,7 @@ class TestSeedPassedToClient:
 
     def test_seed_passed_to_client(self, anima_dir: Path):
         """Seed is forwarded to NovelAIClient.generate_fullbody."""
-        pipeline = ImageGenPipeline(anima_dir)
+        pipeline = ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
 
         with (
             patch("core.tools.image_gen.os.environ", {"NOVELAI_TOKEN": "test-token"}),
@@ -225,7 +228,7 @@ class TestSeedPassedToClient:
 
     def test_seed_none_passed_to_client(self, anima_dir: Path):
         """When seed is None, it is still forwarded (client decides default)."""
-        pipeline = ImageGenPipeline(anima_dir)
+        pipeline = ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
 
         with (
             patch("core.tools.image_gen.os.environ", {"NOVELAI_TOKEN": "test-token"}),

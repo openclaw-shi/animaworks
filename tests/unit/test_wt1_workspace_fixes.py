@@ -24,6 +24,7 @@ APP_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "app-websoc
 ACTIVITY_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "activity.js"
 SIDEBAR_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "sidebar.js"
 CHAT_STREAMING_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "chat-streaming.js"
+CHAT_CONTROLLER_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "chat-controller.js"
 RENDER_UTILS_JS = REPO_ROOT / "server" / "static" / "shared" / "chat" / "render-utils.js"
 WEBSOCKET_JS = REPO_ROOT / "server" / "static" / "modules" / "websocket.js"
 TIMELINE_JS = REPO_ROOT / "server" / "static" / "workspace" / "modules" / "timeline.js"
@@ -176,18 +177,18 @@ class TestIssueC_ChatJsIntegration:
     """Verify chat-stream imports, heartbeat relay, stream recovery, and chat.js deletion."""
 
     def test_fetchActiveStream_imported(self) -> None:
-        """fetchActiveStream must be imported from chat-stream.js."""
-        src = CHAT_STREAMING_JS.read_text(encoding="utf-8")
+        """fetchActiveStream must be imported via chat-controller.js."""
+        src = CHAT_CONTROLLER_JS.read_text(encoding="utf-8")
         assert "fetchActiveStream" in src
         import_match = re.search(r"import\s*\{[^}]*fetchActiveStream[^}]*\}.*?from.*?chat-stream", src)
-        assert import_match, "fetchActiveStream not imported from chat-stream.js"
+        assert import_match, "fetchActiveStream not imported from chat-stream.js in chat-controller.js"
 
     def test_fetchStreamProgress_imported(self) -> None:
-        """fetchStreamProgress must be imported from chat-stream.js."""
-        src = CHAT_STREAMING_JS.read_text(encoding="utf-8")
+        """fetchStreamProgress must be imported via chat-controller.js."""
+        src = CHAT_CONTROLLER_JS.read_text(encoding="utf-8")
         assert "fetchStreamProgress" in src
         import_match = re.search(r"import\s*\{[^}]*fetchStreamProgress[^}]*\}.*?from.*?chat-stream", src)
-        assert import_match, "fetchStreamProgress not imported from chat-stream.js"
+        assert import_match, "fetchStreamProgress not imported from chat-stream.js in chat-controller.js"
 
     def test_onHeartbeatRelayStart_handler(self) -> None:
         """onHeartbeatRelayStart callback must exist in streamChat call."""
@@ -239,8 +240,8 @@ class TestIssueC_ChatJsIntegration:
             or "async function resumeConversationStream" in src
         ), "resumeConversationStream function not found in chat-streaming.js"
 
-    def test_resumeConversationStream_uses_fetchActiveStream(self) -> None:
-        """resumeConversationStream must call fetchActiveStream for recovery."""
+    def test_resumeConversationStream_delegates_to_session_manager(self) -> None:
+        """resumeConversationStream must delegate to ChatSessionManager."""
         src = CHAT_STREAMING_JS.read_text(encoding="utf-8")
         match = re.search(
             r"(?:async\s+)?function\s+resumeConversationStream.*?(?=\nfunction\s|\n(?:async\s+)?function\s|\nexport\s|\nclass\s|$)",
@@ -249,9 +250,7 @@ class TestIssueC_ChatJsIntegration:
         )
         assert match, "resumeConversationStream function body not found"
         body = match.group(0)
-        assert "fetchActiveStream" in body, (
-            "resumeConversationStream does not call fetchActiveStream"
-        )
+        assert "_mgr()" in body, "resumeConversationStream does not delegate to ChatSessionManager"
 
     def test_chat_js_deleted(self) -> None:
         """workspace/modules/chat.js must be deleted (dead code removed)."""

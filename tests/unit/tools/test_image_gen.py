@@ -250,11 +250,13 @@ class TestImageGenPipeline:
         assert pipe._anima_dir == tmp_path
 
     def test_generate_all_skips_existing(self, tmp_path: Path):
+        from core.config.models import ImageGenConfig
+
         assets = tmp_path / "assets"
         assets.mkdir()
         (assets / "avatar_fullbody.png").write_bytes(b"existing")
 
-        pipe = ImageGenPipeline(tmp_path)
+        pipe = ImageGenPipeline(tmp_path, config=ImageGenConfig(image_style="anime"))
         # Only run fullbody step
         result = pipe.generate_all(
             prompt="test",
@@ -273,7 +275,7 @@ class TestImageGenPipeline:
     def test_init_with_config(self, tmp_path: Path):
         from core.config.models import ImageGenConfig
 
-        cfg = ImageGenConfig(style_prefix="anime, ", vibe_strength=0.7)
+        cfg = ImageGenConfig(image_style="anime", style_prefix="anime, ", vibe_strength=0.7)
         pipe = ImageGenPipeline(tmp_path, config=cfg)
         assert pipe._config is cfg
         assert pipe._config.style_prefix == "anime, "
@@ -293,6 +295,7 @@ class TestImageGenPipeline:
         from core.config.models import ImageGenConfig
 
         cfg = ImageGenConfig(
+            image_style="anime",
             style_prefix="anime coloring, ",
             style_suffix=", high quality",
         )
@@ -316,7 +319,7 @@ class TestImageGenPipeline:
         monkeypatch.setenv("NOVELAI_TOKEN", "test-token")
         from core.config.models import ImageGenConfig
 
-        cfg = ImageGenConfig(negative_prompt_extra="realistic, 3d render")
+        cfg = ImageGenConfig(image_style="anime", negative_prompt_extra="realistic, 3d render")
         pipe = ImageGenPipeline(tmp_path, config=cfg)
 
         with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
@@ -338,7 +341,7 @@ class TestImageGenPipeline:
         monkeypatch.setenv("NOVELAI_TOKEN", "test-token")
         from core.config.models import ImageGenConfig
 
-        cfg = ImageGenConfig(negative_prompt_extra="realistic")
+        cfg = ImageGenConfig(image_style="anime", negative_prompt_extra="realistic")
         pipe = ImageGenPipeline(tmp_path, config=cfg)
 
         with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
@@ -363,7 +366,7 @@ class TestImageGenPipeline:
         style_ref = tmp_path / "style_ref.png"
         style_ref.write_bytes(b"STYLE-IMAGE-DATA")
 
-        cfg = ImageGenConfig(style_reference=str(style_ref))
+        cfg = ImageGenConfig(image_style="anime", style_reference=str(style_ref))
         pipe = ImageGenPipeline(tmp_path, config=cfg)
 
         with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
@@ -385,7 +388,7 @@ class TestImageGenPipeline:
         import logging
         from core.config.models import ImageGenConfig
 
-        cfg = ImageGenConfig(style_reference="/nonexistent/path/style.png")
+        cfg = ImageGenConfig(image_style="anime", style_reference="/nonexistent/path/style.png")
         pipe = ImageGenPipeline(tmp_path, config=cfg)
 
         with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:
@@ -408,7 +411,7 @@ class TestImageGenPipeline:
         monkeypatch.setenv("NOVELAI_TOKEN", "test-token")
         from core.config.models import ImageGenConfig
 
-        cfg = ImageGenConfig(vibe_strength=0.3, vibe_info_extracted=0.5)
+        cfg = ImageGenConfig(image_style="anime", vibe_strength=0.3, vibe_info_extracted=0.5)
         pipe = ImageGenPipeline(tmp_path, config=cfg)
 
         with patch("core.tools.image_gen.NovelAIClient") as mock_nai_cls:

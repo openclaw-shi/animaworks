@@ -844,6 +844,7 @@ _EXPECTED_FILES = [
     "security/prompt-injection-awareness.md",
     "troubleshooting/common-issues.md",
     "troubleshooting/escalation-flowchart.md",
+    "troubleshooting/gmail-credential-setup.md",
 ]
 
 

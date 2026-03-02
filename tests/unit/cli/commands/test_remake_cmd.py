@@ -53,6 +53,7 @@ def _make_namespace(**overrides) -> argparse.Namespace:
         "style_from": "miku",
         "steps": None,
         "prompt": None,
+        "image_style": "anime",
         "vibe_strength": 0.6,
         "vibe_info_extracted": 0.8,
         "seed": None,

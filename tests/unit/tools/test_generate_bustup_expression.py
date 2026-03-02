@@ -30,8 +30,8 @@ def anima_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def pipeline(anima_dir: Path) -> ImageGenPipeline:
-    """Return an ImageGenPipeline with default config."""
-    return ImageGenPipeline(anima_dir)
+    """Return an ImageGenPipeline with anime-mode config."""
+    return ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
 
 
 @pytest.fixture()
@@ -118,6 +118,7 @@ class TestStylePrefixSuffix:
         self, anima_dir: Path, reference_image: bytes, generated_bytes: bytes
     ):
         config = ImageGenConfig(
+            image_style="anime",
             style_prefix="[PREFIX] ",
             style_suffix=" [SUFFIX]",
         )
@@ -168,7 +169,7 @@ class TestOutputFilename:
         expression: str,
         expected_filename: str,
     ):
-        pipeline = ImageGenPipeline(anima_dir)
+        pipeline = ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
 
         with patch("core.tools.image_gen.FluxKontextClient") as mock_cls:
             mock_client = MagicMock()

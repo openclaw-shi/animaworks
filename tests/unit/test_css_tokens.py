@@ -57,21 +57,20 @@ class TestTokensCSS:
         assert "--aw-emoji-display" in content
         assert "--aw-icon-display" in content
 
-    def test_business_theme_pauses_animations(self):
+    def test_realistic_mode_pauses_animations(self):
         content = TOKENS_CSS.read_text()
-        # Find the .theme-business selector block (not the comment)
-        biz_start = content.index(".theme-business {")
-        biz_block = content[
-            biz_start : content.index("}", biz_start) + 1
+        mode_start = content.index(".mode-realistic {")
+        mode_block = content[
+            mode_start : content.index("}", mode_start) + 1
         ]
-        assert "paused" in biz_block
+        assert "paused" in mode_block
 
-    def test_business_theme_hides_emoji(self):
+    def test_realistic_mode_hides_emoji(self):
         content = TOKENS_CSS.read_text()
-        biz_start = content.index(".theme-business {")
+        mode_start = content.index(".mode-realistic {")
         depth = 0
-        end = biz_start
-        for i in range(biz_start, len(content)):
+        end = mode_start
+        for i in range(mode_start, len(content)):
             if content[i] == "{":
                 depth += 1
             elif content[i] == "}":
@@ -79,8 +78,8 @@ class TestTokensCSS:
                 if depth == 0:
                     end = i + 1
                     break
-        biz_block = content[biz_start:end]
-        assert "--aw-emoji-display" in biz_block
+        mode_block = content[mode_start:end]
+        assert "--aw-emoji-display" in mode_block
 
 
 class TestCSSFilesUseTokens:

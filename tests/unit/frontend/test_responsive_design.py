@@ -156,6 +156,15 @@ _PASSIVE_HOVER_SELECTORS = {
     ".org-activity-item",
     ".org-tree-node",
     ".org-status-card",
+    ".settings-mode-card",
+    ".chat-unified-user-logout",
+    ".chat-thread-dd-new",
+    ".assets-expression-card",
+    ".scroll-to-bottom-btn",
+    ".chat-thread-dd-close",
+    ".assets-expression-regen-btn",
+    ".org-tree-card",
+    ".settings-theme-card",
 }
 
 

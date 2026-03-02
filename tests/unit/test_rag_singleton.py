@@ -150,6 +150,7 @@ class TestGetEmbeddingModel:
         mock_sentence_transformers.assert_called_once_with(
             "cl-nagoya/ruri-small",
             cache_folder=str(tmp_path / "models"),
+            device="cpu",
         )
 
     def test_explicit_model_name_overrides_config(
@@ -172,6 +173,7 @@ class TestGetEmbeddingModel:
         mock_sentence_transformers.assert_called_once_with(
             "pkshatech/RoSEtta-base-ja",
             cache_folder=str(tmp_path / "models"),
+            device="cpu",
         )
 
     def test_model_switch_reloads(

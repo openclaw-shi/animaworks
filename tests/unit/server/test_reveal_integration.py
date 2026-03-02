@@ -169,4 +169,5 @@ class TestAppJSRevealIntegration:
         assert 'startsWith("avatar_")' in self.app_js
 
     def test_constructs_avatar_url(self):
-        assert "avatar_bustup.png" in self.app_js
+        assert "bustupCandidates" in self.app_js
+        assert "resolveAvatar" in self.app_js

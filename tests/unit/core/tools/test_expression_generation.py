@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from core.config.models import ImageGenConfig
 from core.schemas import VALID_EMOTIONS
 from core.tools.image_gen import (
     ImageGenPipeline,
@@ -53,7 +54,7 @@ def fake_image_bytes() -> bytes:
 @pytest.fixture
 def pipeline(anima_dir: Path) -> ImageGenPipeline:
     """Create an ImageGenPipeline pointing at the temp anima directory."""
-    return ImageGenPipeline(anima_dir)
+    return ImageGenPipeline(anima_dir, config=ImageGenConfig(image_style="anime"))
 
 
 # ── 1. _EXPRESSION_PROMPTS Tests ────────────────────────────────────
