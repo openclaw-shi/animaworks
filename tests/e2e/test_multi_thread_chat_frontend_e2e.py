@@ -25,7 +25,7 @@ from tests.helpers.filesystem import create_anima_dir, create_test_data_dir
 # ── Paths ────────────────────────────────────────────────────
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CHAT_JS = PROJECT_ROOT / "server" / "static" / "pages" / "chat.js"
+CHAT_JS = PROJECT_ROOT / "server" / "static" / "shared" / "chat" / "session-manager.js"
 
 
 def _read(path: Path) -> str:

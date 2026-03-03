@@ -9,6 +9,7 @@ import {
   bindToolCallHandlers as _sharedBindToolCallHandlers,
   renderLiveBubble,
   renderStreamingBubbleInner,
+  updateStreamingZone,
 } from "../../shared/chat/render-utils.js";
 import { createScrollObserver } from "../../shared/chat/scroll-observer.js";
 import { mergePolledHistory } from "../../shared/chat/history-loader.js";
@@ -144,7 +145,7 @@ export function createChatRenderer(ctx) {
     observeChatSentinel();
   }
 
-  function renderStreamingBubble(msg) {
+  function renderStreamingBubble(msg, zone = "all") {
     const messagesEl = $("chatPageMessages");
     if (!messagesEl) return;
     let bubble = null;
@@ -157,7 +158,7 @@ export function createChatRenderer(ctx) {
     }
     if (!bubble) return;
 
-    bubble.innerHTML = renderStreamingBubbleInner(msg, _renderOpts());
+    updateStreamingZone(bubble, msg, _renderOpts(), zone);
     if (!_userDetached) messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 

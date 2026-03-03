@@ -692,8 +692,27 @@ html, body {
 .tool-activity-dur { font-size: 0.7rem; opacity: 0.7; white-space: nowrap; }
 .tool-activity-summary { font-size: 0.7rem; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
 .tool-activity-detail { margin-left: 6px; font-size: 0.7rem; opacity: 0.8; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+
+/* Streaming zone layout */
+.streaming-zone-text, .streaming-zone-tools, .streaming-zone-subordinate, .streaming-zone-thinking {}
+.streaming-zone-tools:empty, .streaming-zone-subordinate:empty, .streaming-zone-thinking:empty { display: none; }
+
+/* Tool activity animations */
+@keyframes aw-slide-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes aw-flash-success { 0% { background-color: rgba(46, 204, 113, 0.25); } 100% { background-color: transparent; } }
+@keyframes aw-flash-error { 0% { background-color: rgba(231, 76, 60, 0.25); } 100% { background-color: transparent; } }
+@keyframes aw-progress-dots { 0%, 20% { opacity: 0.3; } 50% { opacity: 1; } 80%, 100% { opacity: 0.3; } }
+@keyframes aw-avatar-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } 50% { box-shadow: 0 0 6px 2px rgba(99, 102, 241, 0.4); } }
+
+.tool-activity-item { animation: aw-slide-in 0.2s ease-out; }
+.tool-activity-item--running::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #92400e; margin-right: 2px; flex-shrink: 0; animation: aw-progress-dots 1.2s ease-in-out infinite; }
+.tool-activity-item:not(.tool-activity-item--running):not(.tool-activity-item--error) { animation: aw-slide-in 0.2s ease-out, aw-flash-success 0.6s ease-out; }
+.tool-activity-item--error:not(.tool-activity-item--running) { animation: aw-slide-in 0.2s ease-out, aw-flash-error 0.6s ease-out; }
+.tool-activity-list { transition: max-height 0.25s ease; overflow: hidden; }
+
 .subordinate-activity { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 10px; background: rgba(0,0,0,0.05); border-radius: 8px; font-size: 0.76rem; }
-.subordinate-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
+.subordinate-activity--animate { animation: aw-slide-in 0.25s ease-out; }
+.subordinate-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; animation: aw-avatar-glow 2s ease-in-out infinite; }
 .subordinate-name { font-weight: 600; opacity: 0.8; min-width: 40px; }
 .subordinate-tool { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; opacity: 0.9; }
 

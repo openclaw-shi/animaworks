@@ -249,8 +249,26 @@ export function createStreamingController(ctx) {
       if (isVisible()) ctx.controllers.renderer.renderChat();
     };
 
-    const renderBubble = (streamingMsg) => { if (isVisible()) ctx.controllers.renderer.renderStreamingBubble(streamingMsg); };
+    const renderBubble = (streamingMsg, zone = "all") => { if (isVisible()) ctx.controllers.renderer.renderStreamingBubble(streamingMsg, zone); };
     const renderFull = () => { if (isVisible()) ctx.controllers.renderer.renderChat(!ctx.controllers.renderer.isUserDetached()); };
+
+    let _subThrottleTimer = null;
+    let _subThrottlePending = false;
+    const _throttledSubRender = () => {
+      if (_subThrottleTimer) { _subThrottlePending = true; return; }
+      renderBubble(streamingMsg, "subordinate");
+      _subThrottleTimer = setTimeout(() => {
+        _subThrottleTimer = null;
+        if (_subThrottlePending) { _subThrottlePending = false; renderBubble(streamingMsg, "subordinate"); }
+      }, 150);
+    };
+
+    const _toolDetailTimers = new Map();
+    const _throttledToolDetail = (toolId) => {
+      if (_toolDetailTimers.has(toolId)) return;
+      renderBubble(streamingMsg, "tools");
+      _toolDetailTimers.set(toolId, setTimeout(() => { _toolDetailTimers.delete(toolId); renderBubble(streamingMsg, "tools"); }, 200));
+    };
 
     logger.debug(`_sendChat: starting stream for ${name} msg_len=${message.length}`);
 
@@ -276,7 +294,7 @@ export function createStreamingController(ctx) {
       } else {
         streamingMsg.subordinateActivity[subName] = { type: evtType, tool: toolName || "", summary: evtType };
       }
-      renderBubble(streamingMsg);
+      _throttledSubRender();
     };
     document.addEventListener("anima-tool-activity", _onSubordinateActivity);
 
@@ -289,7 +307,7 @@ export function createStreamingController(ctx) {
           if (!streamingMsg?.streaming) return;
           streamingMsg.afterHeartbeatRelay = false;
           streamingMsg.text += text;
-          renderBubble(streamingMsg);
+          renderBubble(streamingMsg, "text");
         },
         onToolStart: (toolName, detail) => {
           if (!streamingMsg?.streaming) return;
@@ -300,7 +318,7 @@ export function createStreamingController(ctx) {
             tool_id: detail?.tool_id || "",
             started_at: Date.now(),
           });
-          renderBubble(streamingMsg);
+          renderBubble(streamingMsg, "tools");
         },
         onToolDetail: (_toolName, detailText, info) => {
           if (!streamingMsg?.streaming) return;
@@ -313,7 +331,7 @@ export function createStreamingController(ctx) {
               }
             }
           }
-          renderBubble(streamingMsg);
+          _throttledToolDetail(info?.tool_id || "_");
         },
         onToolEnd: (detail) => {
           if (!streamingMsg?.streaming) return;
@@ -331,30 +349,30 @@ export function createStreamingController(ctx) {
               }
             }
           }
-          renderBubble(streamingMsg);
+          renderBubble(streamingMsg, "tools");
         },
         onChainStart: () => {},
-        onCompressionStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = true; renderBubble(streamingMsg); },
-        onCompressionEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = false; renderBubble(streamingMsg); },
+        onCompressionStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = true; renderBubble(streamingMsg, "text"); },
+        onCompressionEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = false; renderBubble(streamingMsg, "text"); },
         onHeartbeatRelayStart: ({ message: msg }) => {
           if (!streamingMsg?.streaming) return;
           streamingMsg.heartbeatRelay = true; streamingMsg.heartbeatText = "";
-          renderBubble(streamingMsg);
+          renderBubble(streamingMsg, "text");
           ctx.controllers.activity.addLocalActivity("system", name, `${t("chat.heartbeat_relay")}: ${msg}`);
         },
         onHeartbeatRelay: ({ text }) => {
           if (!streamingMsg?.streaming) return;
           streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + text;
-          renderBubble(streamingMsg);
+          renderBubble(streamingMsg, "text");
         },
         onHeartbeatRelayDone: () => {
           if (!streamingMsg?.streaming) return;
           streamingMsg.heartbeatRelay = false; streamingMsg.heartbeatText = ""; streamingMsg.afterHeartbeatRelay = true;
-          renderBubble(streamingMsg);
+          renderBubble(streamingMsg, "text");
         },
-        onThinkingStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.thinkingText = ""; streamingMsg.thinking = true; renderBubble(streamingMsg); },
-        onThinkingDelta: text => { if (!streamingMsg?.streaming) return; streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + text; renderBubble(streamingMsg); },
-        onThinkingEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.thinking = false; renderBubble(streamingMsg); },
+        onThinkingStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.thinkingText = ""; streamingMsg.thinking = true; renderBubble(streamingMsg, "thinking"); },
+        onThinkingDelta: text => { if (!streamingMsg?.streaming) return; streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + text; renderBubble(streamingMsg, "thinking"); },
+        onThinkingEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.thinking = false; renderBubble(streamingMsg, "thinking"); },
         onError: ({ message: errorMsg }) => {
           logger.debug(`onError: ${errorMsg}`);
           if (!streamingMsg?.text) {
@@ -404,6 +422,9 @@ export function createStreamingController(ctx) {
       },
       onFinally: () => {
         document.removeEventListener("anima-tool-activity", _onSubordinateActivity);
+        if (_subThrottleTimer) { clearTimeout(_subThrottleTimer); _subThrottleTimer = null; }
+        for (const t of _toolDetailTimers.values()) clearTimeout(t);
+        _toolDetailTimers.clear();
         try {
           if (streamingMsg && streamingMsg.streaming) {
             streamingMsg.streaming = false;
