@@ -345,8 +345,8 @@ export function renderStreamingBubbleInner(msg, opts) {
     for (const [subName, act] of Object.entries(subActivity)) {
       if (act.type === "inbox_processing_end") continue;
       const icon = act.type === "inbox_processing_start"
-        ? "⏳" : act.type === "tool_end" ? "✓" : "🔧";
-      const label = act.summary || act.type;
+        ? "⏳" : (act.type === "tool_end" || act.type === "tool_use") ? "✓" : "🔧";
+      const label = act.summary || act.tool || act.type;
       html += `<div class="subordinate-activity">
         <img class="subordinate-avatar" src="/api/animas/${encodeURIComponent(subName)}/avatar" alt="" onerror="this.style.display='none'">
         <span class="subordinate-name">${escapeHtml(subName)}</span>

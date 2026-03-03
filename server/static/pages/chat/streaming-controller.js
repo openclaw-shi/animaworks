@@ -258,9 +258,14 @@ export function createStreamingController(ctx) {
     // await would not be initialized when SSE callbacks fire during streaming.
     let streamingMsg = null;
 
+    const _SUB_ACTIVITY_TYPES = new Set([
+      "tool_start", "tool_detail", "tool_end",
+      "inbox_processing_start", "inbox_processing_end",
+    ]);
     const _onSubordinateActivity = (e) => {
-      const { name: subName, event: evtType, tool_name: toolName, detail: toolDetail, summary } = e.detail || {};
+      const { name: subName, event: evtType, tool_name: toolName, detail: toolDetail } = e.detail || {};
       if (!streamingMsg?.streaming || subName === name) return;
+      if (!_SUB_ACTIVITY_TYPES.has(evtType)) return;
       if (!streamingMsg.subordinateActivity) streamingMsg.subordinateActivity = {};
       if (evtType === "tool_start") {
         streamingMsg.subordinateActivity[subName] = { type: evtType, tool: toolName, summary: `${toolName} 実行中...` };
@@ -269,7 +274,7 @@ export function createStreamingController(ctx) {
       } else if (evtType === "tool_end") {
         streamingMsg.subordinateActivity[subName] = { type: evtType, tool: toolName, summary: `${toolName} 完了` };
       } else {
-        streamingMsg.subordinateActivity[subName] = { type: evtType, tool: toolName || "", summary: summary || evtType };
+        streamingMsg.subordinateActivity[subName] = { type: evtType, tool: toolName || "", summary: evtType };
       }
       renderBubble(streamingMsg);
     };
