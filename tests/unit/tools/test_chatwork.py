@@ -599,6 +599,7 @@ class TestExecutionProfile:
             "rooms", "messages", "send", "search", "unreplied",
             "sync", "me", "members", "contacts", "task",
             "mytasks", "tasks", "mentions", "stats", "files", "download",
+            "delete",
         }
         assert set(EXECUTION_PROFILE.keys()) == expected
 
@@ -614,7 +615,7 @@ class TestExecutionProfile:
         non_eligible = (
             "rooms", "messages", "send", "search", "unreplied",
             "me", "members", "contacts", "task", "mytasks",
-            "tasks", "mentions", "stats", "files",
+            "tasks", "mentions", "stats", "files", "delete",
         )
         for key in non_eligible:
             assert EXECUTION_PROFILE[key]["background_eligible"] is False, key
