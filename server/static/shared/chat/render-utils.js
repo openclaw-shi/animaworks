@@ -280,10 +280,14 @@ export function renderLiveBubble(msg, opts) {
   const compressionHtml = msg.compressing
     ? `<div class="compression-indicator"><span class="tool-spinner"></span>${compLabel}</div>`
     : "";
-  const toolLabel = labels.toolRunning || ((tool) => `${tool} を実行中...`);
-  const toolHtml = msg.activeTool
-    ? `<div class="tool-indicator"><span class="tool-spinner"></span>${typeof toolLabel === "function" ? toolLabel(msg.activeTool) : toolLabel}</div>`
-    : "";
+  let toolHtml = "";
+  const history = msg.toolHistory;
+  if (history && history.length > 0) {
+    toolHtml = renderToolActivityTimeline(history, msg.activeTool, { escapeHtml, labels });
+  } else if (msg.activeTool) {
+    const toolLabel = labels.toolRunning || ((tool) => `${tool} を実行中...`);
+    toolHtml = `<div class="tool-indicator"><span class="tool-spinner"></span>${typeof toolLabel === "function" ? toolLabel(msg.activeTool) : toolLabel}</div>`;
+  }
   const imagesHtml = renderImages(msg.images, { animaName: opts.animaName });
 
   const bubble = `<div class="chat-bubble assistant${streamClass}"${streamIdAttr}>${content}${imagesHtml}${compressionHtml}${toolHtml}${thinkingHtml}${tsHtml}</div>`;
@@ -325,10 +329,56 @@ export function renderStreamingBubbleInner(msg, opts) {
     const compLabel = labels.compressing || "会話履歴を圧縮中...";
     html += `<div class="compression-indicator"><span class="tool-spinner"></span>${compLabel}</div>`;
   }
-  if (msg.activeTool) {
+
+  // Tool activity timeline (completed + active)
+  const history = msg.toolHistory;
+  if (history && history.length > 0) {
+    html += renderToolActivityTimeline(history, msg.activeTool, { escapeHtml, labels });
+  } else if (msg.activeTool) {
     const toolLabel = labels.toolRunning || ((tool) => `${tool} を実行中...`);
     html += `<div class="tool-indicator"><span class="tool-spinner"></span>${typeof toolLabel === "function" ? toolLabel(msg.activeTool) : toolLabel}</div>`;
   }
+
   html += thinkingHtml;
   return html;
+}
+
+/**
+ * Render a collapsible tool activity timeline.
+ */
+function renderToolActivityTimeline(history, activeTool, { escapeHtml, labels }) {
+  const completedCount = history.filter(e => e.completed).length;
+  const totalCount = history.length;
+
+  let items = "";
+  for (const entry of history) {
+    if (entry.completed) {
+      const icon = entry.is_error
+        ? '<span class="tool-activity-icon tool-activity-error">✗</span>'
+        : '<span class="tool-activity-icon tool-activity-ok">✓</span>';
+      const dur = entry.duration_ms != null ? `<span class="tool-activity-dur">${_formatDuration(entry.duration_ms)}</span>` : "";
+      const summary = entry.result_summary
+        ? `<span class="tool-activity-summary">${escapeHtml(entry.result_summary.slice(0, 120))}</span>`
+        : "";
+      items += `<div class="tool-activity-item${entry.is_error ? " tool-activity-item--error" : ""}">${icon}<span class="tool-activity-name">${escapeHtml(entry.tool_name)}</span>${dur}${summary}</div>`;
+    } else {
+      items += `<div class="tool-activity-item tool-activity-item--running"><span class="tool-spinner"></span><span class="tool-activity-name">${escapeHtml(entry.tool_name)}</span><span class="tool-activity-dur">実行中</span></div>`;
+    }
+  }
+
+  const summaryLabel = activeTool
+    ? `${escapeHtml(activeTool)} を実行中... (${completedCount}/${totalCount})`
+    : `${completedCount} ツール完了`;
+
+  return `<div class="tool-activity-timeline">
+    <details${activeTool ? " open" : ""}>
+      <summary class="tool-activity-header"><span class="tool-spinner"${activeTool ? "" : ' style="display:none"'}></span>${summaryLabel}</summary>
+      <div class="tool-activity-list">${items}</div>
+    </details>
+  </div>`;
+}
+
+function _formatDuration(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }

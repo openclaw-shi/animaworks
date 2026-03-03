@@ -674,6 +674,24 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
+/* ── Tool Activity Timeline ──────────────── */
+
+.tool-activity-timeline { margin-top: 8px; font-size: 0.78rem; border-radius: 6px; background: rgba(0,0,0,0.03); overflow: hidden; }
+.tool-activity-header { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; color: #92400e; user-select: none; list-style: none; }
+.tool-activity-header::-webkit-details-marker { display: none; }
+.tool-activity-header .tool-spinner { width: 10px; height: 10px; }
+.tool-activity-list { padding: 2px 10px 6px; display: flex; flex-direction: column; gap: 3px; }
+.tool-activity-item { display: flex; align-items: baseline; gap: 5px; line-height: 1.5; color: #6b7280; }
+.tool-activity-item--running { color: #92400e; }
+.tool-activity-item--running .tool-spinner { width: 10px; height: 10px; }
+.tool-activity-item--error { color: #e74c3c; }
+.tool-activity-icon { flex-shrink: 0; font-weight: 600; font-size: 0.75rem; }
+.tool-activity-ok { color: #2ecc71; }
+.tool-activity-error { color: #e74c3c; }
+.tool-activity-name { font-family: monospace; font-weight: 500; }
+.tool-activity-dur { font-size: 0.7rem; opacity: 0.7; white-space: nowrap; }
+.tool-activity-summary { font-size: 0.7rem; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+
 /* Streaming cursor: blinking block at end of text (案3) */
 .streaming-cursor {
   display: inline;

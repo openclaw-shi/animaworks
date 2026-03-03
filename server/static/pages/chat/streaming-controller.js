@@ -269,8 +269,35 @@ export function createStreamingController(ctx) {
           streamingMsg.text += text;
           renderBubble(streamingMsg);
         },
-        onToolStart: toolName => { if (!streamingMsg?.streaming) return; streamingMsg.activeTool = toolName; renderBubble(streamingMsg); },
-        onToolEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.activeTool = null; renderBubble(streamingMsg); },
+        onToolStart: (toolName, detail) => {
+          if (!streamingMsg?.streaming) return;
+          streamingMsg.activeTool = toolName;
+          if (!streamingMsg.toolHistory) streamingMsg.toolHistory = [];
+          streamingMsg.toolHistory.push({
+            tool_name: toolName,
+            tool_id: detail?.tool_id || "",
+            started_at: Date.now(),
+          });
+          renderBubble(streamingMsg);
+        },
+        onToolEnd: (detail) => {
+          if (!streamingMsg?.streaming) return;
+          streamingMsg.activeTool = null;
+          if (streamingMsg.toolHistory && detail?.tool_id) {
+            for (let i = streamingMsg.toolHistory.length - 1; i >= 0; i--) {
+              const entry = streamingMsg.toolHistory[i];
+              if (entry.tool_id === detail.tool_id && !entry.completed) {
+                entry.completed = true;
+                entry.duration_ms = Date.now() - entry.started_at;
+                entry.result_summary = detail.result_summary || "";
+                entry.input_summary = detail.input_summary || "";
+                entry.is_error = !!detail.is_error;
+                break;
+              }
+            }
+          }
+          renderBubble(streamingMsg);
+        },
         onChainStart: () => {},
         onCompressionStart: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = true; renderBubble(streamingMsg); },
         onCompressionEnd: () => { if (!streamingMsg?.streaming) return; streamingMsg.compressing = false; renderBubble(streamingMsg); },

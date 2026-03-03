@@ -49,8 +49,31 @@ function _baseCallbacks(streamingMsg) {
   return {
     onCompressionStart: () => { streamingMsg.compressing = true; updateStreamingBubble(streamingMsg); },
     onCompressionEnd: () => { streamingMsg.compressing = false; updateStreamingBubble(streamingMsg); },
-    onToolStart: (n) => { streamingMsg.activeTool = n; setExpression("thinking"); updateStreamingBubble(streamingMsg); },
-    onToolEnd: () => { streamingMsg.activeTool = null; setExpression("neutral"); updateStreamingBubble(streamingMsg); },
+    onToolStart: (n, detail) => {
+      streamingMsg.activeTool = n;
+      if (!streamingMsg.toolHistory) streamingMsg.toolHistory = [];
+      streamingMsg.toolHistory.push({ tool_name: n, tool_id: detail?.tool_id || "", started_at: Date.now() });
+      setExpression("thinking");
+      updateStreamingBubble(streamingMsg);
+    },
+    onToolEnd: (detail) => {
+      streamingMsg.activeTool = null;
+      if (streamingMsg.toolHistory && detail?.tool_id) {
+        for (let i = streamingMsg.toolHistory.length - 1; i >= 0; i--) {
+          const entry = streamingMsg.toolHistory[i];
+          if (entry.tool_id === detail.tool_id && !entry.completed) {
+            entry.completed = true;
+            entry.duration_ms = Date.now() - entry.started_at;
+            entry.result_summary = detail.result_summary || "";
+            entry.input_summary = detail.input_summary || "";
+            entry.is_error = !!detail.is_error;
+            break;
+          }
+        }
+      }
+      setExpression("neutral");
+      updateStreamingBubble(streamingMsg);
+    },
     onThinkingStart: () => { streamingMsg.thinkingText = ""; streamingMsg.thinking = true; updateStreamingBubble(streamingMsg); },
     onThinkingDelta: (t) => { streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + t; scheduleStreamingUpdate(streamingMsg); },
     onThinkingEnd: () => { streamingMsg.thinking = false; updateStreamingBubble(streamingMsg); },

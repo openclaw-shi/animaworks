@@ -149,6 +149,24 @@ export function setupWebSocket(deps) {
     }
   }));
 
+  // ── anima.tool_activity — live tool usage ──
+  wsUnsubscribers.push(onEvent("anima.tool_activity", (data) => {
+    if (data.event === "tool_start") {
+      addActivity("tool", data.name, `${data.tool_name || "tool"} 実行中...`);
+    } else if (data.event === "tool_end") {
+      const suffix = data.is_error ? " (error)" : "";
+      addActivity("tool", data.name, `${data.tool_name || "tool"} 完了${suffix}`);
+    }
+    if (getCurrentView() === "org") {
+      addActivityItem({
+        ts: new Date().toISOString(),
+        type: "anima.tool_activity",
+        from: data.name || "",
+        summary: `${data.tool_name || "tool"} ${data.event === "tool_start" ? "実行中" : "完了"}`,
+      });
+    }
+  }));
+
   // ── board.post — shared channel message ──
   wsUnsubscribers.push(onEvent("board.post", (data) => {
     const from = data.from || "?";

@@ -247,6 +247,17 @@ function handleWsMessage(raw) {
       break;
     }
 
+    case "anima.tool_activity": {
+      const animaName = data.name;
+      if (animaName && data.event === "tool_start") {
+        addActivity("tool", animaName, `${data.tool_name || "tool"} ${t("websocket.tool_running") || "実行中..."}`);
+      } else if (animaName && data.event === "tool_end") {
+        const suffix = data.is_error ? ` (${t("common.error") || "error"})` : "";
+        addActivity("tool", animaName, `${data.tool_name || "tool"} ${t("websocket.tool_done") || "完了"}${suffix}`);
+      }
+      break;
+    }
+
     case "anima.interaction": {
       const fromAnima = data.from_person || "";
       const toAnima = data.to_person || "";
