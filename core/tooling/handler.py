@@ -219,6 +219,7 @@ class ToolHandler(
             "update_task": self._handle_update_task,
             "list_tasks": self._handle_list_tasks,
             "plan_tasks": self._handle_plan_tasks,
+            "use_tool": self._handle_use_tool,
         }
 
     # ── Properties and session management ─────────────────────
@@ -468,3 +469,42 @@ class ToolHandler(
             )
         except Exception as e:
             logger.warning("Activity result logging failed for tool '%s': %s", name, e)
+
+    # ── use_tool dispatcher ──────────────────────────────────
+
+    def _handle_use_tool(self, args: dict[str, Any]) -> str:
+        """Dispatch to an external tool module via unified use_tool interface.
+
+        Resolves ``tool_name + "_" + action`` as the schema name and
+        delegates to the tool module's ``dispatch()`` function directly,
+        bypassing schema-based matching.
+        """
+        import importlib
+        from core.tools import TOOL_MODULES
+
+        tool_name = args.get("tool_name", "")
+        action = args.get("action", "")
+        tool_args = args.get("args") or {}
+
+        if not tool_name or not action:
+            return _error_result("use_tool requires both 'tool_name' and 'action'")
+
+        if tool_name not in (self._external.registry or []):
+            return _error_result(
+                f"Tool '{tool_name}' is not permitted. "
+                f"Check permissions.md for allowed external tools."
+            )
+
+        if tool_name not in TOOL_MODULES:
+            return _error_result(f"Unknown tool module: {tool_name}")
+
+        schema_name = f"{tool_name}_{action}"
+        dispatch_args = {**tool_args, "anima_dir": str(self._anima_dir)}
+
+        try:
+            mod = importlib.import_module(TOOL_MODULES[tool_name])
+            result = ExternalToolDispatcher._call_module(mod, schema_name, dispatch_args)
+            return result
+        except Exception as e:
+            logger.warning("use_tool dispatch failed: %s %s – %s", tool_name, action, e)
+            return _error_result(f"use_tool execution failed: {tool_name}/{action}: {e}")

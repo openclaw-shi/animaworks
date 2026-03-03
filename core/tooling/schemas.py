@@ -410,26 +410,47 @@ NOTIFICATION_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
-DISCOVERY_TOOLS: list[dict[str, Any]] = [
+DISCOVERY_TOOLS: list[dict[str, Any]] = []
+
+USE_TOOL: list[dict[str, Any]] = [
     {
-        "name": "discover_tools",
+        "name": "use_tool",
         "description": (
-            "Discover available external tools. "
-            "Call without arguments to list available categories. "
-            "Call with a category name to activate that category's tools."
+            "Execute an external tool action. "
+            "Combines tool_name and action to dispatch to the appropriate "
+            "external tool module (e.g. chatwork + send → chatwork_send). "
+            "Available tools depend on permissions.md settings. "
+            "Use the 'skill' tool to look up detailed usage for each tool."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "category": {
+                "tool_name": {
                     "type": "string",
                     "description": (
-                        "Tool category to activate "
-                        "(e.g. 'chatwork', 'slack', 'gmail'). "
-                        "Omit to list all available categories."
+                        "External tool module name "
+                        "(e.g. 'chatwork', 'slack', 'gmail', 'web_search', "
+                        "'github', 'aws_collector', 'image_gen', 'x_search', "
+                        "'transcribe', 'local_llm', 'google_calendar')"
+                    ),
+                },
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action/subcommand to execute within the tool "
+                        "(e.g. 'send', 'read', 'search', 'query', 'list')"
+                    ),
+                },
+                "args": {
+                    "type": "object",
+                    "description": (
+                        "Arguments to pass to the tool action. "
+                        "Refer to the tool's skill documentation for "
+                        "required and optional parameters."
                     ),
                 },
             },
+            "required": ["tool_name", "action"],
         },
     },
 ]
@@ -1192,6 +1213,7 @@ def build_tool_list(
     include_file_tools: bool = False,
     include_search_tools: bool = False,
     include_discovery_tools: bool = False,
+    include_use_tool: bool = False,
     include_notification_tools: bool = False,
     include_admin_tools: bool = False,
     include_supervisor_tools: bool = False,
@@ -1209,7 +1231,8 @@ def build_tool_list(
     Args:
         include_file_tools: Include file/command operation tools (for Mode A).
         include_search_tools: Include search_code/list_directory tools.
-        include_discovery_tools: Include discover_tools tool.
+        include_discovery_tools: Include discover_tools tool (deprecated, now empty).
+        include_use_tool: Include use_tool unified external tool dispatcher.
         include_notification_tools: Include call_human tool (for top-level Animas).
         include_admin_tools: Include admin tools (create_anima etc.).
         include_supervisor_tools: Include supervisor tools (disable/enable subordinate).
@@ -1240,6 +1263,8 @@ def build_tool_list(
         tools.extend(SEARCH_TOOLS)
     if include_discovery_tools:
         tools.extend(DISCOVERY_TOOLS)
+    if include_use_tool:
+        tools.extend(USE_TOOL)
     if include_notification_tools:
         tools.extend(NOTIFICATION_TOOLS)
     if include_admin_tools:
