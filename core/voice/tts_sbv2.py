@@ -57,6 +57,8 @@ class StyleBertVits2TTS(BaseTTSProvider):
                     },
                 )
                 r.raise_for_status()
+                if not r.content:
+                    raise TTSSynthesisError("Style-BERT-VITS2: empty audio response")
                 return r.content
             except httpx.HTTPError as e:
                 logger.warning("Style-BERT-VITS2 synthesis failed: %s", e)

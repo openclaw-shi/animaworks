@@ -345,13 +345,19 @@ class VoiceSession:
                 await self._ws.send_bytes(audio_chunk)
             await self._ws.send_json({"type": "tts_done"})
             self._consecutive_tts_failures = 0
-        except Exception as e:
+        except TTSSynthesisError as e:
             self._consecutive_tts_failures += 1
-            logger.warning("TTS failed (%d consecutive): %s", self._consecutive_tts_failures, e)
+            logger.warning("TTS synthesis failed (%d consecutive): %s", self._consecutive_tts_failures, e)
             if self._consecutive_tts_failures >= 3:
                 self.invalidate_tts_health()
             try:
-                await self._ws.send_json({"type": "tts_error", "message": str(e)})
+                await self._ws.send_json({"type": "tts_error", "message": "TTS synthesis failed"})
+                await self._ws.send_json({"type": "tts_done"})
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning("TTS send error: %s", e)
+            try:
                 await self._ws.send_json({"type": "tts_done"})
             except Exception:
                 pass

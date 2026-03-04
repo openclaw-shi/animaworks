@@ -63,6 +63,8 @@ class VoicevoxTTS(BaseTTSProvider):
                     json=audio_query,
                 )
                 r2.raise_for_status()
+                if not r2.content:
+                    raise TTSSynthesisError("VOICEVOX: empty audio response")
                 return r2.content
             except httpx.HTTPError as e:
                 logger.warning("VOICEVOX synthesis failed: %s", e)

@@ -33,11 +33,22 @@ class BaseTTSProvider(ABC):
     async def synthesize(
         self, text: str, config: TTSConfig
     ) -> AsyncIterator[bytes]:
-        """Stream TTS audio chunks for given text."""
+        """Stream TTS audio chunks for given text.
+
+        Raises:
+            TTSSynthesisError: When audio synthesis fails (HTTP error,
+                empty response, provider unavailable, etc.).
+        """
 
     @abstractmethod
     async def synthesize_full(self, text: str, config: TTSConfig) -> bytes:
-        """Generate complete audio for given text."""
+        """Generate complete audio for given text.
+
+        Returns non-empty bytes on success.
+
+        Raises:
+            TTSSynthesisError: When audio synthesis fails.
+        """
 
     @abstractmethod
     async def list_voices(self) -> list[dict]:
