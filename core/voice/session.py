@@ -15,7 +15,7 @@ from typing import Any
 from core.i18n import t
 from core.voice.sentence_splitter import StreamingSentenceSplitter
 from core.voice.stt import VoiceSTT
-from core.voice.tts_base import BaseTTSProvider, TTSConfig
+from core.voice.tts_base import BaseTTSProvider, TTSConfig, TTSSynthesisError
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +124,7 @@ class VoiceSession:
         self._processing = False
         self._tts_available: bool | None = None
         self._splitter = StreamingSentenceSplitter()
+        self._consecutive_tts_failures: int = 0
 
     async def handle_audio_chunk(self, data: bytes) -> None:
         """Receive audio chunk from browser, accumulate in buffer."""
@@ -234,6 +235,7 @@ class VoiceSession:
         except (TypeError, AttributeError):
             pass
 
+        response_done_sent = False
         try:
             async for ipc_response in self._supervisor.send_request_stream(
                 anima_name=self._anima_name,
@@ -262,6 +264,7 @@ class VoiceSession:
                         "type": "response_done",
                         "emotion": emotion,
                     })
+                    response_done_sent = True
                     break
 
                 if ipc_response.chunk:
@@ -310,12 +313,21 @@ class VoiceSession:
                             "type": "response_done",
                             "emotion": emotion,
                         })
+                        response_done_sent = True
                         break
 
         except Exception as e:
             logger.exception("Voice session IPC error: %s", e)
             await self._send_error(str(e))
         finally:
+            if not response_done_sent:
+                try:
+                    await self._ws.send_json({
+                        "type": "response_done",
+                        "emotion": "neutral",
+                    })
+                except Exception:
+                    pass
             self._tts_playing = False
             self._interrupted = False
             self._splitter.flush()
@@ -332,9 +344,23 @@ class VoiceSession:
                     break
                 await self._ws.send_bytes(audio_chunk)
             await self._ws.send_json({"type": "tts_done"})
+            self._consecutive_tts_failures = 0
+        except TTSSynthesisError as e:
+            self._consecutive_tts_failures += 1
+            logger.warning("TTS synthesis failed (%d consecutive): %s", self._consecutive_tts_failures, e)
+            if self._consecutive_tts_failures >= 3:
+                self.invalidate_tts_health()
+            try:
+                await self._ws.send_json({"type": "tts_error", "message": "TTS synthesis failed"})
+                await self._ws.send_json({"type": "tts_done"})
+            except Exception:
+                pass
         except Exception as e:
-            logger.warning("TTS failed: %s", e)
-            await self._ws.send_json({"type": "tts_done"})
+            logger.warning("TTS send error: %s", e)
+            try:
+                await self._ws.send_json({"type": "tts_done"})
+            except Exception:
+                pass
 
     async def handle_interrupt(self) -> None:
         """Handle barge-in: stop TTS, prepare for new STT."""

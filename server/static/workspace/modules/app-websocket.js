@@ -149,6 +149,33 @@ export function setupWebSocket(deps) {
     }
   }));
 
+  // ── anima.tool_activity — live tool usage ──
+  wsUnsubscribers.push(onEvent("anima.tool_activity", (data) => {
+    const evtType = data.event || data.type || "";
+    const toolName = data.tool_name || data.tool || "tool";
+    if (evtType === "tool_start") {
+      addActivity("tool", data.name, `${toolName} 実行中...`);
+    } else if (evtType === "tool_detail") {
+      addActivity("tool", data.name, `${toolName}: ${data.detail || ""}`);
+    } else if (evtType === "tool_end" || evtType === "tool_use") {
+      const suffix = data.is_error ? " (error)" : "";
+      addActivity("tool", data.name, `${toolName} 完了${suffix}`);
+    } else if (evtType) {
+      addActivity("tool", data.name, `${data.summary || evtType}`);
+    }
+    if (getCurrentView() === "org") {
+      addActivityItem({
+        ts: new Date().toISOString(),
+        type: "anima.tool_activity",
+        from: data.name || "",
+        summary: `${toolName} ${evtType === "tool_start" ? "実行中" : "完了"}`,
+      });
+    }
+    document.dispatchEvent(
+      new CustomEvent("anima-tool-activity", { detail: { ...data, event: evtType, tool_name: toolName } })
+    );
+  }));
+
   // ── board.post — shared channel message ──
   wsUnsubscribers.push(onEvent("board.post", (data) => {
     const from = data.from || "?";

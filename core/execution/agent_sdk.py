@@ -101,6 +101,7 @@ from core.execution._sdk_stream import (  # noqa: F401
     _summarise_tool_input,
     _tool_result_content_len,
 )
+from core.execution._tool_summary import make_tool_detail_chunk
 
 logger = logging.getLogger("animaworks.execution.agent_sdk")
 
@@ -430,8 +431,8 @@ class AgentSDKExecutor(BaseExecutor):
                     tracker.update_from_result_message(message.usage)
                 if usage_acc and message.usage:
                     u = message.usage
-                    usage_acc.input_tokens = getattr(u, "input_tokens", 0) or 0
-                    usage_acc.output_tokens = getattr(u, "output_tokens", 0) or 0
+                    usage_acc.input_tokens = u.get("input_tokens", 0) or 0
+                    usage_acc.output_tokens = u.get("output_tokens", 0) or 0
             elif isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
@@ -753,6 +754,11 @@ class AgentSDKExecutor(BaseExecutor):
                                 block, pending_records, None,
                                 self._model_config.model,
                             )
+                            detail_chunk = make_tool_detail_chunk(
+                                block.name, block.id, block.input or {},
+                            )
+                            if detail_chunk:
+                                yield detail_chunk
                             if block.id in active_tool_ids:
                                 active_tool_ids.discard(block.id)
                                 yield {
@@ -787,8 +793,8 @@ class AgentSDKExecutor(BaseExecutor):
                     # handled per-turn via message_start events above.
                     if message.usage:
                         u = message.usage
-                        usage_acc.input_tokens = getattr(u, "input_tokens", 0) or 0
-                        usage_acc.output_tokens = getattr(u, "output_tokens", 0) or 0
+                        usage_acc.input_tokens = u.get("input_tokens", 0) or 0
+                        usage_acc.output_tokens = u.get("output_tokens", 0) or 0
                     break  # receive_messages() does not auto-stop on ResultMessage
 
                 elif isinstance(message, SystemMessage):
@@ -820,7 +826,7 @@ class AgentSDKExecutor(BaseExecutor):
                     async for event in _stream_messages(fresh_client):
                         yield event
             except BaseException as retry_exc:
-                if isinstance(retry_exc, asyncio.CancelledError):
+                if isinstance(retry_exc, (asyncio.CancelledError, GeneratorExit)):
                     raise
                 if not isinstance(retry_exc, Exception):
                     logger.critical(
@@ -906,7 +912,7 @@ class AgentSDKExecutor(BaseExecutor):
                         yield event
             logger.debug("ClaudeSDKClient disconnected")
         except BaseException as e:
-            if isinstance(e, asyncio.CancelledError):
+            if isinstance(e, (asyncio.CancelledError, GeneratorExit)):
                 raise
             if not isinstance(e, Exception):
                 logger.critical(

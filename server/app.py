@@ -129,6 +129,26 @@ async def _startup_animas_background(app: FastAPI) -> None:
         app.state.supervisor.on_anima_added = _on_anima_added
         app.state.supervisor.on_anima_removed = _on_anima_removed
 
+        # ── Frontmatter migration (before starting animas) ──────
+        try:
+            from core.memory.frontmatter import FrontmatterService
+
+            _migrated_total = 0
+            for _aname in app.state.anima_names:
+                _adir = app.state.animas_dir / _aname
+                _fm_svc = FrontmatterService(
+                    _adir, _adir / "knowledge", _adir / "procedures",
+                )
+                _migrated_total += _fm_svc.ensure_procedure_frontmatter()
+                _migrated_total += _fm_svc.ensure_knowledge_frontmatter()
+            if _migrated_total:
+                logger.info(
+                    "Frontmatter migration: added metadata to %d files",
+                    _migrated_total,
+                )
+        except Exception:
+            logger.exception("Frontmatter migration failed (non-fatal)")
+
         # Start all anima processes (parallel internally)
         await app.state.supervisor.start_all(app.state.anima_names)
 

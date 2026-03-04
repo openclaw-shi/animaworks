@@ -189,11 +189,13 @@ class PrimingEngine:
         # Channel C: conditional based on distilled knowledge injection
         if overflow_files is None:
             # Legacy path: no full injection, run full Channel C
-            channel_c_coro = self._channel_c_related_knowledge(keywords)
+            channel_c_coro = self._channel_c_related_knowledge(
+                keywords, message=message,
+            )
         elif overflow_files:
             # Overflow path: search only among non-injected files
             channel_c_coro = self._channel_c_related_knowledge(
-                keywords, restrict_to=overflow_files,
+                keywords, restrict_to=overflow_files, message=message,
             )
         else:
             # All files injected: skip Channel C entirely
@@ -206,7 +208,7 @@ class PrimingEngine:
         # Execute 5 channels + outbound collection in parallel
         results = await asyncio.gather(
             self._channel_a_sender_profile(sender_name),
-            self._channel_b_recent_activity(sender_name, keywords),  # Unified channel
+            self._channel_b_recent_activity(sender_name, keywords, channel=channel),
             channel_c_coro,
             self._channel_d_skill_match(message, keywords, channel=channel),
             self._channel_e_pending_tasks(),
@@ -343,27 +345,48 @@ class PrimingEngine:
             logger.warning("Channel A: Failed to read profile for %s: %s", sender_name, e)
             return ""
 
-    async def _channel_b_recent_activity(self, sender_name: str, keywords: list[str]) -> str:
+    # Event types that are noise for heartbeat/cron priming — tool invocations
+    # and heartbeat lifecycle events crowd out actionable messages.
+    _HEARTBEAT_NOISE_TYPES = frozenset({
+        "tool_use", "tool_result",
+        "heartbeat_start", "heartbeat_end", "heartbeat_reflection",
+        "inbox_processing_start", "inbox_processing_end",
+    })
+
+    async def _channel_b_recent_activity(
+        self, sender_name: str, keywords: list[str], *, channel: str = "",
+    ) -> str:
         """Channel B: Recent activity from unified activity log.
 
         Replaces old Channel B (episodes) and Channel E (shared channels).
         Reads from activity_log/{date}.jsonl for a unified timeline,
         plus shared/channels/*.jsonl for cross-Anima visibility.
         Falls back to episodes/ if activity_log is empty (migration period).
+
+        When *channel* is ``"heartbeat"`` or starts with ``"cron:"``,
+        tool_use / tool_result / heartbeat lifecycle events are filtered
+        out so that the limited priming budget contains only actionable
+        communication events (messages, channel posts, errors, etc.).
         """
         from core.memory.activity import ActivityLogger
 
         activity = ActivityLogger(self.anima_dir)
-        entries = activity.recent(days=2, limit=100)  # Top-50 selected after scoring below
+        entries = activity.recent(days=2, limit=100)
+
+        is_background = channel in ("heartbeat",) or channel.startswith("cron:")
+
+        if is_background and entries:
+            entries = [
+                e for e in entries
+                if e.type not in self._HEARTBEAT_NOISE_TYPES
+            ]
 
         # Always read shared channels for cross-Anima visibility
         channel_entries = self._read_shared_channels(limit_per_channel=5)
         entries.extend(channel_entries)
 
         if entries:
-            # Prioritize: sender-related entries first, then by recency
             prioritized = self._prioritize_entries(entries, sender_name, keywords)
-            # Apply limit after scoring
             prioritized = prioritized[:50]
             return activity.format_for_priming(prioritized, budget_tokens=1300)
 
@@ -401,8 +424,15 @@ class PrimingEngine:
         result: list[ActivityEntry] = []
 
         try:
+            from core.messenger import is_channel_member
+
             for channel_file in sorted(channels_dir.glob("*.jsonl")):
                 channel_name = channel_file.stem
+
+                # ── ACL check: skip channels this Anima cannot access ──
+                if not is_channel_member(self.shared_dir, channel_name, anima_name):
+                    continue
+
                 try:
                     content = channel_file.read_text(encoding="utf-8")
                 except OSError:
@@ -514,6 +544,10 @@ class PrimingEngine:
                     from_type = (entry.meta or {}).get("from_type", "")
                     if from_type != "anima":
                         score += 15.0
+                    else:
+                        origin_chain = (entry.meta or {}).get("origin_chain") or []
+                        if "human" in origin_chain:
+                            score += 15.0
                 else:
                     score += 15.0
 
@@ -685,6 +719,7 @@ class PrimingEngine:
         self,
         keywords: list[str],
         restrict_to: list[str] | None = None,
+        message: str = "",
     ) -> tuple[str, str]:
         """Channel C: Related knowledge search (vector search).
 
@@ -700,6 +735,8 @@ class PrimingEngine:
             restrict_to: If provided, only return results whose source file
                 stem is in this list (used for overflow-only search when
                 distilled knowledge injection handles the rest).
+            message: Original message text. Prepended (truncated to 200 chars)
+                to the keyword query to preserve phrase-level semantics.
         """
         if not self.knowledge_dir.is_dir() or not keywords:
             logger.debug("Channel C: No knowledge dir or no keywords")
@@ -711,8 +748,8 @@ class PrimingEngine:
                 logger.debug("Channel C: Retriever unavailable")
                 return ("", "")
 
-            # Build query from keywords
-            query = " ".join(keywords[:5])
+            kw_part = " ".join(keywords[:5])
+            query = f"{message[:200]} {kw_part}" if message else kw_part
             anima_name = self.anima_dir.name
 
             # Vector search (personal + shared common_knowledge)
@@ -720,7 +757,7 @@ class PrimingEngine:
                 query=query,
                 anima_name=anima_name,
                 memory_type="knowledge",
-                top_k=3,
+                top_k=5,
                 include_shared=True,
             )
 
@@ -795,12 +832,8 @@ class PrimingEngine:
 
         Returns list of skill/procedure names (not full content, max 5).
         Searches personal skills/, common_skills/, and procedures/.
-        Skipped for heartbeat/cron triggers to avoid false positives.
         """
         _MAX_SKILL_MATCHES = 5
-
-        if channel in ("heartbeat", "cron"):
-            return []
 
         if not message and not keywords:
             return []
@@ -1172,7 +1205,7 @@ class PrimingEngine:
         # Filter stopwords and short words
         general_keywords = [
             w for w in words
-            if len(w) >= 2 and w.lower() not in stopwords
+            if len(w) >= 1 and w.lower() not in stopwords
         ]
 
         # Entity matches from general keywords

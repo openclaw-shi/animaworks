@@ -29,7 +29,7 @@ export function createImageVoiceController(ctx) {
         const tid = state.selectedThreadId;
         const session = mgr.getSession(animaName, tid);
         session._streamingMsg = null;
-        mgr.keepOnlyStreaming(animaName, tid);
+        // Do NOT call keepOnlyStreaming - it would clear completed messages before API has them
         ctx.controllers.renderer.renderChat();
       },
     };

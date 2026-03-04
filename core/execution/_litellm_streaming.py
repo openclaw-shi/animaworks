@@ -23,7 +23,7 @@ from core.execution._streaming import (
     parse_accumulated_tool_calls,
     stream_error_boundary,
 )
-from core.execution.base import ExecutionResult, TokenUsage, ToolCallRecord
+from core.execution.base import ExecutionResult, StreamingThinkFilter, TokenUsage, ToolCallRecord, strip_thinking_tags
 from core.execution.reminder import MSG_CONTEXT_THRESHOLD, MSG_FINAL_ITERATION, MSG_OUTPUT_TRUNCATED, SystemReminderQueue
 from core.prompt.context import ContextTracker, resolve_context_window
 from core.execution._litellm_tools import _convert_litellm_tool_calls
@@ -164,6 +164,7 @@ class StreamingMixin:
                 _chunk_count = 0
                 _reasoning_seen = False
                 _reasoning_parts: list[str] = []
+                _think_filter = StreamingThinkFilter()
 
                 async for chunk in response:
                     _chunk_count += 1
@@ -180,10 +181,17 @@ class StreamingMixin:
                     if not delta:
                         continue
 
-                    # Text content
+                    # Text content (with <think> tag filtering)
                     if delta.content:
-                        iter_text_parts.append(delta.content)
-                        yield {"type": "text_delta", "text": delta.content}
+                        thinking, response_text = _think_filter.feed(delta.content)
+                        if thinking:
+                            if not _reasoning_seen:
+                                _reasoning_seen = True
+                                yield {"type": "thinking_start"}
+                            yield {"type": "thinking_delta", "text": thinking}
+                        if response_text:
+                            iter_text_parts.append(response_text)
+                            yield {"type": "text_delta", "text": response_text}
 
                     # Reasoning content → thinking_delta events
                     reasoning = getattr(delta, "reasoning_content", None)
@@ -277,6 +285,11 @@ class StreamingMixin:
 
                 if finish_reason == "length":
                     self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
+
+                flushed = _think_filter.flush()
+                if flushed:
+                    iter_text_parts.append(flushed)
+                    yield {"type": "text_delta", "text": flushed}
 
                 iter_text = "".join(iter_text_parts)
                 if iter_text:
@@ -478,6 +491,11 @@ class StreamingMixin:
 
                 # ── Yield iteration text ──
                 iter_text = message.content or ""
+                thinking, iter_text = strip_thinking_tags(iter_text)
+                if thinking:
+                    yield {"type": "thinking_start"}
+                    yield {"type": "thinking_delta", "text": thinking}
+                    yield {"type": "thinking_end"}
                 if iter_text:
                     all_response_text.append(iter_text)
                     yield {"type": "text_delta", "text": iter_text}

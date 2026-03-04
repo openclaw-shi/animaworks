@@ -501,6 +501,11 @@ class MessagingMixin:
                         "message": "Internal error",
                     }
                 finally:
+                    if not cycle_done:
+                        logger.warning(
+                            "[%s] process_message_stream END (cycle_done not received)",
+                            self.name,
+                        )
                     # Save partial response if cycle_done was never received
                     if not cycle_done:
                         if partial_response:

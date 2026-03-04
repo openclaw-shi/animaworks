@@ -40,6 +40,8 @@ from core.tooling.schemas import (
 )
 import httpx
 
+from core.execution._tool_summary import make_tool_detail_chunk
+
 logger = logging.getLogger("animaworks.execution.anthropic_fallback")
 
 
@@ -111,6 +113,7 @@ class AnthropicFallbackExecutor(BaseExecutor):
             include_tool_management=True,
             include_task_tools=True,
             include_plan_tasks=True,
+            include_background_task_tools=getattr(self._tool_handler, "_background_manager", None) is not None,
             include_skill_tools=True,
             skill_metas=self._memory.list_skill_metas(),
             common_skill_metas=self._memory.list_common_skill_metas(),
@@ -550,6 +553,12 @@ class AnthropicFallbackExecutor(BaseExecutor):
                 _trust_order_s = {"trusted": 2, "medium": 1, "untrusted": 0}
                 tool_results = []
                 for tu in tool_uses:
+                    detail_chunk = make_tool_detail_chunk(
+                        tu.name, tu.id, tu.input or {},
+                    )
+                    if detail_chunk:
+                        yield detail_chunk
+
                     try:
                         result = await loop.run_in_executor(
                             None,

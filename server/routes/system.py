@@ -388,8 +388,23 @@ def create_system_router() -> APIRouter:
             [anima] if anima and anima in anima_names else list(anima_names)
         )
 
-        # Collect entries from all target Animas
-        all_entries = []
+        limit = max(1, min(limit, 500))
+        offset = max(0, offset)
+        group_limit = max(1, min(group_limit, 200))
+        group_offset = max(0, group_offset)
+
+        # Per-Anima cap: load only enough entries for the requested page.
+        # Any entry in the global top-(offset+limit) must be in its own
+        # Anima's top-(offset+limit), so this is safe for flat mode.
+        # For grouped mode, estimate ~20 events/group with 2x headroom.
+        if grouped:
+            per_anima_limit = (group_offset + group_limit) * 40
+            per_anima_limit = max(per_anima_limit, 500)
+        else:
+            per_anima_limit = offset + limit
+
+        all_entries: list = []
+        any_capped = False
         for name in target_names:
             anima_dir = animas_dir / name
             if not anima_dir.exists():
@@ -397,29 +412,25 @@ def create_system_router() -> APIRouter:
             al = ActivityLogger(anima_dir)
             page = al.recent_page(
                 hours=hours,
-                limit=0,  # load all to merge across animas
+                limit=per_anima_limit,
                 types=types,
             )
+            if page.has_more:
+                any_capped = True
             for entry in page.entries:
                 entry._anima_name = name
             all_entries.extend(page.entries)
 
-        # Sort all entries by ts descending (newest first)
         all_entries.sort(key=lambda e: e.ts, reverse=True)
 
         if grouped:
-            # Chronological order for grouping (oldest first)
             chrono = list(reversed(all_entries))
             all_groups = ActivityLogger.group_by_trigger(chrono)
-            # Reverse to newest-first for display
             all_groups.reverse()
 
-            # Filter by group_type (trigger-based) when specified
             if group_types:
                 all_groups = [g for g in all_groups if g.get("type") in group_types]
 
-            group_limit = max(1, min(group_limit, 200))
-            group_offset = max(0, group_offset)
             total_groups = len(all_groups)
             total_events = len(all_entries)
             page_groups = all_groups[group_offset:group_offset + group_limit]
@@ -430,12 +441,13 @@ def create_system_router() -> APIRouter:
                 "total_events": total_events,
                 "group_offset": group_offset,
                 "group_limit": group_limit,
-                "has_more": (group_offset + group_limit) < total_groups,
+                "has_more": (
+                    (group_offset + group_limit) < total_groups
+                    or any_capped
+                ),
             }
 
         # Flat (default) — backward compatible
-        limit = max(1, min(limit, 500))
-        offset = max(0, offset)
         total = len(all_entries)
         page_entries = all_entries[offset:offset + limit]
 
@@ -444,7 +456,7 @@ def create_system_router() -> APIRouter:
             "total": total,
             "offset": offset,
             "limit": limit,
-            "has_more": (offset + limit) < total,
+            "has_more": (offset + limit) < total or any_capped,
         }
 
     # ── Frontend Log Ingestion ────────────────────────────────

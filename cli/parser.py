@@ -337,6 +337,17 @@ def cli_main() -> None:
     )
     p_anima_list.set_defaults(func=_lazy_anima_list)
 
+    # anima info
+    p_anima_info = anima_sub.add_parser(
+        "info", help="Show detailed configuration for an anima",
+    )
+    p_anima_info.add_argument("anima", help="Anima name")
+    p_anima_info.add_argument(
+        "--json", action="store_true", dest="json_output",
+        help="Output as JSON",
+    )
+    p_anima_info.set_defaults(func=_lazy_anima_info)
+
     # anima set-model
     p_anima_set_model = anima_sub.add_parser("set-model", help="Change an anima's model")
     p_anima_set_model.add_argument(
@@ -456,6 +467,11 @@ def cli_main() -> None:
     from cli.commands.task_cmd import register_task_command
 
     register_task_command(sub)
+
+    # ── Models ────────────────────────────────────────────────
+    from cli.commands.models_cmd import register_models_command
+
+    register_models_command(sub)
 
     args = parser.parse_args()
 
@@ -626,6 +642,12 @@ def _lazy_anima_list(args: argparse.Namespace) -> None:
     from cli.commands.anima_mgmt import cmd_anima_list
 
     cmd_anima_list(args)
+
+
+def _lazy_anima_info(args: argparse.Namespace) -> None:
+    from cli.commands.anima_mgmt import cmd_anima_info
+
+    cmd_anima_info(args)
 
 
 def _lazy_anima_set_role(args: argparse.Namespace) -> None:

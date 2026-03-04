@@ -30,7 +30,7 @@ from typing import Any
 from core.exceptions import LLMAPIError, ToolExecutionError, ConfigError  # noqa: F401
 from core.prompt.context import ContextTracker, resolve_context_window
 from core.execution._session import build_continuation_prompt, handle_session_chaining
-from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord
+from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord, strip_thinking_tags
 from core.execution.reminder import MSG_CONTEXT_THRESHOLD, MSG_FINAL_ITERATION, MSG_OUTPUT_TRUNCATED, SystemReminderQueue
 from core.memory import MemoryManager
 from core.prompt.builder import build_system_prompt
@@ -204,6 +204,7 @@ class LiteLLMExecutor(
                     )
 
                 current_text = message.content or ""
+                _, current_text = strip_thinking_tags(current_text)
                 new_sys, chain_count = await handle_session_chaining(
                     tracker=tracker,
                     shortterm=shortterm,
@@ -243,6 +244,7 @@ class LiteLLMExecutor(
             tool_calls = message.tool_calls
             if not tool_calls:
                 final_text = message.content or ""
+                _, final_text = strip_thinking_tags(final_text)
                 all_response_text.append(final_text)
                 logger.debug("A final response at iteration=%d", iteration)
                 final_reminder = self.reminder_queue.drain_formatted()

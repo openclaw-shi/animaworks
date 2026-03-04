@@ -195,7 +195,7 @@ export function buildVoiceChatCallbacks(animaName, { renderConvMessages, updateS
       const threadId = activeThreadId || "default";
       const session = mgr.getSession(conversationAnima, threadId);
       session._streamingMsg = null;
-      mgr.keepOnlyStreaming(conversationAnima, threadId);
+      // Do NOT call keepOnlyStreaming - it would clear completed messages before API has them
       renderConvMessages();
     },
     applyEmotion(emotion) {

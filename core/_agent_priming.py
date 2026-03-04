@@ -37,7 +37,7 @@ class PrimingMixin:
 
             model_config = self.memory.read_model_config()
             ctx_window = resolve_context_window(model_config.model)
-            knowledge_budget = int(ctx_window * 0.10)
+            knowledge_budget = min(int(ctx_window * 0.05), 4000)
             distilled = self.memory.collect_distilled_knowledge()
 
             if not distilled:

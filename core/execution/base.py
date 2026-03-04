@@ -14,6 +14,7 @@ import os
 import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,15 @@ from core.memory.shortterm import ShortTermMemory
 # ── Streaming error ──────────────────────────────────────────
 
 from core.exceptions import StreamDisconnectedError  # noqa: F401 – re-export
+
+# ── Per-task interrupt event ─────────────────────────────────
+# Each asyncio task (i.e. each concurrent HTTP request) gets its own
+# interrupt event via this ContextVar, avoiding race conditions when
+# multiple chat threads share a single executor instance.
+
+_active_interrupt_event: ContextVar[asyncio.Event | None] = ContextVar(
+    "_active_interrupt_event", default=None,
+)
 
 
 # ── Adaptive Thinking helpers ─────────────────────────────────
@@ -70,6 +80,83 @@ def resolve_thinking_effort(model: str, effort: str | None) -> str:
         if _bare_model_name(model) != "claude-opus-4-6":
             return "high"
     return resolved
+
+
+# ── Think-tag strip filter ────────────────────────────────────
+
+_THINK_TAG_RE = re.compile(r"^(.*?)</think>\s*", re.DOTALL)
+_MAX_THINK_BUFFER = 50_000
+
+
+def strip_thinking_tags(text: str) -> tuple[str, str]:
+    """Strip ``<think>...</think>`` block from *text* (non-streaming).
+
+    Some models (e.g. Qwen3.5) emit reasoning inside ``content`` wrapped
+    in ``<think>`` tags rather than using a dedicated ``reasoning_content``
+    field.  This helper splits the text into ``(thinking, response)``.
+
+    Returns ``("", text)`` when no ``</think>`` closing tag is found.
+    """
+    m = _THINK_TAG_RE.match(text)
+    if m:
+        return m.group(1), text[m.end():]
+    return "", text
+
+
+class StreamingThinkFilter:
+    """Streaming filter that routes ``<think>`` content to thinking deltas.
+
+    Feed each streamed chunk via :meth:`feed`; it returns a
+    ``(thinking_delta, text_delta)`` tuple.  Content is only buffered
+    when the stream begins with ``<think>``; otherwise chunks pass
+    through immediately as *text*.
+
+    A safety valve flushes the buffer as plain text if it exceeds
+    ``_MAX_THINK_BUFFER`` characters without encountering ``</think>``.
+    """
+
+    _THINK_OPEN = "<think>"
+
+    __slots__ = ("_buffer", "_done")
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._done = False
+
+    def feed(self, delta: str) -> tuple[str, str]:
+        """Process *delta* and return ``(thinking_text, response_text)``."""
+        if self._done:
+            return ("", delta)
+        self._buffer += delta
+        # Early exit: if accumulated text clearly doesn't start with <think>,
+        # pass through immediately so non-think streams aren't buffered.
+        stripped = self._buffer.lstrip()
+        if stripped and not stripped.startswith(self._THINK_OPEN) \
+                and not self._THINK_OPEN.startswith(stripped):
+            self._done = True
+            text = self._buffer
+            self._buffer = ""
+            return ("", text)
+        if "</think>" in self._buffer:
+            self._done = True
+            parts = self._buffer.split("</think>", 1)
+            response = parts[1].lstrip("\n")
+            self._buffer = ""
+            return (parts[0], response)
+        if len(self._buffer) > _MAX_THINK_BUFFER:
+            text = self._buffer
+            self._buffer = ""
+            self._done = True
+            return ("", text)
+        return ("", "")
+
+    def flush(self) -> str:
+        """Return any remaining buffered text at end-of-stream."""
+        if self._buffer:
+            text = self._buffer
+            self._buffer = ""
+            return text
+        return ""
 
 
 # ── Dynamic tool-record budget ───────────────────────────────
@@ -317,8 +404,15 @@ class BaseExecutor(ABC):
         return 600
 
     def _check_interrupted(self) -> bool:
-        """Return True if the interrupt event has been set."""
-        return self._interrupt_event is not None and self._interrupt_event.is_set()
+        """Return True if the interrupt event has been set.
+
+        Prefers the per-task ContextVar (thread-safe for parallel streams)
+        over the instance-level fallback.
+        """
+        evt = _active_interrupt_event.get(None)
+        if evt is None:
+            evt = self._interrupt_event
+        return evt is not None and evt.is_set()
 
     # -- Execution -----------------------------------------
 

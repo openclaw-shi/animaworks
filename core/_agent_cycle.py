@@ -406,7 +406,7 @@ class CycleMixin:
             if mode == "s":
                 try:
                     from core.execution.agent_sdk import clear_session_ids
-                    clear_session_ids(self.anima_dir)
+                    clear_session_ids(self.anima_dir, thread_id)
                 except Exception:
                     logger.debug("Failed to clear session IDs for chain", exc_info=True)
             # Force TIER_LIGHT on chained sessions to reduce system prompt floor
@@ -742,10 +742,10 @@ class CycleMixin:
                     try:
                         if mode == "c":
                             from core.execution.codex_sdk import clear_codex_thread_ids
-                            clear_codex_thread_ids(self.anima_dir)
+                            clear_codex_thread_ids(self.anima_dir, thread_id)
                         else:
                             from core.execution.agent_sdk import clear_session_ids
-                            clear_session_ids(self.anima_dir)
+                            clear_session_ids(self.anima_dir, thread_id)
                         logger.info("Session IDs cleared for retry 1 (fresh session forced)")
                     except Exception as e:
                         logger.warning("Failed to clear session IDs for retry: %s", e)
@@ -841,7 +841,7 @@ class CycleMixin:
             if mode == "s":
                 try:
                     from core.execution.agent_sdk import clear_session_ids
-                    clear_session_ids(self.anima_dir)
+                    clear_session_ids(self.anima_dir, thread_id)
                 except Exception:
                     logger.debug("Failed to clear session IDs for chain", exc_info=True)
             # Force TIER_LIGHT on chained sessions to reduce system prompt floor
