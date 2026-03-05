@@ -379,11 +379,25 @@ class InboxMixin:
                 prefix = t("anima.unread_prefix", from_person=m.from_person, count=count)
             else:
                 prefix = f"- {m.from_person}: "
-            lines.append(f"{prefix}{m.content[:800]}")
+            line = f"{prefix}{m.content[:800]}"
+            if m.source in ("slack", "chatwork") and m.external_channel_id:
+                line += (
+                    f"\n  [platform={m.source}"
+                    f" channel={m.external_channel_id}"
+                    f" ts={m.source_message_id}]"
+                )
+            lines.append(line)
         # Deferred messages (no InboxItem) are appended without counter
         for m in messages:
             if not any(item.msg is m for item in inbox_items):
-                lines.append(f"- {m.from_person}: {m.content[:800]}")
+                line = f"- {m.from_person}: {m.content[:800]}"
+                if m.source in ("slack", "chatwork") and m.external_channel_id:
+                    line += (
+                        f"\n  [platform={m.source}"
+                        f" channel={m.external_channel_id}"
+                        f" ts={m.source_message_id}]"
+                    )
+                lines.append(line)
         summary = "\n".join(lines)
         prompt_parts.append(load_prompt("unread_messages", summary=summary))
 

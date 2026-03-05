@@ -9,8 +9,10 @@ from __future__ import annotations
 """Slack Socket Mode integration for real-time message reception."""
 
 import asyncio
+import collections
 import json
 import logging
+import time
 
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
@@ -21,6 +23,23 @@ from core.paths import get_data_dir
 from core.tools._base import get_credential, _lookup_vault_credential, _lookup_shared_credentials
 
 logger = logging.getLogger("animaworks.slack_socket")
+
+# ── Dedup: prevent same Slack message from being delivered twice ──
+# When both message and app_mention events fire for a single @-mention,
+# the first handler to process stores the ts; the second skips it.
+_DEDUP_TTL_SEC = 10
+_recent_ts: collections.OrderedDict[str, float] = collections.OrderedDict()
+
+
+def _is_duplicate_ts(ts: str) -> bool:
+    """Return True if *ts* was already processed within the TTL window."""
+    now = time.monotonic()
+    while _recent_ts and next(iter(_recent_ts.values())) < now - _DEDUP_TTL_SEC:
+        _recent_ts.popitem(last=False)
+    if ts in _recent_ts:
+        return True
+    _recent_ts[ts] = now
+    return False
 
 
 def _detect_slack_intent(text: str, channel_id: str, bot_user_id: str) -> str:
@@ -150,6 +169,10 @@ class SlackSocketModeManager:
             if "subtype" in event:
                 return
 
+            ts = event.get("ts", "")
+            if _is_duplicate_ts(ts):
+                return
+
             try:
                 from core.notification.reply_routing import route_thread_reply
 
@@ -167,7 +190,7 @@ class SlackSocketModeManager:
             messenger.receive_external(
                 content=text,
                 source="slack",
-                source_message_id=event.get("ts", ""),
+                source_message_id=ts,
                 external_user_id=event.get("user", ""),
                 external_channel_id=channel_id,
                 intent=intent,
@@ -179,6 +202,31 @@ class SlackSocketModeManager:
                 intent or "none",
             )
 
+        @app.event("app_mention")
+        async def handle_app_mention(event: dict, say) -> None:  # noqa: ARG001
+            ts = event.get("ts", "")
+            if _is_duplicate_ts(ts):
+                return
+
+            text = event.get("text", "")
+            channel_id = event.get("channel", "")
+
+            shared_dir = get_data_dir() / "shared"
+            messenger = Messenger(shared_dir, anima_name)
+            messenger.receive_external(
+                content=text,
+                source="slack",
+                source_message_id=ts,
+                external_user_id=event.get("user", ""),
+                external_channel_id=channel_id,
+                intent="question",
+            )
+            logger.info(
+                "Per-Anima Socket Mode app_mention routed: channel=%s -> anima=%s",
+                channel_id,
+                anima_name,
+            )
+
     def _register_shared_handler(
         self, app: AsyncApp, anima_mapping: dict[str, str], default_anima: str = "",
         bot_user_id: str = "",
@@ -188,6 +236,10 @@ class SlackSocketModeManager:
         @app.event("message")
         async def handle_message(event: dict, say) -> None:  # noqa: ARG001
             if "subtype" in event:
+                return
+
+            ts = event.get("ts", "")
+            if _is_duplicate_ts(ts):
                 return
 
             try:
@@ -215,7 +267,7 @@ class SlackSocketModeManager:
             messenger.receive_external(
                 content=text,
                 source="slack",
-                source_message_id=event.get("ts", ""),
+                source_message_id=ts,
                 external_user_id=event.get("user", ""),
                 external_channel_id=channel_id,
                 intent=intent,
@@ -225,6 +277,39 @@ class SlackSocketModeManager:
                 channel_id,
                 anima_name,
                 intent or "none",
+            )
+
+        @app.event("app_mention")
+        async def handle_app_mention(event: dict, say) -> None:  # noqa: ARG001
+            ts = event.get("ts", "")
+            if _is_duplicate_ts(ts):
+                return
+
+            channel_id = event.get("channel", "")
+            anima_name_resolved = anima_mapping.get(channel_id) or default_anima
+            if not anima_name_resolved:
+                logger.debug(
+                    "No anima mapping for channel %s (app_mention); ignoring",
+                    channel_id,
+                )
+                return
+
+            text = event.get("text", "")
+
+            shared_dir = get_data_dir() / "shared"
+            messenger = Messenger(shared_dir, anima_name_resolved)
+            messenger.receive_external(
+                content=text,
+                source="slack",
+                source_message_id=ts,
+                external_user_id=event.get("user", ""),
+                external_channel_id=channel_id,
+                intent="question",
+            )
+            logger.info(
+                "Shared Socket Mode app_mention routed: channel=%s -> anima=%s",
+                channel_id,
+                anima_name_resolved,
             )
 
     async def stop(self) -> None:
