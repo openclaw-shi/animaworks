@@ -161,7 +161,7 @@ class WebSocketManager:
             return
         message = json.dumps(data, ensure_ascii=False, default=str)
         disconnected: list[WebSocket] = []
-        for conn in self.active_connections:
+        for conn in list(self.active_connections):
             try:
                 await conn.send_text(message)
             except Exception:

@@ -379,3 +379,30 @@ class TestWebSocketBroadcastDelivery:
                 data = ws.receive_json()
                 assert data["type"] == "test.event"
                 assert data["data"] == "hello"
+
+    def test_broadcast_after_disconnect_no_crash(
+        self, ws_app: tuple[FastAPI, WebSocketManager],
+    ) -> None:
+        """broadcast() works correctly after a client disconnect (regression guard)."""
+        app, ws_manager = ws_app
+
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws") as ws1:
+                with client.websocket_connect("/ws") as ws2:
+                    assert len(ws_manager.active_connections) == 2
+
+                    import asyncio
+                    import threading
+
+                    def _broadcast_and_disconnect() -> None:
+                        loop = asyncio.new_event_loop()
+                        conn_to_drop = ws_manager.active_connections[0]
+                        ws_manager.disconnect(conn_to_drop)
+                        loop.run_until_complete(
+                            ws_manager.broadcast({"type": "race.test", "ok": True})
+                        )
+                        loop.close()
+
+                    t = threading.Thread(target=_broadcast_and_disconnect)
+                    t.start()
+                    t.join(timeout=5.0)

@@ -114,6 +114,55 @@ class TestWebSocketManager:
 
         ws.send_text.assert_awaited_once()
 
+    async def test_broadcast_safe_when_disconnect_during_iteration(self):
+        """broadcast() must not raise when disconnect() mutates active_connections mid-iteration."""
+        mgr = WebSocketManager()
+        ws1 = AsyncMock()
+        ws2 = AsyncMock()
+        ws3 = AsyncMock()
+
+        mgr.active_connections = [ws1, ws2, ws3]
+        mgr._last_pong[id(ws1)] = 0
+        mgr._last_pong[id(ws2)] = 0
+        mgr._last_pong[id(ws3)] = 0
+
+        async def _send_and_disconnect(text):
+            mgr.disconnect(ws2)
+
+        ws1.send_text.side_effect = _send_and_disconnect
+
+        await mgr.broadcast({"type": "test"})
+
+        ws1.send_text.assert_awaited_once()
+        ws3.send_text.assert_awaited_once()
+
+    async def test_broadcast_iterates_snapshot_not_live_list(self):
+        """broadcast() iterates a snapshot so concurrent removals are invisible."""
+        mgr = WebSocketManager()
+        connections = [AsyncMock() for _ in range(5)]
+        mgr.active_connections = list(connections)
+        for c in connections:
+            mgr._last_pong[id(c)] = 0
+
+        call_order: list[int] = []
+
+        def _make_side_effect(idx: int, remove_idx: int | None):
+            async def _side_effect(text):
+                call_order.append(idx)
+                if remove_idx is not None:
+                    target = connections[remove_idx]
+                    if target in mgr.active_connections:
+                        mgr.active_connections.remove(target)
+            return _side_effect
+
+        for i, c in enumerate(connections):
+            remove = i + 1 if i + 1 < len(connections) else None
+            c.send_text.side_effect = _make_side_effect(i, remove)
+
+        await mgr.broadcast({"type": "test"})
+
+        assert call_order == [0, 1, 2, 3, 4]
+
 
 class TestWebSocketManagerHeartbeat:
     """Tests for WebSocketManager heartbeat features."""
