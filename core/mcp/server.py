@@ -171,6 +171,7 @@ def _build_mcp_tools() -> tuple[list[Tool], frozenset[str]]:
         SKILL_TOOLS,
         SUPERVISOR_TOOLS,
         TASK_TOOLS,
+        VAULT_TOOLS,
     )
 
     all_schemas: list[dict[str, Any]] = [
@@ -184,6 +185,7 @@ def _build_mcp_tools() -> tuple[list[Tool], frozenset[str]]:
         *SKILL_TOOLS,
         *PLAN_TASKS_TOOLS,
         *BACKGROUND_TASK_TOOLS,
+        *VAULT_TOOLS,
     ]
 
     exposed = _EXPOSED_TOOL_NAMES
