@@ -215,7 +215,7 @@ class TestSendExternal:
         result = send_external(r, "hello", sender_name="sakura")
         data = json.loads(result)
         assert data["status"] == "sent"
-        mock_slack.assert_called_once_with("U1", "hello", "sakura")
+        mock_slack.assert_called_once_with("U1", "hello", "sakura", "")
 
     @patch("core.outbound._send_via_chatwork")
     def test_chatwork_success(self, mock_cw):
@@ -259,7 +259,7 @@ class TestSendExternal:
             is_internal=False, name="user", channel="slack", slack_user_id="U1",
         )
         send_external(r, "hello", sender_name="sakura")
-        mock_slack.assert_called_once_with("U1", "hello", "sakura")
+        mock_slack.assert_called_once_with("U1", "hello", "sakura", "")
 
     @patch("core.outbound._send_via_slack")
     def test_sender_name_empty_no_prefix(self, mock_slack):
@@ -268,7 +268,7 @@ class TestSendExternal:
             is_internal=False, name="user", channel="slack", slack_user_id="U1",
         )
         send_external(r, "hello", sender_name="")
-        mock_slack.assert_called_once_with("U1", "hello", "")
+        mock_slack.assert_called_once_with("U1", "hello", "", "")
 
 
 # ── TestUserAliasConfig ──────────────────────────────────

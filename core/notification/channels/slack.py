@@ -44,14 +44,18 @@ class SlackChannel(NotificationChannel):
         *,
         anima_name: str = "",
     ) -> str:
-        # Try bot token mode first
         bot_token = self._config.get("bot_token", "")
         if not bot_token:
             bot_token = self._resolve_env("bot_token_env")
+        if not bot_token and anima_name:
+            from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
+
+            per_key = f"SLACK_BOT_TOKEN__{anima_name}"
+            bot_token = _lookup_vault_credential(per_key) or _lookup_shared_credentials(per_key) or ""
         if not bot_token:
-            # Fall back to credentials.json
             try:
                 from core.tools._base import get_credential
+
                 bot_token = get_credential("slack", "notification", env_var="SLACK_BOT_TOKEN")
             except Exception:
                 bot_token = ""

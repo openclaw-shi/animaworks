@@ -175,6 +175,7 @@ def send_external(
     resolved: ResolvedRecipient,
     content: str,
     sender_name: str = "",
+    anima_name: str = "",
 ) -> str:
     """Send a message to an external platform.
 
@@ -194,7 +195,7 @@ def send_external(
     for channel in channels_to_try:
         try:
             if channel == "slack":
-                return _send_via_slack(resolved.slack_user_id, content, sender_name)
+                return _send_via_slack(resolved.slack_user_id, content, sender_name, anima_name)
             elif channel == "chatwork":
                 return _send_via_chatwork(resolved.chatwork_room_id, content, sender_name)
             else:
@@ -223,21 +224,29 @@ def _build_channel_order(resolved: ResolvedRecipient) -> list[str]:
     return channels
 
 
-def _send_via_slack(user_id: str, content: str, sender_name: str) -> str:
+def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: str = "") -> str:
     """Send a DM via Slack API."""
     from core.tools.slack import SlackClient
+    from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
 
-    prefix = f"[{sender_name}] " if sender_name else ""
+    token = None
+    if anima_name:
+        per_anima_key = f"SLACK_BOT_TOKEN__{anima_name}"
+        token = _lookup_vault_credential(per_anima_key)
+        if not token:
+            token = _lookup_shared_credentials(per_anima_key)
+
+    prefix = f"[{sender_name}] " if sender_name and not token else ""
     text = f"{prefix}{content}"
 
-    client = SlackClient()
+    client = SlackClient(token=token)
     response = client.post_message(user_id, text)
     ts = response.get("ts", "")
     channel = response.get("channel", user_id)
 
     logger.info(
-        "External message sent via slack: user=%s ts=%s sender=%s",
-        user_id, ts, sender_name,
+        "External message sent via slack: user=%s ts=%s sender=%s per_anima=%s",
+        user_id, ts, sender_name, bool(token),
     )
     return json.dumps({
         "status": "sent",

@@ -1160,10 +1160,34 @@ def _run_cli_command(client: SlackClient, args) -> None:
 
 # ── Dispatch ──────────────────────────────────────────
 
+
+def _resolve_slack_token(args: dict[str, Any]) -> str | None:
+    """Resolve per-Anima Slack bot token if available.
+
+    Uses ``SLACK_BOT_TOKEN__<anima_name>`` from vault.json / shared/credentials.json.
+    Returns None to fall back to the shared token.
+    """
+    from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
+
+    anima_dir = args.get("anima_dir")
+    if anima_dir:
+        anima_name = Path(anima_dir).name
+        per_anima_key = f"SLACK_BOT_TOKEN__{anima_name}"
+        token = _lookup_vault_credential(per_anima_key)
+        if token:
+            logger.debug("Using per-Anima Slack token for '%s'", anima_name)
+            return token
+        token = _lookup_shared_credentials(per_anima_key)
+        if token:
+            logger.debug("Using per-Anima Slack token for '%s'", anima_name)
+            return token
+    return None
+
+
 def dispatch(name: str, args: dict[str, Any]) -> Any:
     """Dispatch a tool call by schema name."""
     if name == "slack_send":
-        client = SlackClient()
+        client = SlackClient(token=_resolve_slack_token(args))
         channel_id = client.resolve_channel(args["channel"])
         return client.post_message(
             channel_id,
@@ -1171,7 +1195,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
             thread_ts=args.get("thread_ts"),
         )
     if name == "slack_messages":
-        client = SlackClient()
+        client = SlackClient(token=_resolve_slack_token(args))
         channel_id = client.resolve_channel(args["channel"])
         cache = MessageCache()
         try:
@@ -1188,7 +1212,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         finally:
             cache.close()
     if name == "slack_search":
-        client = SlackClient()
+        client = SlackClient(token=_resolve_slack_token(args))
         cache = MessageCache()
         try:
             channel_id = None
@@ -1200,7 +1224,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         finally:
             cache.close()
     if name == "slack_unreplied":
-        client = SlackClient()
+        client = SlackClient(token=_resolve_slack_token(args))
         cache = MessageCache()
         try:
             client.auth_test()
@@ -1208,7 +1232,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         finally:
             cache.close()
     if name == "slack_channels":
-        client = SlackClient()
+        client = SlackClient(token=_resolve_slack_token(args))
         return client.channels()
     raise ValueError(f"Unknown tool: {name}")
 

@@ -105,9 +105,10 @@ class TestBotTokenMode:
     async def test_no_token_no_webhook_error(self):
         """Neither bot_token nor webhook_url returns error."""
         ch = _make_channel({})
-        # Need to mock _resolve_env to return empty
         ch._resolve_env = MagicMock(return_value="")
-        result = await ch.send("Subject", "Body")
+        from core.tools._base import ToolConfigError
+        with patch("core.tools._base.get_credential", side_effect=ToolConfigError("no cred")):
+            result = await ch.send("Subject", "Body")
         assert "neither bot_token nor webhook_url configured" in result
 
     @pytest.mark.asyncio
@@ -247,7 +248,10 @@ class TestWebhookFallback:
         mock_resp.status_code = 200
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient") as mock_client_cls:
+        from core.tools._base import ToolConfigError
+
+        with patch("core.tools._base.get_credential", side_effect=ToolConfigError("no cred")), \
+             patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_resp
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)

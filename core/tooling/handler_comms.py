@@ -137,6 +137,7 @@ class CommsToolsMixin:
             from core.outbound import send_external
             result = send_external(
                 resolved, content, sender_name=self._anima_name,
+                anima_name=self._anima_name,
             )
             return result
 
