@@ -357,11 +357,32 @@ class KnowledgeGraph:
 
     # ── Incremental update ──────────────────────────────────────────
 
+    @staticmethod
+    def _infer_memory_type(file_path: Path, anima_dir: Path) -> str:
+        """Infer memory_type from file path relative to anima directory.
+
+        Uses the first directory component of the relative path
+        (e.g. ``knowledge``, ``episodes``, ``procedures``).
+
+        Args:
+            file_path: Absolute path to the memory file.
+            anima_dir: Anima data root directory.
+
+        Returns:
+            Memory type string, defaults to ``"knowledge"`` on failure.
+        """
+        try:
+            rel = file_path.relative_to(anima_dir)
+            return rel.parts[0] if rel.parts else "knowledge"
+        except ValueError:
+            return "knowledge"
+
     def update_graph_incremental(
         self,
         changed_files: list[Path],
         anima_name: str,
-        memory_type: str = "knowledge",
+        memory_type: str | None = None,
+        anima_dir: Path | None = None,
     ) -> None:
         """Update graph incrementally for changed files.
 
@@ -371,18 +392,40 @@ class KnowledgeGraph:
         3. Re-scan explicit links for changed files
         4. Re-compute implicit links for changed files
 
+        When *memory_type* is ``None``, each file's type is inferred from
+        its path relative to *anima_dir* (via ``_infer_memory_type``).
+        If *anima_dir* is also ``None``, the graph's existing node
+        attribute is used, falling back to ``"knowledge"``.
+
         Args:
             changed_files: List of changed file paths
             anima_name: Anima name for collection selection
-            memory_type: Memory type of the changed files
+            memory_type: Memory type of the changed files (None = auto-detect)
+            anima_dir: Anima data root for type inference
         """
         if self.graph is None:
             logger.warning("No graph to update incrementally")
             return
 
+        def _resolve_type(f: Path) -> str:
+            if memory_type is not None:
+                return memory_type
+            # Try existing graph node attribute first
+            for nid, attrs in self.graph.nodes(data=True):
+                if attrs.get("stem") == f.stem:
+                    mt = attrs.get("memory_type")
+                    if mt:
+                        return mt
+            if anima_dir is not None:
+                return self._infer_memory_type(f, anima_dir)
+            return "knowledge"
+
         changed_node_ids: set[str] = set()
+        file_types: dict[Path, str] = {}
         for f in changed_files:
-            nid = self._make_node_id(f.stem, memory_type)
+            mt = _resolve_type(f)
+            file_types[f] = mt
+            nid = self._make_node_id(f.stem, mt)
             changed_node_ids.add(nid)
 
         logger.info(
@@ -399,11 +442,12 @@ class KnowledgeGraph:
         # 2. Re-add nodes for files that still exist
         for file_path in changed_files:
             if file_path.exists():
-                nid = self._make_node_id(file_path.stem, memory_type)
+                mt = file_types[file_path]
+                nid = self._make_node_id(file_path.stem, mt)
                 self.graph.add_node(
                     nid,
                     path=str(file_path),
-                    memory_type=memory_type,
+                    memory_type=mt,
                     stem=file_path.stem,
                 )
                 logger.debug("Re-added node: %s", nid)
@@ -413,7 +457,8 @@ class KnowledgeGraph:
             if not file_path.exists():
                 continue
 
-            source_id = self._make_node_id(file_path.stem, memory_type)
+            mt = file_types[file_path]
+            source_id = self._make_node_id(file_path.stem, mt)
             try:
                 content = file_path.read_text(encoding="utf-8")
                 explicit_links = self._extract_markdown_links(content)
@@ -462,12 +507,13 @@ class KnowledgeGraph:
                 logger.warning("Failed to re-scan links from %s: %s", node_path, e)
 
         # 4. Re-compute implicit links for changed files
-        collection_name = f"{anima_name}_{memory_type}"
         for file_path in changed_files:
             if not file_path.exists():
                 continue
 
-            node_id = self._make_node_id(file_path.stem, memory_type)
+            mt = file_types[file_path]
+            collection_name = f"{anima_name}_{mt}"
+            node_id = self._make_node_id(file_path.stem, mt)
             try:
                 content = file_path.read_text(encoding="utf-8")
                 embedding = self.indexer._generate_embeddings([content])[0]
@@ -677,7 +723,8 @@ class KnowledgeGraph:
     ) -> str:
         """Fetch real content for an activated node.
 
-        Tries file read first, falls back to vector store chunk retrieval.
+        Tries file read first, falls back to vector store chunk retrieval
+        using ``source_file`` metadata filter, then stem-based vector search.
 
         Args:
             node_id: Node identifier
@@ -695,10 +742,26 @@ class KnowledgeGraph:
 
         try:
             collection_name = f"{self.indexer.anima_name}_{memory_type}"
-            embedding = self.indexer._generate_embeddings([node_id])[0]
+            stem = node_path.stem if str(node_path) else node_id
+
+            # 1st attempt: filter by source_file metadata
+            source_file_value = f"{memory_type}/{stem}.md"
+            query_text = stem.replace("-", " ").replace("_", " ")
+            embedding = self.indexer._generate_embeddings([f"{memory_type} {query_text}"])[0]
             results = self.vector_store.query(
                 collection=collection_name,
                 embedding=embedding,
+                top_k=3,
+                filter_metadata={"source_file": source_file_value},
+            )
+            if results:
+                return results[0].document.content
+
+            # 2nd attempt: stem-based vector search without filter
+            embedding_fallback = self.indexer._generate_embeddings([query_text])[0]
+            results = self.vector_store.query(
+                collection=collection_name,
+                embedding=embedding_fallback,
                 top_k=1,
             )
             if results:

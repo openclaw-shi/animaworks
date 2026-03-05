@@ -825,3 +825,297 @@ def test_retriever_explicit_false_overrides_config(monkeypatch, temp_knowledge_d
     assert isinstance(results, list)
     for r in results:
         assert r.metadata.get("activation") != "spreading"
+
+
+# ── _fetch_node_content fallback tests ─────────────────────────────
+
+
+class MockVectorStoreWithSourceFilter:
+    """Mock vector store that respects filter_metadata for source_file."""
+
+    def __init__(self, source_contents: dict[str, str] | None = None):
+        self._source_contents = source_contents or {}
+
+    def query(self, collection, embedding, top_k, filter_metadata=None):
+        from core.memory.rag.store import Document, SearchResult
+
+        if filter_metadata and "source_file" in filter_metadata:
+            sf = filter_metadata["source_file"]
+            if sf in self._source_contents:
+                return [
+                    SearchResult(
+                        document=Document(
+                            id=f"anima/{sf}#0",
+                            content=self._source_contents[sf],
+                            embedding=embedding,
+                            metadata={"source_file": sf},
+                        ),
+                        score=0.95,
+                    )
+                ]
+            return []
+
+        return [
+            SearchResult(
+                document=Document(
+                    id=f"anima/knowledge/fallback.md#0",
+                    content="Fallback content from vector search",
+                    embedding=embedding,
+                    metadata={"source_file": "knowledge/fallback.md"},
+                ),
+                score=0.7,
+            )
+        ]
+
+
+def test_fetch_node_content_file_exists(temp_knowledge_dir):
+    """_fetch_node_content returns file content when file exists."""
+    vector_store = MockVectorStore()
+    indexer = MockIndexer()
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    file_path = temp_knowledge_dir / "file1.md"
+
+    content = graph_builder._fetch_node_content("file1", file_path, "knowledge")
+    assert "File 1" in content
+    assert "links to [[file2]]" in content
+
+
+def test_fetch_node_content_missing_file_uses_source_filter():
+    """_fetch_node_content uses source_file filter when file is missing."""
+    source_contents = {"knowledge/missing.md": "Content from ChromaDB for missing file"}
+    vector_store = MockVectorStoreWithSourceFilter(source_contents)
+    indexer = MockIndexer()
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    missing_path = Path("/nonexistent/knowledge/missing.md")
+
+    content = graph_builder._fetch_node_content("missing", missing_path, "knowledge")
+    assert content == "Content from ChromaDB for missing file"
+
+
+def test_fetch_node_content_missing_file_stem_fallback():
+    """_fetch_node_content falls back to stem-based search when source_file filter returns nothing."""
+    vector_store = MockVectorStoreWithSourceFilter({})
+    indexer = MockIndexer()
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    missing_path = Path("/nonexistent/episodes/2026-03-05.md")
+
+    content = graph_builder._fetch_node_content(
+        "episodes:2026-03-05", missing_path, "episodes",
+    )
+    assert content == "Fallback content from vector search"
+
+
+def test_fetch_node_content_no_node_id_in_embedding():
+    """_fetch_node_content must NOT use node_id as embedding input."""
+    calls: list[list[str]] = []
+    vector_store = MockVectorStoreWithSourceFilter(
+        {"episodes/2026-03-05.md": "Episode content"},
+    )
+
+    class TrackingIndexer:
+        anima_name = "test_anima"
+
+        def _generate_embeddings(self, texts):
+            calls.append(texts)
+            return [[0.1] * 384 for _ in texts]
+
+    indexer = TrackingIndexer()
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    missing_path = Path("/nonexistent/episodes/2026-03-05.md")
+
+    graph_builder._fetch_node_content("episodes:2026-03-05", missing_path, "episodes")
+
+    for call_texts in calls:
+        for text in call_texts:
+            assert "episodes:2026-03-05" not in text, (
+                f"node_id should not be used as embedding input, got: {text}"
+            )
+
+
+def test_fetch_node_content_unavailable_when_all_fail():
+    """_fetch_node_content returns [Content unavailable] when all methods fail."""
+    class FailingVectorStore:
+        def query(self, **kwargs):
+            raise RuntimeError("store unavailable")
+
+    indexer = MockIndexer()
+    graph_builder = KnowledgeGraph(FailingVectorStore(), indexer)
+    missing_path = Path("/nonexistent/knowledge/gone.md")
+
+    content = graph_builder._fetch_node_content("gone", missing_path, "knowledge")
+    assert content.startswith("[Content unavailable:")
+
+
+def test_expand_results_no_content_unavailable(temp_anima_dir):
+    """expand_search_results should not produce [Content unavailable] when data exists."""
+    from core.memory.rag.retriever import RetrievalResult
+
+    vector_store = MockVectorStore()
+    indexer = MockIndexer()
+
+    knowledge_dir = temp_anima_dir / "knowledge"
+    episodes_dir = temp_anima_dir / "episodes"
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    graph_builder.build_graph(
+        "test_anima", knowledge_dir,
+        memory_dirs={"episodes": episodes_dir},
+    )
+
+    initial_results = [
+        RetrievalResult(
+            doc_id="test_anima/knowledge/file1.md#0",
+            content="File 1 content",
+            score=0.9,
+            metadata={"source_file": "knowledge/file1.md"},
+            source_scores={"vector": 0.9},
+        )
+    ]
+
+    expanded = graph_builder.expand_search_results(initial_results, max_hops=2)
+
+    for result in expanded:
+        assert "[Content unavailable" not in result.content
+
+
+# ── _infer_memory_type tests ───────────────────────────────────────
+
+
+def test_infer_memory_type_knowledge():
+    """_infer_memory_type correctly identifies knowledge files."""
+    anima_dir = Path("/home/user/.animaworks/animas/alice")
+    file_path = anima_dir / "knowledge" / "topic.md"
+    assert KnowledgeGraph._infer_memory_type(file_path, anima_dir) == "knowledge"
+
+
+def test_infer_memory_type_episodes():
+    """_infer_memory_type correctly identifies episodes files."""
+    anima_dir = Path("/home/user/.animaworks/animas/alice")
+    file_path = anima_dir / "episodes" / "2026-03-05.md"
+    assert KnowledgeGraph._infer_memory_type(file_path, anima_dir) == "episodes"
+
+
+def test_infer_memory_type_procedures():
+    """_infer_memory_type correctly identifies procedures files."""
+    anima_dir = Path("/home/user/.animaworks/animas/alice")
+    file_path = anima_dir / "procedures" / "deploy.md"
+    assert KnowledgeGraph._infer_memory_type(file_path, anima_dir) == "procedures"
+
+
+def test_infer_memory_type_outside_dir():
+    """_infer_memory_type defaults to knowledge for paths outside anima_dir."""
+    anima_dir = Path("/home/user/.animaworks/animas/alice")
+    file_path = Path("/tmp/random/file.md")
+    assert KnowledgeGraph._infer_memory_type(file_path, anima_dir) == "knowledge"
+
+
+# ── update_graph_incremental auto-detect tests ─────────────────────
+
+
+def test_incremental_update_auto_detect_from_anima_dir(temp_anima_dir):
+    """update_graph_incremental infers memory_type from anima_dir when memory_type=None."""
+    vector_store = MockVectorStore()
+    indexer = MockIndexer()
+
+    knowledge_dir = temp_anima_dir / "knowledge"
+    episodes_dir = temp_anima_dir / "episodes"
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    graph_builder.build_graph(
+        "test_anima", knowledge_dir,
+        memory_dirs={"episodes": episodes_dir},
+    )
+
+    # Add new episode
+    new_episode = episodes_dir / "2026-03-03.md"
+    new_episode.write_text("# 2026-03-03\n\nNew episode content.\n")
+
+    graph_builder.update_graph_incremental(
+        [new_episode], "test_anima",
+        memory_type=None, anima_dir=temp_anima_dir,
+    )
+
+    assert "episodes:2026-03-03" in graph_builder.graph
+    attrs = graph_builder.graph.nodes["episodes:2026-03-03"]
+    assert attrs["memory_type"] == "episodes"
+
+
+def test_incremental_update_auto_detect_from_graph_attrs(temp_anima_dir):
+    """update_graph_incremental infers type from existing node attrs when anima_dir is None."""
+    vector_store = MockVectorStore()
+    indexer = MockIndexer()
+
+    knowledge_dir = temp_anima_dir / "knowledge"
+    episodes_dir = temp_anima_dir / "episodes"
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    graph_builder.build_graph(
+        "test_anima", knowledge_dir,
+        memory_dirs={"episodes": episodes_dir},
+    )
+
+    # Modify existing episode file
+    episode_file = episodes_dir / "2026-03-01.md"
+    episode_file.write_text("# 2026-03-01 Updated\n\nUpdated content.\n")
+
+    graph_builder.update_graph_incremental(
+        [episode_file], "test_anima",
+        memory_type=None, anima_dir=None,
+    )
+
+    assert "episodes:2026-03-01" in graph_builder.graph
+    attrs = graph_builder.graph.nodes["episodes:2026-03-01"]
+    assert attrs["memory_type"] == "episodes"
+
+
+def test_incremental_update_backward_compat(temp_knowledge_dir):
+    """update_graph_incremental with explicit memory_type still works (backward compat)."""
+    vector_store = MockVectorStore()
+    indexer = MockIndexer()
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    graph_builder.build_graph("test_anima", temp_knowledge_dir)
+
+    new_file = temp_knowledge_dir / "file4.md"
+    new_file.write_text("# File 4\n\nNew knowledge.\n")
+
+    graph_builder.update_graph_incremental(
+        [new_file], "test_anima", memory_type="knowledge",
+    )
+
+    assert "file4" in graph_builder.graph
+    assert graph_builder.graph.nodes["file4"]["memory_type"] == "knowledge"
+
+
+def test_incremental_update_mixed_types(temp_anima_dir):
+    """update_graph_incremental handles mixed-type files in a single call."""
+    vector_store = MockVectorStore()
+    indexer = MockIndexer()
+
+    knowledge_dir = temp_anima_dir / "knowledge"
+    episodes_dir = temp_anima_dir / "episodes"
+
+    graph_builder = KnowledgeGraph(vector_store, indexer)
+    graph_builder.build_graph(
+        "test_anima", knowledge_dir,
+        memory_dirs={"episodes": episodes_dir},
+    )
+
+    # Create one new file per type
+    new_knowledge = knowledge_dir / "new_topic.md"
+    new_knowledge.write_text("# New Topic\n\nNew knowledge content.\n")
+    new_episode = episodes_dir / "2026-03-04.md"
+    new_episode.write_text("# 2026-03-04\n\nNew episode.\n")
+
+    graph_builder.update_graph_incremental(
+        [new_knowledge, new_episode], "test_anima",
+        memory_type=None, anima_dir=temp_anima_dir,
+    )
+
+    assert "new_topic" in graph_builder.graph
+    assert graph_builder.graph.nodes["new_topic"]["memory_type"] == "knowledge"
+    assert "episodes:2026-03-04" in graph_builder.graph
+    assert graph_builder.graph.nodes["episodes:2026-03-04"]["memory_type"] == "episodes"
