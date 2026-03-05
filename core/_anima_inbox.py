@@ -252,6 +252,7 @@ class InboxMixin:
                         "error",
                         summary=t("anima.inbox_error", exc=type(exc).__name__),
                         meta={"phase": "process_inbox_message", "error": str(exc)[:200]},
+                        safe=True,
                     )
                     raise
                 finally:

@@ -12,6 +12,7 @@ from core.exceptions import (
     ExecutionError, LLMAPIError, LLMTimeoutError, StreamDisconnectedError,
     ToolError, ToolConfigError, ToolExecutionError, ToolNotFoundError,
     MemoryIOError, MemoryReadError, MemoryWriteError, MemoryCorruptedError,
+    TaskPersistenceError,
     ProcessError, AnimaNotFoundError, AnimaNotRunningError, IPCConnectionError,
     ConfigError, ConfigNotFoundError, ConfigValidationError,
     MessagingError, RecipientNotFoundError, DeliveryError,
@@ -24,6 +25,7 @@ ALL_EXCEPTIONS = [
     ExecutionError, LLMAPIError, LLMTimeoutError, StreamDisconnectedError,
     ToolError, ToolConfigError, ToolExecutionError, ToolNotFoundError,
     MemoryIOError, MemoryReadError, MemoryWriteError, MemoryCorruptedError,
+    TaskPersistenceError,
     ProcessError, AnimaNotFoundError, AnimaNotRunningError, IPCConnectionError,
     ConfigError, ConfigNotFoundError, ConfigValidationError,
     MessagingError, RecipientNotFoundError, DeliveryError,
@@ -33,6 +35,7 @@ LEAF_EXCEPTIONS = [
     LLMAPIError, LLMTimeoutError, StreamDisconnectedError,
     ToolConfigError, ToolExecutionError, ToolNotFoundError,
     MemoryReadError, MemoryWriteError, MemoryCorruptedError,
+    TaskPersistenceError,
     AnimaNotFoundError, AnimaNotRunningError, IPCConnectionError,
     ConfigNotFoundError, ConfigValidationError,
     RecipientNotFoundError, DeliveryError,
@@ -41,7 +44,7 @@ LEAF_EXCEPTIONS = [
 FAMILY_MAP: dict[type[AnimaWorksError], list[type[AnimaWorksError]]] = {
     ExecutionError: [LLMAPIError, LLMTimeoutError, StreamDisconnectedError],
     ToolError: [ToolConfigError, ToolExecutionError, ToolNotFoundError],
-    MemoryIOError: [MemoryReadError, MemoryWriteError, MemoryCorruptedError],
+    MemoryIOError: [MemoryReadError, MemoryWriteError, MemoryCorruptedError, TaskPersistenceError],
     ProcessError: [AnimaNotFoundError, AnimaNotRunningError, IPCConnectionError],
     ConfigError: [ConfigNotFoundError, ConfigValidationError],
     MessagingError: [RecipientNotFoundError, DeliveryError],
@@ -185,6 +188,26 @@ class TestReExportToolsBase:
         from core.tools._base import ToolConfigError as ReExported
 
         assert ReExported is ToolConfigError
+
+
+# ── 8b. Re-export TaskPersistenceError from task_queue ───────
+
+
+class TestReExportTaskPersistenceError:
+    def test_re_export_from_task_queue(self) -> None:
+        from core.memory.task_queue import TaskPersistenceError as ReExported
+
+        assert ReExported is TaskPersistenceError
+
+    def test_is_subclass_of_memory_io_error(self) -> None:
+        assert issubclass(TaskPersistenceError, MemoryIOError)
+
+    def test_is_subclass_of_animaworks_error(self) -> None:
+        assert issubclass(TaskPersistenceError, AnimaWorksError)
+
+    def test_isinstance_check(self) -> None:
+        assert isinstance(TaskPersistenceError("fail"), AnimaWorksError)
+        assert isinstance(TaskPersistenceError("fail"), MemoryIOError)
 
 
 # ── 9. str representation ───────────────────────────────────

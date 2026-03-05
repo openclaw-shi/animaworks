@@ -1047,7 +1047,7 @@ def resolve_context_window(
     if config is None:
         try:
             config = load_config()
-        except (ConfigError, OSError):
+        except Exception:
             return None
     overrides = config.model_context_windows or {}
     if overrides:
@@ -1075,7 +1075,7 @@ def _match_model_max_tokens(
     if config is None:
         try:
             config = load_config()
-        except (ConfigError, OSError):
+        except Exception:
             return None
     table = config.model_max_tokens or {}
     if not table:

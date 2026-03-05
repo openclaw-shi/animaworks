@@ -464,16 +464,16 @@ class HeartbeatMixin:
                     exc_info=True,
                 )
 
-        # Activity log: error
-        self._activity.log(
-            "error",
-            summary=t("anima.heartbeat_error", exc=type(error).__name__),
-            meta={"phase": "run_heartbeat", "error": str(error)[:200]},
-        )
+        # Activity log: heartbeat failure (single event to avoid double-fault)
         self._activity.log(
             "heartbeat_end",
             summary=f"[ERROR] {type(error).__name__}: {str(error)[:100]}",
-            meta={"status": "failed", "error": str(error)[:200]},
+            meta={
+                "status": "failed",
+                "phase": "run_heartbeat",
+                "error": str(error)[:200],
+            },
+            safe=True,
         )
 
         # ── Save recovery note for next heartbeat ──

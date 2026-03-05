@@ -277,11 +277,12 @@ class MessagingMixin:
                     return result.summary
                 except Exception as exc:
                     logger.exception("[%s] process_message FAILED", self.name)
-                    # Activity log: error
+                    # Activity log: error (safe=True to prevent double-fault)
                     self._activity.log(
                         "error",
                         summary=t("anima.process_message_error", exc=type(exc).__name__),
                         meta={"phase": "process_message", "error": str(exc)[:200], "thread_id": thread_id},
+                        safe=True,
                     )
                     # Save error marker so the failed exchange is visible
                     conv_memory.append_turn("assistant", t("anima.agent_error"))
@@ -512,7 +513,7 @@ class MessagingMixin:
                         error_code = "MEMORY_ERROR"
                     else:
                         error_code = "STREAM_ERROR"
-                    # Activity log: error
+                    # Activity log: error (safe=True to prevent double-fault)
                     self._activity.log(
                         "error",
                         summary=t("anima.process_stream_error", exc=type(exc).__name__),
@@ -522,6 +523,7 @@ class MessagingMixin:
                             "error": str(exc)[:200],
                             "thread_id": thread_id,
                         },
+                        safe=True,
                     )
                     yield {
                         "type": "error",

@@ -127,6 +127,7 @@ class ActivityLogger(
         meta: dict[str, Any] | None = None,
         origin: str = "",
         origin_chain: list[str] | None = None,
+        safe: bool = False,
     ) -> ActivityEntry:
         """Record an activity entry.
 
@@ -143,6 +144,9 @@ class ActivityLogger(
             meta: Arbitrary metadata dict.
             origin: Origin category (e.g. ``"human"``, ``"external_platform"``).
             origin_chain: Intermediate origins the data traversed.
+            safe: If True, suppress exceptions (log as warning instead of
+                raising).  Use inside ``except`` handlers to prevent
+                double-fault when the activity log itself fails.
 
         Returns:
             The recorded :class:`ActivityEntry`.
@@ -161,12 +165,12 @@ class ActivityLogger(
             origin=origin,
             origin_chain=origin_chain or [],
         )
-        self._append(entry)
+        self._append(entry, safe=safe)
         if event_type in self._LIVE_EVENT_TYPES:
             self._emit_live_event(entry)
         return entry
 
-    def _append(self, entry: ActivityEntry) -> None:
+    def _append(self, entry: ActivityEntry, *, safe: bool = False) -> None:
         """Append *entry* to today's JSONL file with fsync."""
         try:
             self._log_dir.mkdir(parents=True, exist_ok=True)
@@ -179,9 +183,13 @@ class ActivityLogger(
                 os.fsync(f.fileno())
         except OSError as exc:
             logger.exception("Failed to append activity log")
+            if safe:
+                return
             raise MemoryWriteError(f"Activity log write failed: {exc}") from exc
         except (TypeError, ValueError, AttributeError, KeyError) as exc:
             logger.exception("Failed to append activity log")
+            if safe:
+                return
             raise MemoryWriteError(f"Activity log write failed: {exc}") from exc
 
     def _emit_live_event(self, entry: ActivityEntry) -> None:

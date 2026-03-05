@@ -246,6 +246,7 @@ class LifecycleMixin:
                         "error",
                         summary=t("anima.consolidation_error", exc=type(exc).__name__),
                         meta={"phase": "run_consolidation", "error": str(exc)[:200]},
+                        safe=True,
                     )
                     raise
                 finally:
@@ -329,11 +330,12 @@ class LifecycleMixin:
                         self.name,
                         task_name,
                     )
-                    # Activity log: error
+                    # Activity log: error (safe=True to prevent double-fault)
                     self._activity.log(
                         "error",
                         summary=t("anima.cron_task_error", exc=type(exc).__name__),
                         meta={"phase": "run_cron_task", "error": str(exc)[:200]},
+                        safe=True,
                     )
                     raise
                 finally:
@@ -413,11 +415,12 @@ class LifecycleMixin:
                     stderr = f"{type(exc).__name__}: {exc}"
                     exit_code = 1
                     logger.exception("[%s] run_cron_command FAILED task=%s", self.name, task_name)
-                    # Activity log: error
+                    # Activity log: error (safe=True to prevent double-fault)
                     self._activity.log(
                         "error",
                         summary=t("anima.cron_cmd_error", exc=type(exc).__name__),
                         meta={"phase": "run_cron_command", "error": str(exc)[:200]},
+                        safe=True,
                     )
                 finally:
                     active_session_type.reset(_session_token)

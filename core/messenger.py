@@ -277,7 +277,7 @@ class Messenger:
                         channel,
                     )
                     return
-            except (KeyError, AttributeError, TypeError):
+            except Exception:
                 pass
         channels_dir = self.shared_dir / "channels"
         channels_dir.mkdir(parents=True, exist_ok=True)
@@ -417,7 +417,7 @@ class Messenger:
                             "source": "activity_log",
                         }
                     )
-        except (OSError, json.JSONDecodeError, KeyError):
+        except Exception:
             logger.debug("Failed to read DM history from activity log", exc_info=True)
 
         # Fallback: legacy dm_logs/
@@ -506,7 +506,7 @@ class Messenger:
             cfg_animas = set(load_config().animas.keys())
             if self.anima_name in cfg_animas:
                 known_animas = cfg_animas
-        except (ConfigError, ConfigNotFoundError):
+        except Exception:
             logger.debug("load_config unavailable for inbox validation", exc_info=True)
 
         items: list[InboxItem] = []
@@ -549,7 +549,7 @@ class Messenger:
                 from core.config.models import load_config
 
                 _send_ack = load_config().heartbeat.enable_read_ack
-            except (ConfigError, ConfigNotFoundError):
+            except Exception:
                 _send_ack = False
 
             if _send_ack:

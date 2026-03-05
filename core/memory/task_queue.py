@@ -31,8 +31,7 @@ _VALID_STATUSES = frozenset({"pending", "in_progress", "done", "cancelled", "blo
 _TERMINAL_STATUSES = frozenset({"done", "cancelled", "failed"})
 
 
-class TaskPersistenceError(Exception):
-    """Raised when task queue file I/O fails."""
+from core.exceptions import TaskPersistenceError as TaskPersistenceError  # noqa: F401
 
 
 # Valid task sources

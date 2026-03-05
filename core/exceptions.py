@@ -95,6 +95,10 @@ class MemoryCorruptedError(MemoryIOError):
     """Memory data is corrupted (JSON decode failure, schema mismatch)."""
 
 
+class TaskPersistenceError(MemoryIOError):
+    """Failed to persist task queue data."""
+
+
 # ── Process / IPC ────────────────────────────────────────────
 
 

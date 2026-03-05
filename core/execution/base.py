@@ -428,7 +428,7 @@ class BaseExecutor(ABC):
             from core.config import load_config
 
             return load_config().server.llm_num_retries
-        except (OSError, AttributeError, ValueError):
+        except Exception:
             return 3
 
     def _resolve_cw(self) -> int:

@@ -212,14 +212,14 @@ class TestConfigModelsErrorHandling:
             assert result is None
         invalidate_cache()
 
-    def test_resolve_context_window_does_not_catch_non_config_error(self):
-        """Non-ConfigError/OSError exceptions should propagate."""
+    def test_resolve_context_window_catches_any_exception(self):
+        """All exceptions are caught (safe fallback to None)."""
         from core.config import invalidate_cache
         invalidate_cache()
         with patch("core.config.models.load_config", side_effect=RuntimeError("unexpected")):
             from core.config.models import resolve_context_window
-            with pytest.raises(RuntimeError, match="unexpected"):
-                resolve_context_window("test-model")
+            result = resolve_context_window("test-model")
+            assert result is None
         invalidate_cache()
 
 
@@ -291,15 +291,15 @@ class TestConversationMemoryErrorHandling:
             assert result is None
         invalidate_cache()
 
-    def test_load_context_window_overrides_does_not_catch_runtime_error(self, tmp_path):
-        """Non-ConfigError/OSError should propagate."""
+    def test_load_context_window_overrides_catches_any_exception(self, tmp_path):
+        """All exceptions are caught (safe fallback to None)."""
         from core.config import invalidate_cache
         from core.memory.conversation import ConversationMemory
         invalidate_cache()
         cm = ConversationMemory.__new__(ConversationMemory)
         with patch("core.config.models.load_config", side_effect=RuntimeError("unexpected")):
-            with pytest.raises(RuntimeError, match="unexpected"):
-                cm._load_context_window_overrides()
+            result = cm._load_context_window_overrides()
+            assert result is None
         invalidate_cache()
 
 

@@ -1089,7 +1089,7 @@ class TestHandleHeartbeatFailure:
             _stop_patches(mocks)
 
     async def test_error_activity_logged(self, data_dir, make_anima):
-        """Error and heartbeat_end are logged to activity log."""
+        """Heartbeat failure is logged as a single heartbeat_end event with safe=True."""
         anima_dir = make_anima("alice")
         shared_dir = data_dir / "shared"
         dp, mocks = _create_anima(anima_dir, shared_dir)
@@ -1102,13 +1102,13 @@ class TestHandleHeartbeatFailure:
 
             await dp._handle_heartbeat_failure(error, [], unread_count=0)
 
-            assert mock_activity.log.call_count == 2
-            error_call = mock_activity.log.call_args_list[0]
-            assert error_call[0][0] == "error"
-            assert "TypeError" in error_call[1]["summary"]
-            end_call = mock_activity.log.call_args_list[1]
+            assert mock_activity.log.call_count == 1
+            end_call = mock_activity.log.call_args_list[0]
             assert end_call[0][0] == "heartbeat_end"
+            assert "TypeError" in end_call[1]["summary"]
             assert end_call[1]["meta"]["status"] == "failed"
+            assert end_call[1]["meta"]["phase"] == "run_heartbeat"
+            assert end_call[1]["safe"] is True
         finally:
             _stop_patches(mocks)
 

@@ -211,7 +211,7 @@ class ConversationMemory:
 
             config = load_config()
             return config.model_context_windows or None
-        except (ConfigError, OSError):
+        except Exception:
             return None
 
     # ── Load / Save ──────────────────────────────────────────
