@@ -347,6 +347,7 @@ class AssistedExecutor(BaseExecutor):
             "messages": messages,
             "max_tokens": _eff_max,
             "timeout": self._resolve_llm_timeout(),
+            "num_retries": self._resolve_num_retries(),
         }
 
         api_key = self._resolve_api_key()
