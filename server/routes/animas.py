@@ -1,19 +1,17 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import asyncio
 import json
 import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from core.config.models import load_config, resolve_anima_config
-from core.exceptions import AnimaWorksError
-from server.dependencies import get_anima
 
 logger = logging.getLogger("animaworks.routes.animas")
 
@@ -93,6 +91,7 @@ def create_animas_router() -> APIRouter:
 
         if not anima_dir.exists():
             from fastapi import HTTPException
+
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
 
         # Get process status
@@ -103,16 +102,14 @@ def create_animas_router() -> APIRouter:
 
         memory = MemoryManager(anima_dir)
 
-        identity, injection, cur_state, pending, k_files, e_files, p_files = (
-            await asyncio.gather(
-                asyncio.to_thread(memory.read_identity),
-                asyncio.to_thread(memory.read_injection),
-                asyncio.to_thread(memory.read_current_state),
-                asyncio.to_thread(memory.read_pending),
-                asyncio.to_thread(memory.list_knowledge_files),
-                asyncio.to_thread(memory.list_episode_files),
-                asyncio.to_thread(memory.list_procedure_files),
-            )
+        identity, injection, cur_state, pending, k_files, e_files, p_files = await asyncio.gather(
+            asyncio.to_thread(memory.read_identity),
+            asyncio.to_thread(memory.read_injection),
+            asyncio.to_thread(memory.read_current_state),
+            asyncio.to_thread(memory.read_pending),
+            asyncio.to_thread(memory.list_knowledge_files),
+            asyncio.to_thread(memory.list_episode_files),
+            asyncio.to_thread(memory.list_procedure_files),
         )
 
         return {
@@ -136,28 +133,34 @@ def create_animas_router() -> APIRouter:
                 anima_name=name,
                 method="run_heartbeat",
                 params={},
-                timeout=120.0  # Heartbeat can take longer
+                timeout=120.0,  # Heartbeat can take longer
             )
 
             return result
 
         except KeyError:
             from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
+
+            raise HTTPException(status_code=404, detail=f"Anima not found: {name}") from None
         except ValueError as e:
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
-        except asyncio.TimeoutError:
+
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        except TimeoutError:
             logger.error("Timeout waiting for heartbeat from anima=%s", name)
             from fastapi.responses import JSONResponse
+
             return JSONResponse(
-                {"error": "Request timed out"}, status_code=504,
+                {"error": "Request timed out"},
+                status_code=504,
             )
         except RuntimeError as e:
             logger.exception("Runtime error in trigger for anima=%s", name)
             from fastapi.responses import JSONResponse
+
             return JSONResponse(
-                {"error": f"Internal server error: {e}"}, status_code=500,
+                {"error": f"Internal server error: {e}"},
+                status_code=500,
             )
 
     # ── Anima Config ─────────────────────────────────────
@@ -169,6 +172,7 @@ def create_animas_router() -> APIRouter:
         anima_dir = animas_dir / name
         if not anima_dir.exists():
             from fastapi import HTTPException
+
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
 
         from core.config.models import load_config, resolve_anima_config
@@ -191,9 +195,7 @@ def create_animas_router() -> APIRouter:
         animas_dir = request.app.state.animas_dir
         anima_dir = animas_dir / name
         if not anima_dir.exists() or not (anima_dir / "identity.md").exists():
-            raise HTTPException(
-                status_code=404, detail=f"Anima '{name}' not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Anima '{name}' not found")
 
         status_file = anima_dir / "status.json"
         existing = {}
@@ -203,9 +205,7 @@ def create_animas_router() -> APIRouter:
             except (json.JSONDecodeError, OSError):
                 pass
         existing["enabled"] = True
-        status_file.write_text(
-            json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        status_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         # Start immediately (don't wait for reconciliation)
         supervisor = request.app.state.supervisor
@@ -222,9 +222,7 @@ def create_animas_router() -> APIRouter:
         animas_dir = request.app.state.animas_dir
         anima_dir = animas_dir / name
         if not anima_dir.exists() or not (anima_dir / "identity.md").exists():
-            raise HTTPException(
-                status_code=404, detail=f"Anima '{name}' not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Anima '{name}' not found")
 
         status_file = anima_dir / "status.json"
         existing = {}
@@ -234,9 +232,7 @@ def create_animas_router() -> APIRouter:
             except (json.JSONDecodeError, OSError):
                 pass
         existing["enabled"] = False
-        status_file.write_text(
-            json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        status_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         # Stop immediately
         supervisor = request.app.state.supervisor
@@ -280,14 +276,15 @@ def create_animas_router() -> APIRouter:
 
         if not task_file.exists():
             raise HTTPException(
-                status_code=404, detail=f"Background task not found: {task_id}",
+                status_code=404,
+                detail=f"Background task not found: {task_id}",
             )
 
         try:
             data = json.loads(task_file.read_text(encoding="utf-8"))
             return data
         except (json.JSONDecodeError, OSError) as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from None
 
     # ── Start / Stop / Restart ────────────────────────────────
 
@@ -368,11 +365,11 @@ def create_animas_router() -> APIRouter:
                 timeout=10.0,
             )
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"status": "timeout", "name": name}
         except Exception as e:
             logger.warning("Failed to interrupt %s: %s", name, e)
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
     # ── Reload Config ─────────────────────────────────────
 
@@ -395,14 +392,14 @@ def create_animas_router() -> APIRouter:
             return result
         except Exception as e:
             logger.exception("Failed to reload config for anima=%s", name)
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
     @router.post("/animas/reload-all")
     async def reload_all_anima_configs(request: Request):
         """Hot-reload ModelConfig for all running animas."""
         supervisor = request.app.state.supervisor
         results = {}
-        for name, handle in supervisor.processes.items():
+        for name, _ in supervisor.processes.items():
             try:
                 result = await supervisor.send_request(
                     anima_name=name,
@@ -438,14 +435,8 @@ def create_animas_router() -> APIRouter:
 
         # Optionally include disabled animas
         if include_disabled and animas_dir.exists():
-            from core.supervisor.manager import ProcessSupervisor as _PS
-
             for anima_dir in sorted(animas_dir.iterdir()):
-                if (
-                    anima_dir.is_dir()
-                    and (anima_dir / "identity.md").exists()
-                    and anima_dir.name not in anima_names
-                ):
+                if anima_dir.is_dir() and (anima_dir / "identity.md").exists() and anima_dir.name not in anima_names:
                     anima_names.append(anima_dir.name)
 
         # Build flat lookup: name -> {speciality, supervisor, model, status}
@@ -482,9 +473,7 @@ def create_animas_router() -> APIRouter:
         # Build tree from flat lookup
         def _build_node(name: str) -> dict:
             info = flat[name]
-            children_names = sorted(
-                n for n, d in flat.items() if d["supervisor"] == name
-            )
+            children_names = sorted(n for n, d in flat.items() if d["supervisor"] == name)
             return {
                 "name": name,
                 "speciality": info["speciality"],
@@ -495,11 +484,9 @@ def create_animas_router() -> APIRouter:
             }
 
         # Top-level = animas with no supervisor
-        roots = sorted(
-            n for n, d in flat.items() if d["supervisor"] is None
-        )
+        roots = sorted(n for n, d in flat.items() if d["supervisor"] is None)
 
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
 
         tree = [_build_node(r) for r in roots]
 
@@ -511,7 +498,9 @@ def create_animas_router() -> APIRouter:
 
             def _render(node: dict, prefix: str = "", is_last: bool = True) -> None:
                 connector = "\u2514\u2500\u2500 " if is_last else "\u251c\u2500\u2500 "
-                status_mark = "\u2713" if node["status"] == "running" else ("\u2717" if node["status"] == "disabled" else "?")
+                status_mark = (
+                    "\u2713" if node["status"] == "running" else ("\u2717" if node["status"] == "disabled" else "?")
+                )
                 label = f"{node['name']} [{node['speciality'] or '?'}] ({status_mark})"
                 lines.append(f"{prefix}{connector}{label}")
                 child_prefix = prefix + ("    " if is_last else "\u2502   ")
@@ -528,9 +517,7 @@ def create_animas_router() -> APIRouter:
             return PlainTextResponse("\n".join(lines))
 
         return {
-            "generated_at": datetime.now(
-                tz=timezone(timedelta(hours=9))
-            ).isoformat(),
+            "generated_at": datetime.now(tz=timezone(timedelta(hours=9))).isoformat(),
             "total": len(flat),
             "tree": tree,
             "flat": flat,

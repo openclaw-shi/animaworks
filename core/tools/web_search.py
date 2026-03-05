@@ -10,18 +10,18 @@
 Migrated from ~/.local/bin/websearch.
 Uses httpx instead of urllib.request.
 """
+
 from __future__ import annotations
 
 import argparse
 import html
 import json
 import re
-import sys
 from typing import Any
 
 import httpx
 
-from core.tools._base import ToolConfigError, get_credential, logger
+from core.tools._base import get_credential
 
 # ── Execution Profile ─────────────────────────────────────
 
@@ -41,6 +41,7 @@ _LANG_MAP = {"ja": "jp"}
 # ---------------------------------------------------------------------------
 # Core search function
 # ---------------------------------------------------------------------------
+
 
 def search(
     query: str,
@@ -100,11 +101,13 @@ def search(
     # Extract and normalize web results
     results: list[dict[str, str]] = []
     for item in data.get("web", {}).get("results", []):
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "description": item.get("description", ""),
-        })
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "description": item.get("description", ""),
+            }
+        )
 
     return results
 
@@ -112,6 +115,7 @@ def search(
 # ---------------------------------------------------------------------------
 # Text formatting helpers
 # ---------------------------------------------------------------------------
+
 
 def _strip_html(text: str) -> str:
     """Remove HTML tags and unescape entities."""
@@ -140,12 +144,14 @@ def format_results(results: list[dict[str, str]]) -> str:
 # Anthropic tool_use schema
 # ---------------------------------------------------------------------------
 
+
 def get_tool_schemas() -> list[dict]:
     """Return Anthropic tool_use schemas for the web_search tool."""
     return []
 
 
 # ── Dispatch ──────────────────────────────────────────
+
 
 def dispatch(name: str, args: dict[str, Any]) -> Any:
     """Dispatch a tool call by schema name."""
@@ -159,6 +165,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def cli_main(argv: list[str] | None = None) -> None:
     """Thin CLI entry point for web_search.
 
@@ -170,23 +177,27 @@ def cli_main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("query", help="Search query")
     parser.add_argument(
-        "-n", "--count",
+        "-n",
+        "--count",
         type=int,
         default=10,
         help="Number of results (1-20, default: 10)",
     )
     parser.add_argument(
-        "-l", "--lang",
+        "-l",
+        "--lang",
         default="ja",
         help="Search language (e.g. ja, en)",
     )
     parser.add_argument(
-        "-f", "--freshness",
+        "-f",
+        "--freshness",
         choices=["pd", "pw", "pm", "py"],
         help="Freshness filter: pd=24h, pw=1week, pm=1month, py=1year",
     )
     parser.add_argument(
-        "-j", "--json",
+        "-j",
+        "--json",
         action="store_true",
         help="Output as JSON",
     )

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
 
 _IMAGE_PATH_RE = re.compile(
     r"(?:assets|attachments)/[A-Za-z0-9._/\-]+\.(?:png|jpe?g|gif|webp)",
@@ -104,4 +104,3 @@ def extract_image_artifacts_from_tool_records(
                 _append(tool_name=tool_name, path=m.group(0), source="generated")
 
     return artifacts
-

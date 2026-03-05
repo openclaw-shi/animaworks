@@ -12,20 +12,18 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 from typing import Any
 
 from core.config.models import (
+    AnimaModelConfig,
     AnimaWorksConfig,
     CredentialConfig,
-    AnimaModelConfig,
-    load_config,
-    save_config,
     get_config_path,
     invalidate_cache,
+    load_config,
+    save_config,
 )
 from core.paths import get_animas_dir
-
 
 # ---------------------------------------------------------------------------
 # Helper utilities
@@ -104,6 +102,7 @@ def cmd_config_dispatch(args: argparse.Namespace) -> None:
     Otherwise, if no subcommand was given, print the help text.
     """
     from core.init import ensure_runtime_dir
+
     ensure_runtime_dir()
 
     if getattr(args, "interactive", False):
@@ -119,6 +118,7 @@ def cmd_config_dispatch(args: argparse.Namespace) -> None:
 def cmd_config_get(args: argparse.Namespace) -> None:
     """Print a single configuration value identified by a dot-notation key."""
     from core.init import ensure_runtime_dir
+
     ensure_runtime_dir()
 
     config = load_config()
@@ -142,6 +142,7 @@ def cmd_config_get(args: argparse.Namespace) -> None:
 def cmd_config_set(args: argparse.Namespace) -> None:
     """Set a configuration value identified by a dot-notation key."""
     from core.init import ensure_runtime_dir
+
     ensure_runtime_dir()
 
     config = load_config()
@@ -219,6 +220,7 @@ def cmd_config_set(args: argparse.Namespace) -> None:
 def cmd_config_list(args: argparse.Namespace) -> None:
     """List configuration values as flat dot-notation key = value pairs."""
     from core.init import ensure_runtime_dir
+
     ensure_runtime_dir()
 
     config = load_config()
@@ -245,6 +247,7 @@ def cmd_config_list(args: argparse.Namespace) -> None:
 def _interactive_setup() -> None:
     """Interactive configuration wizard driven by ``input()``."""
     from core.init import ensure_runtime_dir
+
     ensure_runtime_dir()
 
     config_path = get_config_path()
@@ -268,9 +271,7 @@ def _interactive_setup() -> None:
     if api_key:
         default_cred.api_key = api_key
 
-    base_url = input(
-        f"Base URL [{default_cred.base_url or '(default)'}]: "
-    ).strip()
+    base_url = input(f"Base URL [{default_cred.base_url or '(default)'}]: ").strip()
     if base_url:
         default_cred.base_url = base_url if base_url.lower() not in ("none", "") else None
 
@@ -307,9 +308,7 @@ def _interactive_setup() -> None:
     animas_dir = get_animas_dir()
     detected_animas: list[str] = []
     if animas_dir.is_dir():
-        detected_animas = sorted(
-            d.name for d in animas_dir.iterdir() if d.is_dir()
-        )
+        detected_animas = sorted(d.name for d in animas_dir.iterdir() if d.is_dir())
 
     cred_names = list(credentials.keys())
 
@@ -322,25 +321,19 @@ def _interactive_setup() -> None:
         status_data: dict[str, object] = {}
         if status_path.is_file():
             try:
-                status_data = json.loads(
-                    status_path.read_text(encoding="utf-8")
-                )
+                status_data = json.loads(status_path.read_text(encoding="utf-8"))
                 current_model = status_data.get("model", "") or ""
                 current_cred = status_data.get("credential", "") or ""
             except (json.JSONDecodeError, OSError):
                 pass
 
-        model = input(
-            f"    Model [{current_model or '(use default)'}]: "
-        ).strip()
+        model = input(f"    Model [{current_model or '(use default)'}]: ").strip()
         if model:
             status_data["model"] = model
 
         if cred_names:
             print(f"    Available credentials: {', '.join(cred_names)}")
-        cred = input(
-            f"    Credential [{current_cred or '(use default)'}]: "
-        ).strip()
+        cred = input(f"    Credential [{current_cred or '(use default)'}]: ").strip()
         if cred:
             status_data["credential"] = cred
 
@@ -440,7 +433,7 @@ def cmd_config_export_sections(args: argparse.Namespace) -> None:
 
     # emotion_instruction — skip with notice
     if "emotion_instruction" in section_map:
-        print(f"  SKIP  emotion_instruction: dynamically generated (no template file)")
+        print("  SKIP  emotion_instruction: dynamically generated (no template file)")
         skipped += 1
 
     print()

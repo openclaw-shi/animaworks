@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -149,7 +150,8 @@ class ConsolidationEngine:
         if migrated > 0:
             logger.info(
                 "Legacy knowledge migration complete for anima=%s: migrated=%d",
-                self.anima_name, migrated,
+                self.anima_name,
+                migrated,
             )
         return migrated
 
@@ -185,11 +187,13 @@ class ConsolidationEngine:
                     continue
 
                 # Parse episode entries (format: ## HH:MM — Title)
-                found_entries = list(re.finditer(
-                    r"^## (\d{2}:\d{2})\s*—\s*(.+?)(?=^##|\Z)",
-                    content,
-                    re.MULTILINE | re.DOTALL,
-                ))
+                found_entries = list(
+                    re.finditer(
+                        r"^## (\d{2}:\d{2})\s*—\s*(.+?)(?=^##|\Z)",
+                        content,
+                        re.MULTILINE | re.DOTALL,
+                    )
+                )
 
                 if found_entries:
                     for match in found_entries:
@@ -198,34 +202,43 @@ class ConsolidationEngine:
 
                         # Parse timestamp
                         try:
-                            entry_dt = ensure_aware(datetime.strptime(
-                                f"{target_date} {time_str}",
-                                "%Y-%m-%d %H:%M",
-                            ))
+                            entry_dt = ensure_aware(
+                                datetime.strptime(
+                                    f"{target_date} {time_str}",
+                                    "%Y-%m-%d %H:%M",
+                                )
+                            )
 
                             # Only include if within time window
                             if entry_dt >= cutoff:
-                                entries.append({
-                                    "date": str(target_date),
-                                    "time": time_str,
-                                    "content": entry_content,
-                                })
+                                entries.append(
+                                    {
+                                        "date": str(target_date),
+                                        "time": time_str,
+                                        "content": entry_content,
+                                    }
+                                )
                         except ValueError:
                             logger.warning(
                                 "Failed to parse episode timestamp: %s %s",
-                                target_date, time_str,
+                                target_date,
+                                time_str,
                             )
                 else:
                     # Fallback: treat entire file as a single entry using mtime
-                    file_mtime = ensure_aware(datetime.fromtimestamp(
-                        episode_file.stat().st_mtime,
-                    ))
+                    file_mtime = ensure_aware(
+                        datetime.fromtimestamp(
+                            episode_file.stat().st_mtime,
+                        )
+                    )
                     if file_mtime >= cutoff:
-                        entries.append({
-                            "date": str(target_date),
-                            "time": file_mtime.strftime("%H:%M"),
-                            "content": content.strip(),
-                        })
+                        entries.append(
+                            {
+                                "date": str(target_date),
+                                "time": file_mtime.strftime("%H:%M"),
+                                "content": content.strip(),
+                            }
+                        )
 
         # Deduplicate by content prefix (first 200 chars)
         seen: set[str] = set()
@@ -249,12 +262,10 @@ class ConsolidationEngine:
         """Collect issue_resolved events from activity log."""
         try:
             from core.memory.activity import ActivityLogger
+
             activity = ActivityLogger(self.anima_dir)
             entries = activity.recent(days=1, limit=50, types=["issue_resolved"])
-            return [
-                {"ts": e.ts, "content": e.content, "summary": e.summary, "meta": e.meta or {}}
-                for e in entries
-            ]
+            return [{"ts": e.ts, "content": e.content, "summary": e.summary, "meta": e.meta or {}} for e in entries]
         except Exception:
             logger.debug("Failed to collect resolved events", exc_info=True)
             return []
@@ -294,10 +305,15 @@ class ConsolidationEngine:
     # ── Activity Log Collection ──────────────────────────────────
 
     # Communication event types — these carry the most signal for consolidation.
-    _COMM_TYPES = frozenset({
-        "message_received", "response_sent", "heartbeat_reflection",
-        "channel_post", "error",
-    })
+    _COMM_TYPES = frozenset(
+        {
+            "message_received",
+            "response_sent",
+            "heartbeat_reflection",
+            "channel_post",
+            "error",
+        }
+    )
 
     def _collect_activity_entries(self, hours: int = 24) -> str:
         """Collect recent activity log entries for consolidation input.
@@ -323,8 +339,12 @@ class ConsolidationEngine:
 
             activity = ActivityLogger(self.anima_dir)
             target_types = [
-                "message_received", "response_sent", "heartbeat_reflection",
-                "channel_post", "error", "tool_result",
+                "message_received",
+                "response_sent",
+                "heartbeat_reflection",
+                "channel_post",
+                "error",
+                "tool_result",
             ]
             entries = activity.recent(
                 days=max(1, (hours + 23) // 24),
@@ -512,7 +532,9 @@ class ConsolidationEngine:
 
     # ── RAG Index ────────────────────────────────────────────────
 
-    def _update_rag_index(self, filenames: list[str], *, origin: str = "consolidation", source_files: list[str] | None = None) -> None:
+    def _update_rag_index(
+        self, filenames: list[str], *, origin: str = "consolidation", source_files: list[str] | None = None
+    ) -> None:
         """Update RAG index for the specified knowledge files.
 
         Args:
@@ -530,8 +552,7 @@ class ConsolidationEngine:
             if self._has_external_origin_in_files(source_files):
                 effective_origin = "consolidation_external"
                 logger.info(
-                    "Downgrading consolidation origin to 'consolidation_external' "
-                    "due to external-origin input files",
+                    "Downgrading consolidation origin to 'consolidation_external' due to external-origin input files",
                 )
 
         try:
@@ -599,6 +620,7 @@ class ConsolidationEngine:
         logger.info("Starting monthly forgetting for anima=%s", self.anima_name)
         try:
             from core.memory.forgetting import ForgettingEngine
+
             forgetter = ForgettingEngine(self.anima_dir, self.anima_name)
             result = forgetter.complete_forgetting()
 
@@ -607,8 +629,7 @@ class ConsolidationEngine:
                 archive_result = forgetter.cleanup_procedure_archives()
                 result["procedure_archive_cleanup"] = archive_result
                 logger.info(
-                    "Procedure archive cleanup for anima=%s: "
-                    "deleted=%d, kept=%d",
+                    "Procedure archive cleanup for anima=%s: deleted=%d, kept=%d",
                     self.anima_name,
                     archive_result.get("deleted_count", 0),
                     archive_result.get("kept_count", 0),
@@ -623,8 +644,7 @@ class ConsolidationEngine:
             self._rebuild_rag_index()
 
             logger.info(
-                "Monthly forgetting complete for anima=%s: "
-                "forgotten=%d, archived=%d files",
+                "Monthly forgetting complete for anima=%s: forgotten=%d, archived=%d files",
                 self.anima_name,
                 result.get("forgotten_chunks", 0),
                 len(result.get("archived_files", [])),

@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -35,9 +36,7 @@ class VoicevoxTTS(BaseTTSProvider):
         base = vv.get("base_url") if isinstance(vv, dict) else getattr(vv, "base_url", None)
         self._base_url = (base or DEFAULT_BASE_URL).rstrip("/")
 
-    async def synthesize(
-        self, text: str, config: TTSConfig
-    ) -> AsyncIterator[bytes]:
+    async def synthesize(self, text: str, config: TTSConfig) -> AsyncIterator[bytes]:
         """Stream TTS audio chunks. VOICEVOX does not support streaming; yields full WAV."""
         audio = await self.synthesize_full(text, config)
         yield audio
@@ -80,10 +79,12 @@ class VoicevoxTTS(BaseTTSProvider):
                 result: list[dict] = []
                 for sp in data:
                     for style in sp.get("styles", []):
-                        result.append({
-                            "id": str(style.get("id", "")),
-                            "name": f"{sp.get('name', '')} / {style.get('name', '')}",
-                        })
+                        result.append(
+                            {
+                                "id": str(style.get("id", "")),
+                                "name": f"{sp.get('name', '')} / {style.get('name', '')}",
+                            }
+                        )
                 return result
             except httpx.HTTPError:
                 return []

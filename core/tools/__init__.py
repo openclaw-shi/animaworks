@@ -6,7 +6,9 @@
 # See LICENSE for the full license text.
 
 """AnimaWorks external tools package."""
+
 from __future__ import annotations
+
 import logging
 import sys
 from pathlib import Path
@@ -41,6 +43,7 @@ def discover_common_tools(data_dir: Path | None = None) -> dict[str, str]:
     """
     if data_dir is None:
         from core.paths import get_data_dir
+
         data_dir = get_data_dir()
     tools_dir = data_dir / "common_tools"
     if not tools_dir.is_dir():
@@ -52,7 +55,8 @@ def discover_common_tools(data_dir: Path | None = None) -> dict[str, str]:
         tool_name = f.stem
         if tool_name in TOOL_MODULES:
             logger.warning(
-                "Common tool '%s' shadows core tool — skipped", tool_name,
+                "Common tool '%s' shadows core tool — skipped",
+                tool_name,
             )
             continue
         common[tool_name] = str(f)
@@ -78,7 +82,8 @@ def discover_personal_tools(anima_dir: Path) -> dict[str, str]:
         tool_name = f.stem
         if tool_name in TOOL_MODULES:
             logger.warning(
-                "Personal tool '%s' shadows core tool — skipped", tool_name,
+                "Personal tool '%s' shadows core tool — skipped",
+                tool_name,
             )
             continue
         personal[tool_name] = str(f)
@@ -113,8 +118,7 @@ def _handle_submit(argv: list[str]) -> None:
     anima_dir = os.environ.get("ANIMAWORKS_ANIMA_DIR", "")
     if not anima_dir:
         print(
-            "Error: ANIMAWORKS_ANIMA_DIR not set. "
-            "Cannot determine pending directory.",
+            "Error: ANIMAWORKS_ANIMA_DIR not set. Cannot determine pending directory.",
         )
         sys.exit(1)
 
@@ -178,10 +182,7 @@ def _handle_submit(argv: list[str]) -> None:
         "status": "submitted",
         "tool": tool_name,
         "subcommand": subcommand,
-        "message": (
-            f"バックグラウンドタスクを投入しました。"
-            f"完了時にinboxに通知されます。(task_id: {task_id})"
-        ),
+        "message": (f"バックグラウンドタスクを投入しました。完了時にinboxに通知されます。(task_id: {task_id})"),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -208,7 +209,7 @@ def cli_dispatch():
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         tools = ", ".join(sorted(all_tools))
-        print(f"Usage: animaworks-tool <tool_name> [args...]")
+        print("Usage: animaworks-tool <tool_name> [args...]")
         print(f"Available tools: {tools}")
         sys.exit(0 if "--help" in sys.argv else 1)
 
@@ -222,6 +223,7 @@ def cli_dispatch():
     # Try core tools first
     if tool_name in TOOL_MODULES:
         import importlib
+
         mod = importlib.import_module(TOOL_MODULES[tool_name])
         if not hasattr(mod, "cli_main"):
             print(f"Tool '{tool_name}' has no CLI interface")
@@ -233,9 +235,11 @@ def cli_dispatch():
     file_tool = personal.get(tool_name) or common.get(tool_name)
     if file_tool:
         import importlib.util
+
         origin = "personal" if tool_name in personal else "common"
         spec = importlib.util.spec_from_file_location(
-            f"animaworks_{origin}_tool_{tool_name}", file_tool,
+            f"animaworks_{origin}_tool_{tool_name}",
+            file_tool,
         )
         if spec is None or spec.loader is None:
             print(f"Cannot load {origin} tool: {tool_name}")

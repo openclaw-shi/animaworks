@@ -1,12 +1,11 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
-
 import asyncio
 import json
 import logging
@@ -19,7 +18,7 @@ logger = logging.getLogger("animaworks.websocket")
 
 # ── Heartbeat Constants ─────────────────────────────────
 _HEARTBEAT_INTERVAL = 30  # seconds between pings
-_HEARTBEAT_TIMEOUT = 60   # seconds before considering client dead (2 missed pongs)
+_HEARTBEAT_TIMEOUT = 60  # seconds before considering client dead (2 missed pongs)
 
 
 class WebSocketManager:
@@ -49,9 +48,7 @@ class WebSocketManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
         self._last_pong.pop(id(websocket), None)
-        logger.info(
-            "WebSocket disconnected. Total: %d", len(self.active_connections)
-        )
+        logger.info("WebSocket disconnected. Total: %d", len(self.active_connections))
 
     # ── Client Message Handling ─────────────────────────────
 
@@ -77,8 +74,7 @@ class WebSocketManager:
     async def start_heartbeat(self) -> None:
         """Start the application-level heartbeat loop."""
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        logger.info("WebSocket heartbeat started (interval=%ds, timeout=%ds)",
-                     _HEARTBEAT_INTERVAL, _HEARTBEAT_TIMEOUT)
+        logger.info("WebSocket heartbeat started (interval=%ds, timeout=%ds)", _HEARTBEAT_INTERVAL, _HEARTBEAT_TIMEOUT)
 
     async def stop_heartbeat(self) -> None:
         """Stop the heartbeat loop if running."""
@@ -149,9 +145,7 @@ class WebSocketManager:
         while self._notification_queue:
             event = self._notification_queue.pop(0)
             try:
-                await websocket.send_text(
-                    json.dumps(event, ensure_ascii=False, default=str)
-                )
+                await websocket.send_text(json.dumps(event, ensure_ascii=False, default=str))
             except Exception:
                 break
 

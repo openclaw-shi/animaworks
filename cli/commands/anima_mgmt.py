@@ -33,10 +33,7 @@ def cmd_anima_restart(args: argparse.Namespace) -> None:
     gateway_url = args.gateway_url or "http://localhost:18500"
 
     try:
-        response = requests.post(
-            f"{gateway_url}/api/animas/{args.anima}/restart",
-            timeout=30.0
-        )
+        response = requests.post(f"{gateway_url}/api/animas/{args.anima}/restart", timeout=30.0)
         response.raise_for_status()
         result = response.json()
         print(f"Anima '{args.anima}' restarted successfully")
@@ -126,19 +123,13 @@ def cmd_anima_status(args: argparse.Namespace) -> None:
         # Get status from API
         if args.anima:
             # Specific anima
-            response = requests.get(
-                f"{gateway_url}/api/animas/{args.anima}",
-                timeout=10.0
-            )
+            response = requests.get(f"{gateway_url}/api/animas/{args.anima}", timeout=10.0)
             response.raise_for_status()
             data = response.json()
             _print_anima_status(args.anima, data.get("status", {}))
         else:
             # All animas
-            response = requests.get(
-                f"{gateway_url}/api/animas",
-                timeout=10.0
-            )
+            response = requests.get(f"{gateway_url}/api/animas", timeout=10.0)
             response.raise_for_status()
             animas = response.json()
 
@@ -149,10 +140,7 @@ def cmd_anima_status(args: argparse.Namespace) -> None:
                 name = anima.get("name", "unknown")
                 # Get individual status
                 try:
-                    status_resp = requests.get(
-                        f"{gateway_url}/api/animas/{name}",
-                        timeout=5.0
-                    )
+                    status_resp = requests.get(f"{gateway_url}/api/animas/{name}", timeout=5.0)
                     status_resp.raise_for_status()
                     data = status_resp.json()
                     _print_anima_status(name, data.get("status", {}))
@@ -181,17 +169,17 @@ def _print_anima_status(name: str, status: dict) -> None:
     print(f"  PID: {status.get('pid', 'N/A')}")
     print(f"  Status: {status.get('status', 'unknown')}")
 
-    if status.get('uptime_sec'):
-        uptime = status['uptime_sec']
+    if status.get("uptime_sec"):
+        uptime = status["uptime_sec"]
         hours = int(uptime // 3600)
         minutes = int((uptime % 3600) // 60)
         seconds = int(uptime % 60)
         print(f"  Uptime: {hours}h {minutes}m {seconds}s")
 
-    if status.get('restart_count'):
+    if status.get("restart_count"):
         print(f"  Restarts: {status['restart_count']}")
 
-    if status.get('current_task'):
+    if status.get("current_task"):
         print(f"  Current task: {status['current_task']}")
 
 
@@ -213,6 +201,7 @@ def _read_model_from_status_json(anima_dir: Path) -> tuple[str, str]:
         if not mode and model:
             try:
                 from core.config.models import load_config, resolve_execution_mode
+
                 mode = resolve_execution_mode(load_config(), model)
             except Exception:
                 pass
@@ -251,8 +240,10 @@ def cmd_anima_info(args: argparse.Namespace) -> None:
     explicit_mode = data.get("execution_mode", "")
     try:
         from core.config.models import load_config, resolve_execution_mode
+
         mode = resolve_execution_mode(
-            load_config(), model if model != "-" else "",
+            load_config(),
+            model if model != "-" else "",
             explicit_override=explicit_mode or None,
         )
     except Exception:
@@ -298,8 +289,8 @@ def cmd_anima_delete(args: argparse.Namespace) -> None:
     import requests
 
     from core.config.models import unregister_anima_from_config
-    from core.time_utils import now_jst
     from core.paths import get_animas_dir, get_data_dir
+    from core.time_utils import now_jst
 
     name = args.anima
     data_dir = get_data_dir()
@@ -313,9 +304,7 @@ def cmd_anima_delete(args: argparse.Namespace) -> None:
 
     # Confirmation prompt
     if not args.force:
-        answer = input(
-            f"Are you sure you want to delete anima '{name}'? [y/N] "
-        )
+        answer = input(f"Are you sure you want to delete anima '{name}'? [y/N] ")
         if answer.strip().lower() != "y":
             print("Aborted.")
             return
@@ -358,10 +347,7 @@ def cmd_anima_delete(args: argparse.Namespace) -> None:
             try:
                 status_data = json.loads(status_file.read_text(encoding="utf-8"))
                 if status_data.get("supervisor") == name:
-                    print(
-                        f"Warning: Anima '{other_dir.name}' has "
-                        f"deleted anima '{name}' as supervisor"
-                    )
+                    print(f"Warning: Anima '{other_dir.name}' has deleted anima '{name}' as supervisor")
             except Exception:
                 pass
 
@@ -519,8 +505,7 @@ def cmd_anima_set_role(args: argparse.Namespace) -> None:
         if defaults_path.is_file():
             try:
                 role_defaults = json.loads(defaults_path.read_text(encoding="utf-8"))
-                for key in ("model", "context_threshold", "max_turns", "max_chains",
-                            "conversation_history_threshold"):
+                for key in ("model", "context_threshold", "max_turns", "max_chains", "conversation_history_threshold"):
                     if key in role_defaults:
                         status_data[key] = role_defaults[key]
             except Exception:
@@ -597,7 +582,9 @@ def cmd_anima_set_model(args: argparse.Namespace) -> None:
             print(f"Updated model for {updated} anima(s) to '{model}'")
         else:
             if not args.anima or not args.model:
-                print("Error: anima name and model are required (e.g. animaworks anima set-model hinata claude-sonnet-4-6)")
+                print(
+                    "Error: anima name and model are required (e.g. animaworks anima set-model hinata claude-sonnet-4-6)"
+                )
                 sys.exit(1)
             anima_dir = animas_dir / args.anima
             if not anima_dir.exists():
@@ -892,9 +879,7 @@ def cmd_anima_rename(args: argparse.Namespace) -> None:
 
     # ── Confirmation ──
     if not args.force:
-        answer = input(
-            f"Rename anima '{old_name}' → '{new_name}'? [y/N] "
-        )
+        answer = input(f"Rename anima '{old_name}' → '{new_name}'? [y/N] ")
         if answer.strip().lower() != "y":
             print("Aborted.")
             return
@@ -1003,7 +988,7 @@ def cmd_anima_rename(args: argparse.Namespace) -> None:
         if rollback_needed and new_dir.exists() and not old_dir.exists():
             try:
                 new_dir.rename(old_dir)
-                print(f"  Rolled back directory rename")
+                print("  Rolled back directory rename")
             except OSError:
                 pass
         print(f"Error: Failed to rename: {e}")
@@ -1048,8 +1033,7 @@ def _cleanup_rag_collections(anima_dir: Path, old_name: str) -> None:
         from core.memory.rag.store import VectorStore
 
         store = VectorStore(old_name)
-        for suffix in ("knowledge", "episodes", "procedures", "skills",
-                        "common_knowledge", "conversation_summary"):
+        for suffix in ("knowledge", "episodes", "procedures", "skills", "common_knowledge", "conversation_summary"):
             collection_name = f"{old_name}_{suffix}"
             try:
                 store.delete_collection(collection_name)

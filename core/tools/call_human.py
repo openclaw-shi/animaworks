@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -21,6 +22,7 @@ from pathlib import Path
 
 def _load_config() -> dict:
     from core.paths import get_data_dir
+
     cfg_path = get_data_dir() / "config.json"
     try:
         return json.loads(cfg_path.read_text())
@@ -45,7 +47,7 @@ def _get_bot_token(channel_cfg: dict) -> str:
     # Per-anima vault/shared (Mode S subprocess sets ANIMAWORKS_ANIMA_DIR)
     anima_dir = os.environ.get("ANIMAWORKS_ANIMA_DIR")
     if anima_dir:
-        from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
+        from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
 
         anima_name = Path(anima_dir).name
         per_key = f"SLACK_BOT_TOKEN__{anima_name}"
@@ -55,6 +57,7 @@ def _get_bot_token(channel_cfg: dict) -> str:
 
     # Fall back to credentials.json / vault / env
     from core.tools._base import get_credential
+
     try:
         return get_credential("slack", "call_human", env_var="SLACK_BOT_TOKEN")
     except Exception:
@@ -63,6 +66,7 @@ def _get_bot_token(channel_cfg: dict) -> str:
 
 async def _send_slack(channel: str, token: str, text: str) -> str:
     import httpx
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -118,7 +122,8 @@ def cli_main(args: list[str]) -> None:
     parser.add_argument("subject", help="Notification subject")
     parser.add_argument("body", help="Notification body")
     parser.add_argument(
-        "--priority", choices=["low", "normal", "high", "urgent"],
+        "--priority",
+        choices=["low", "normal", "high", "urgent"],
         default="normal",
     )
     ns = parser.parse_args(args)

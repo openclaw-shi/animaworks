@@ -16,52 +16,60 @@ import signal as _signal
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
-
-from core.time_utils import ensure_aware, now_jst
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from core.exceptions import (  # noqa: F401
-    ProcessError, AnimaNotFoundError, IPCConnectionError, ConfigError,
-    ConfigNotFoundError, MemoryIOError,
+    AnimaNotFoundError,
+    ConfigError,
+    ConfigNotFoundError,
+    IPCConnectionError,
+    MemoryIOError,
+    ProcessError,
 )
-from core.supervisor.ipc import IPCResponse
-from core.supervisor.process_handle import ProcessHandle, ProcessState
 from core.supervisor._mgr_health import HealthMixin
 from core.supervisor._mgr_reconcile import ReconcileMixin
 from core.supervisor._mgr_scheduler import SchedulerMixin
+from core.supervisor.ipc import IPCResponse
+from core.supervisor.process_handle import ProcessHandle, ProcessState
+from core.time_utils import ensure_aware, now_jst
 
 logger = logging.getLogger(__name__)
 
 
 # ── Configuration ──────────────────────────────────────────────────
 
+
 @dataclass
 class RestartPolicy:
     """Process restart policy configuration."""
-    max_retries: int = 5                   # Maximum restart attempts
-    backoff_base_sec: float = 2.0          # Initial backoff delay
-    backoff_max_sec: float = 60.0          # Maximum backoff delay
-    reset_after_sec: float = 300.0         # Stable runtime to reset counter
+
+    max_retries: int = 5  # Maximum restart attempts
+    backoff_base_sec: float = 2.0  # Initial backoff delay
+    backoff_max_sec: float = 60.0  # Maximum backoff delay
+    reset_after_sec: float = 300.0  # Stable runtime to reset counter
 
 
 @dataclass
 class HealthConfig:
     """Health check configuration."""
-    ping_interval_sec: float = 10.0        # Ping interval
-    ping_timeout_sec: float = 5.0          # Ping timeout
-    max_missed_pings: int = 6              # Consecutive misses before hang
-    startup_grace_sec: float = 30.0        # Grace period after startup
+
+    ping_interval_sec: float = 10.0  # Ping interval
+    ping_timeout_sec: float = 5.0  # Ping timeout
+    max_missed_pings: int = 6  # Consecutive misses before hang
+    startup_grace_sec: float = 30.0  # Grace period after startup
 
 
 @dataclass
 class ReconciliationConfig:
     """Reconciliation loop configuration."""
-    interval_sec: float = 30.0             # Scan interval
+
+    interval_sec: float = 30.0  # Scan interval
 
 
 # ── Process Supervisor ─────────────────────────────────────────────
+
 
 class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
     """
@@ -118,9 +126,12 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
         self._max_streaming_duration_sec: int = 1800
         try:
             from core.config import load_config
+
             srv = load_config().server
             self._max_streaming_duration_sec = getattr(
-                srv, "max_streaming_duration", 1800,
+                srv,
+                "max_streaming_duration",
+                1800,
             )
         except (ConfigError, ConfigNotFoundError):
             logger.debug("Config load failed for max_streaming_duration", exc_info=True)
@@ -158,24 +169,18 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 *(self.start_anima(name) for name in anima_names),
                 return_exceptions=True,
             )
-            for name, result in zip(anima_names, results):
+            for name, result in zip(anima_names, results, strict=False):
                 if isinstance(result, Exception):
                     logger.error("Failed to start anima %s: %s", name, result)
 
         # Start health check loop
-        self._health_check_task = asyncio.create_task(
-            self._health_check_loop()
-        )
+        self._health_check_task = asyncio.create_task(self._health_check_loop())
 
         # Start reconciliation loop
-        self._reconciliation_task = asyncio.create_task(
-            self._reconciliation_loop()
-        )
+        self._reconciliation_task = asyncio.create_task(self._reconciliation_loop())
 
         # Start inbox wake dispatcher
-        self._inbox_wake_task = asyncio.create_task(
-            self._inbox_wake_dispatcher()
-        )
+        self._inbox_wake_task = asyncio.create_task(self._inbox_wake_dispatcher())
 
         # Start system scheduler (daily/weekly consolidation)
         self._start_system_scheduler()
@@ -199,7 +204,9 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 pid = int(pid_file.read_text().strip())
                 os.kill(pid, 0)  # check if alive
                 logger.warning(
-                    "Killing zombie runner: %s (pid=%d)", anima_name, pid,
+                    "Killing zombie runner: %s (pid=%d)",
+                    anima_name,
+                    pid,
                 )
                 try:
                     os.kill(pid, _signal.SIGTERM)
@@ -239,7 +246,7 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 socket_path=socket_path,
                 animas_dir=self.animas_dir,
                 shared_dir=self.shared_dir,
-                log_dir=self.log_dir
+                log_dir=self.log_dir,
             )
 
             try:
@@ -250,7 +257,10 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 # Check if bootstrap is needed and launch in background
                 try:
                     status = await self.send_request(
-                        anima_name, "get_status", {}, timeout=10.0,
+                        anima_name,
+                        "get_status",
+                        {},
+                        timeout=10.0,
                     )
                     if status.get("needs_bootstrap"):
                         logger.info(
@@ -261,7 +271,8 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 except Exception as e:
                     logger.warning(
                         "Could not check bootstrap status for %s: %s",
-                        anima_name, e,
+                        anima_name,
+                        e,
                     )
 
             except (ProcessError, AnimaNotFoundError):
@@ -294,13 +305,16 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                     "Bootstrap retry limit reached for %s (%d/%d). "
                     "Renamed bootstrap.md -> bootstrap.md.failed. "
                     "Manual intervention required.",
-                    anima_name, retry_count, self._bootstrap_max_retries,
+                    anima_name,
+                    retry_count,
+                    self._bootstrap_max_retries,
                 )
             else:
                 logger.error(
-                    "Bootstrap retry limit reached for %s (%d/%d). "
-                    "Manual intervention required.",
-                    anima_name, retry_count, self._bootstrap_max_retries,
+                    "Bootstrap retry limit reached for %s (%d/%d). Manual intervention required.",
+                    anima_name,
+                    retry_count,
+                    self._bootstrap_max_retries,
                 )
             await self._broadcast_event(
                 "anima.bootstrap",
@@ -311,7 +325,9 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
         self._bootstrapping.add(anima_name)
         logger.info(
             "Bootstrap started for %s (attempt %d/%d)",
-            anima_name, retry_count + 1, self._bootstrap_max_retries,
+            anima_name,
+            retry_count + 1,
+            self._bootstrap_max_retries,
         )
 
         # Broadcast bootstrap started
@@ -332,13 +348,16 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 return
 
             response = await handle.send_request(
-                "run_bootstrap", {}, timeout=600.0,
+                "run_bootstrap",
+                {},
+                timeout=600.0,
             )
 
             if response.error:
                 logger.error(
                     "Bootstrap failed for %s: %s",
-                    anima_name, response.error.get("message", "Unknown error"),
+                    anima_name,
+                    response.error.get("message", "Unknown error"),
                 )
                 await self._broadcast_event(
                     "anima.bootstrap",
@@ -349,7 +368,8 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
             result = response.result or {}
             logger.info(
                 "Bootstrap completed for %s (duration_ms=%s)",
-                anima_name, result.get("duration_ms", "?"),
+                anima_name,
+                result.get("duration_ms", "?"),
             )
             await self._broadcast_event(
                 "anima.bootstrap",
@@ -357,7 +377,7 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
             )
             success = True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Bootstrap timed out for %s (600s)", anima_name)
             await self._broadcast_event(
                 "anima.bootstrap",
@@ -380,13 +400,14 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 handle = self.processes.get(anima_name)
                 if not handle or handle.state != ProcessState.RUNNING:
                     logger.warning(
-                        "Bootstrap for %s ended with process not running "
-                        "(possible reconciliation interference)",
+                        "Bootstrap for %s ended with process not running (possible reconciliation interference)",
                         anima_name,
                     )
 
     async def _broadcast_event(
-        self, event_type: str, data: dict[str, Any],
+        self,
+        event_type: str,
+        data: dict[str, Any],
     ) -> None:
         """Broadcast a WebSocket event if ws_manager is available."""
         if self.ws_manager:
@@ -404,7 +425,10 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
         logger.info("Anima process stopped: %s", anima_name)
 
     async def restart_anima(
-        self, anima_name: str, *, _reset_counters: bool = True,
+        self,
+        anima_name: str,
+        *,
+        _reset_counters: bool = True,
     ) -> None:
         """Restart a Anima process.
 
@@ -466,10 +490,7 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
                 pass
 
         # Stop all processes
-        tasks = [
-            self.stop_anima(name)
-            for name in list(self.processes.keys())
-        ]
+        tasks = [self.stop_anima(name) for name in list(self.processes.keys())]
         await asyncio.gather(*tasks, return_exceptions=True)
 
         logger.info("All processes shut down")
@@ -496,9 +517,7 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
         response = await handle.send_request(method, params, timeout)
 
         if response.error:
-            raise IPCConnectionError(
-                f"Request failed: {response.error.get('message', 'Unknown error')}"
-            )
+            raise IPCConnectionError(f"Request failed: {response.error.get('message', 'Unknown error')}")
 
         return response.result or {}
 
@@ -519,13 +538,9 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
         if not handle:
             raise AnimaNotFoundError(f"Anima not found: {anima_name}")
 
-        async for response in handle.send_request_stream(
-            method, params, timeout
-        ):
+        async for response in handle.send_request_stream(method, params, timeout):
             if response.error:
-                raise IPCConnectionError(
-                    f"Stream error: {response.error.get('message', 'Unknown error')}"
-                )
+                raise IPCConnectionError(f"Stream error: {response.error.get('message', 'Unknown error')}")
             yield response
 
     async def _inbox_wake_dispatcher(self) -> None:
@@ -557,19 +572,24 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
 
                     if target_name not in self.processes:
                         logger.debug(
-                            "Inbox wake for unknown anima: %s", target_name,
+                            "Inbox wake for unknown anima: %s",
+                            target_name,
                         )
                         continue
 
                     try:
                         await self.send_request(
-                            target_name, "process_inbox", {}, timeout=30.0,
+                            target_name,
+                            "process_inbox",
+                            {},
+                            timeout=30.0,
                         )
                         logger.debug("Inbox wake dispatched: %s", target_name)
                     except Exception:
                         logger.debug(
                             "Failed to dispatch inbox wake for %s",
-                            target_name, exc_info=True,
+                            target_name,
+                            exc_info=True,
                         )
             except asyncio.CancelledError:
                 raise
@@ -618,15 +638,9 @@ class ProcessSupervisor(HealthMixin, ReconcileMixin, SchedulerMixin):
             "missed_pings": handle.stats.missed_pings,
             "busy_pings": handle.stats.busy_pings,
             "bootstrapping": self.is_bootstrapping(anima_name),
-            "last_ping_at": (
-                handle.stats.last_ping_at.isoformat()
-                if handle.stats.last_ping_at else None
-            ),
+            "last_ping_at": (handle.stats.last_ping_at.isoformat() if handle.stats.last_ping_at else None),
         }
 
     def get_all_status(self) -> dict[str, dict]:
         """Get status of all processes."""
-        return {
-            name: self.get_process_status(name)
-            for name in self.processes
-        }
+        return {name: self.get_process_status(name) for name in self.processes}

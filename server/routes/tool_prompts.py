@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -199,7 +199,9 @@ def create_tool_prompts_router() -> APIRouter:
                 anima_config = config.animas.get(body.anima_name)
                 if anima_config and anima_config.model:
                     execution_mode = resolve_execution_mode(
-                        config, anima_config.model, anima_config.execution_mode,
+                        config,
+                        anima_config.model,
+                        anima_config.execution_mode,
                     )
             except Exception:
                 pass
@@ -248,8 +250,9 @@ def create_tool_prompts_router() -> APIRouter:
             }
         except Exception as e:
             logger.exception(
-                "Failed to build system prompt preview for %s", body.anima_name,
+                "Failed to build system prompt preview for %s",
+                body.anima_name,
             )
-            raise HTTPException(500, f"Failed to build system prompt: {e}")
+            raise HTTPException(500, f"Failed to build system prompt: {e}") from e
 
     return router

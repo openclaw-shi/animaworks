@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import asyncio
 import json
 import logging
@@ -44,11 +44,12 @@ class ResponseStream:
     active_tool: str | None = None
     tool_history: list[dict[str, Any]] = field(default_factory=list)
     emotion: str | None = None
-    done: bool = False                                      # True if Anima finished normally
+    done: bool = False  # True if Anima finished normally
     producer_task: asyncio.Task | None = field(default=None, repr=False)  # Background producer task
     _seq_counter: int = field(default=0, repr=False)
     _new_event: asyncio.Event = field(
-        default_factory=asyncio.Event, repr=False,
+        default_factory=asyncio.Event,
+        repr=False,
     )
     _notify_seq: int = field(default=0, repr=False)
 
@@ -70,7 +71,9 @@ class ResponseStream:
         if len(self.events) > MAX_EVENTS:
             logger.info(
                 "[SSE-BUF] evict oldest events stream=%s buffer=%d->%d",
-                self.response_id, len(self.events), MAX_EVENTS,
+                self.response_id,
+                len(self.events),
+                MAX_EVENTS,
             )
             self.events = self.events[-MAX_EVENTS:]
 
@@ -79,11 +82,13 @@ class ResponseStream:
             self.full_text += payload.get("text", "")
         elif event == "tool_start":
             self.active_tool = payload.get("tool_name")
-            self.tool_history.append({
-                "tool_name": payload.get("tool_name", ""),
-                "tool_id": payload.get("tool_id", ""),
-                "started_at": int(time.time() * 1000),
-            })
+            self.tool_history.append(
+                {
+                    "tool_name": payload.get("tool_name", ""),
+                    "tool_id": payload.get("tool_id", ""),
+                    "started_at": int(time.time() * 1000),
+                }
+            )
         elif event == "tool_detail":
             tid = payload.get("tool_id", "")
             for entry in reversed(self.tool_history):
@@ -115,12 +120,18 @@ class ResponseStream:
         if event not in ("text_delta", "thinking_delta", "tool_detail"):
             logger.info(
                 "[SSE-BUF] add_event stream=%s seq=%d event=%s buf_size=%d",
-                self.response_id, seq, event, len(self.events),
+                self.response_id,
+                seq,
+                event,
+                len(self.events),
             )
         else:
             logger.debug(
                 "[SSE-BUF] add_event stream=%s seq=%d event=text_delta delta_len=%d total_text=%d",
-                self.response_id, seq, len(payload.get("text", "")), len(self.full_text),
+                self.response_id,
+                seq,
+                len(payload.get("text", "")),
+                len(self.full_text),
             )
 
         # Notify waiters — increment seq THEN set event (waiter checks seq)
@@ -136,7 +147,9 @@ class ResponseStream:
         if result:
             logger.debug(
                 "[SSE-BUF] events_after stream=%s after_seq=%d found=%d",
-                self.response_id, after_seq, len(result),
+                self.response_id,
+                after_seq,
+                len(result),
             )
         return result
 
@@ -155,7 +168,10 @@ class ResponseStream:
         """
         logger.debug(
             "[SSE-WAIT] wait_new_event stream=%s timeout=%.1fs complete=%s seq=%d",
-            self.response_id, timeout, self.complete, self._seq_counter - 1,
+            self.response_id,
+            timeout,
+            self.complete,
+            self._seq_counter - 1,
         )
         seen_seq = self._notify_seq
         deadline = asyncio.get_event_loop().time() + timeout
@@ -165,19 +181,24 @@ class ResponseStream:
                 if remaining <= 0:
                     logger.debug(
                         "[SSE-WAIT] timeout stream=%s after=%.1fs complete=%s",
-                        self.response_id, timeout, self.complete,
+                        self.response_id,
+                        timeout,
+                        self.complete,
                     )
                     return False
                 await asyncio.wait_for(self._new_event.wait(), timeout=remaining)
             logger.debug(
                 "[SSE-WAIT] got_event stream=%s new_seq=%d",
-                self.response_id, self._seq_counter - 1,
+                self.response_id,
+                self._seq_counter - 1,
             )
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug(
                 "[SSE-WAIT] timeout stream=%s after=%.1fs complete=%s",
-                self.response_id, timeout, self.complete,
+                self.response_id,
+                timeout,
+                self.complete,
             )
             return False
 
@@ -215,7 +236,10 @@ class StreamRegistry:
         self._cleanup_task: asyncio.Task[None] | None = None
 
     def register(
-        self, anima_name: str, *, from_person: str = "human",
+        self,
+        anima_name: str,
+        *,
+        from_person: str = "human",
         thread_id: str = "default",
     ) -> ResponseStream:
         """Create a new ResponseStream and register it."""
@@ -231,7 +255,11 @@ class StreamRegistry:
         self._anima_active[anima_name][thread_id] = response_id
         logger.info(
             "[SSE-REG] register stream=%s anima=%s thread=%s from=%s total_streams=%d",
-            response_id, anima_name, thread_id, from_person, len(self._streams),
+            response_id,
+            anima_name,
+            thread_id,
+            from_person,
+            len(self._streams),
         )
         return stream
 
@@ -240,7 +268,9 @@ class StreamRegistry:
         return self._streams.get(response_id)
 
     def get_active(
-        self, anima_name: str, thread_id: str | None = None,
+        self,
+        anima_name: str,
+        thread_id: str | None = None,
     ) -> ResponseStream | None:
         """Return the most recent (possibly still active) stream for an anima.
 
@@ -260,7 +290,8 @@ class StreamRegistry:
         if response_id is None:
             logger.debug(
                 "[SSE-REG] get_active anima=%s thread=%s -> no matching stream",
-                anima_name, thread_id,
+                anima_name,
+                thread_id,
             )
             return None
 
@@ -268,7 +299,11 @@ class StreamRegistry:
         if stream:
             logger.debug(
                 "[SSE-REG] get_active anima=%s thread=%s -> stream=%s status=%s events=%d",
-                anima_name, thread_id, response_id, stream.status, stream.event_count,
+                anima_name,
+                thread_id,
+                response_id,
+                stream.status,
+                stream.event_count,
             )
         return stream
 
@@ -280,8 +315,11 @@ class StreamRegistry:
             stream.done = done
             logger.info(
                 "[SSE-REG] mark_complete stream=%s anima=%s events=%d text_len=%d done=%s",
-                response_id, stream.anima_name, stream.event_count,
-                len(stream.full_text), done,
+                response_id,
+                stream.anima_name,
+                stream.event_count,
+                len(stream.full_text),
+                done,
             )
             # Clear the active mapping if this is still the active stream
             threads = self._anima_active.get(stream.anima_name, {})
@@ -293,7 +331,8 @@ class StreamRegistry:
                 self._anima_active.pop(stream.anima_name, None)
         else:
             logger.info(
-                "[SSE-REG] mark_complete stream=%s NOT_FOUND", response_id,
+                "[SSE-REG] mark_complete stream=%s NOT_FOUND",
+                response_id,
             )
 
     def set_producer_task(self, response_id: str, task: asyncio.Task) -> None:
@@ -311,7 +350,8 @@ class StreamRegistry:
         elif task.exception():
             logger.error(
                 "[PRODUCER] exception stream=%s: %s",
-                response_id, task.exception(),
+                response_id,
+                task.exception(),
             )
         else:
             logger.info("[PRODUCER] completed stream=%s", response_id)
@@ -326,21 +366,19 @@ class StreamRegistry:
     def cancel_all_producers(self) -> None:
         """Cancel all running producer tasks (for server shutdown)."""
         cancelled = 0
-        for rid, stream in self._streams.items():
+        for _, stream in self._streams.items():
             if stream.producer_task and not stream.producer_task.done():
                 stream.producer_task.cancel()
                 cancelled += 1
         if cancelled:
             logger.info(
-                "[SSE-REG] cancel_all_producers cancelled=%d", cancelled,
+                "[SSE-REG] cancel_all_producers cancelled=%d",
+                cancelled,
             )
 
     async def await_all_producers(self, timeout: float = 5.0) -> None:
         """Wait for all running producer tasks to finish (for graceful shutdown)."""
-        tasks = [
-            s.producer_task for s in self._streams.values()
-            if s.producer_task and not s.producer_task.done()
-        ]
+        tasks = [s.producer_task for s in self._streams.values() if s.producer_task and not s.producer_task.done()]
         if tasks:
             logger.info("[SSE-REG] await_all_producers count=%d timeout=%.1f", len(tasks), timeout)
             await asyncio.wait(tasks, timeout=timeout)
@@ -348,10 +386,7 @@ class StreamRegistry:
     def cleanup(self) -> int:
         """Remove expired streams. Returns count of removed entries."""
         now = time.time()
-        expired = [
-            rid for rid, s in self._streams.items()
-            if now - s.created_at > self.TTL
-        ]
+        expired = [rid for rid, s in self._streams.items() if now - s.created_at > self.TTL]
         for rid in expired:
             stream = self._streams.pop(rid, None)
             if stream:
@@ -370,6 +405,7 @@ class StreamRegistry:
 
     async def start_cleanup_loop(self, interval: float = 300) -> None:
         """Background loop that periodically cleans up expired streams."""
+
         async def _loop() -> None:
             while True:
                 await asyncio.sleep(interval)
@@ -402,7 +438,10 @@ class StreamRegistry:
         if event not in ("text_delta", "thinking_delta", "tool_detail"):
             logger.debug(
                 "[SSE-FRAME] yield stream=%s event=%s id=%s frame_len=%d",
-                stream.response_id, event, sse_event.event_id, len(frame),
+                stream.response_id,
+                event,
+                sse_event.event_id,
+                len(frame),
             )
         return frame
 

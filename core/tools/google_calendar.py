@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -17,7 +18,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 EXECUTION_PROFILE: dict[str, dict[str, object]] = {
     "list": {"expected_seconds": 10, "background_eligible": False},
-    "add":  {"expected_seconds": 10, "background_eligible": False},
+    "add": {"expected_seconds": 10, "background_eligible": False},
 }
 
 TOOL_DESCRIPTION = "Google Calendar event listing and creation"
@@ -63,15 +64,15 @@ class GoogleCalendarClient:
     def _get_credentials(self) -> Any:
         """Obtain valid credentials via OAuth2."""
         try:
+            from google.auth.transport.requests import Request
             from google.oauth2.credentials import Credentials
             from google_auth_oauthlib.flow import InstalledAppFlow
-            from google.auth.transport.requests import Request
         except ImportError:
             raise ImportError(
                 "google_calendar tool requires google-api packages. "
                 "Install with: pip install google-api-python-client "
                 "google-auth-httplib2 google-auth-oauthlib"
-            )
+            ) from None
 
         creds = None
 
@@ -86,7 +87,8 @@ class GoogleCalendarClient:
             else:
                 if self.credentials_path.exists():
                     flow = InstalledAppFlow.from_client_secrets_file(
-                        str(self.credentials_path), SCOPES,
+                        str(self.credentials_path),
+                        SCOPES,
                     )
                 elif self.client_id and self.client_secret:
                     client_config = {
@@ -115,6 +117,7 @@ class GoogleCalendarClient:
         """Build the Calendar API service."""
         if self._service is None:
             from googleapiclient.discovery import build as build_api
+
             creds = self._get_credentials()
             self._service = build_api("calendar", "v3", credentials=creds)
         return self._service
@@ -128,7 +131,7 @@ class GoogleCalendarClient:
     ) -> list[dict[str, Any]]:
         """List upcoming events within the specified day range."""
         service = self._build_service()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         time_min = now.isoformat()
         time_max = (now + timedelta(days=days)).isoformat()
 
@@ -149,15 +152,17 @@ class GoogleCalendarClient:
         for item in result.get("items", []):
             start = item.get("start", {})
             end = item.get("end", {})
-            events.append({
-                "id": item.get("id", ""),
-                "summary": item.get("summary", "(no title)"),
-                "start": start.get("dateTime") or start.get("date", ""),
-                "end": end.get("dateTime") or end.get("date", ""),
-                "location": item.get("location", ""),
-                "description": (item.get("description") or "")[:200],
-                "status": item.get("status", ""),
-            })
+            events.append(
+                {
+                    "id": item.get("id", ""),
+                    "summary": item.get("summary", "(no title)"),
+                    "start": start.get("dateTime") or start.get("date", ""),
+                    "end": end.get("dateTime") or end.get("date", ""),
+                    "location": item.get("location", ""),
+                    "description": (item.get("description") or "")[:200],
+                    "status": item.get("status", ""),
+                }
+            )
         return events
 
     def add_event(
@@ -200,11 +205,7 @@ class GoogleCalendarClient:
         if attendees:
             event_body["attendees"] = [{"email": e} for e in attendees]
 
-        created = (
-            service.events()
-            .insert(calendarId=calendar_id, body=event_body)
-            .execute()
-        )
+        created = service.events().insert(calendarId=calendar_id, body=event_body).execute()
 
         return {
             "id": created.get("id", ""),

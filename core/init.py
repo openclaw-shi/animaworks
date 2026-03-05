@@ -107,10 +107,7 @@ def _migrate_memory_prompts_v1(
     # Ensure migrations table exists
     conn = tool_store._connect()
     try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS migrations "
-            "(key TEXT PRIMARY KEY, applied_at TEXT)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS migrations (key TEXT PRIMARY KEY, applied_at TEXT)")
         row = conn.execute(
             "SELECT 1 FROM migrations WHERE key = ?",
             ("memory_prompt_v1",),
@@ -174,10 +171,7 @@ def _migrate_praise_loop_prevention_v1(
 
     conn = tool_store._connect()
     try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS migrations "
-            "(key TEXT PRIMARY KEY, applied_at TEXT)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS migrations (key TEXT PRIMARY KEY, applied_at TEXT)")
         row = conn.execute(
             "SELECT 1 FROM migrations WHERE key = ?",
             ("praise_loop_prevention_v1",),
@@ -227,10 +221,7 @@ def _migrate_behavior_rules_must_v1(
 
     conn = tool_store._connect()
     try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS migrations "
-            "(key TEXT PRIMARY KEY, applied_at TEXT)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS migrations (key TEXT PRIMARY KEY, applied_at TEXT)")
         row = conn.execute(
             "SELECT 1 FROM migrations WHERE key = ?",
             ("behavior_rules_must_v1",),
@@ -273,10 +264,7 @@ def _migrate_resync_sections_v1(
 
     conn = tool_store._connect()
     try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS migrations "
-            "(key TEXT PRIMARY KEY, applied_at TEXT)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS migrations (key TEXT PRIMARY KEY, applied_at TEXT)")
         row = conn.execute(
             "SELECT 1 FROM migrations WHERE key = ?",
             ("resync_sections_v1",),
@@ -358,10 +346,7 @@ def ensure_runtime_dir(*, skip_animas: bool = False) -> Path:
     logger.info("Initializing runtime directory at %s", data_dir)
 
     if not TEMPLATES_DIR.exists():
-        raise FileNotFoundError(
-            f"Templates directory not found: {TEMPLATES_DIR}. "
-            "Is the project installed correctly?"
-        )
+        raise FileNotFoundError(f"Templates directory not found: {TEMPLATES_DIR}. Is the project installed correctly?")
 
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -495,10 +480,7 @@ def merge_templates(data_dir: Path) -> list[str]:
     Returns a list of newly added file paths (relative to data_dir).
     """
     if not TEMPLATES_DIR.exists():
-        raise FileNotFoundError(
-            f"Templates directory not found: {TEMPLATES_DIR}. "
-            "Is the project installed correctly?"
-        )
+        raise FileNotFoundError(f"Templates directory not found: {TEMPLATES_DIR}. Is the project installed correctly?")
 
     from core.paths import _get_locale
 
@@ -594,19 +576,16 @@ def _validate_safe_path(data_dir: Path) -> None:
     if data_dir.is_symlink():
         raise ValueError(f"Refusing to delete: {data_dir} is a symlink")
     if resolved == Path.home() or resolved == Path("/") or resolved.parent == Path("/"):
-        raise ValueError(
-            f"Refusing to delete {resolved} — path looks too broad. "
-            "Check ANIMAWORKS_DATA_DIR."
-        )
+        raise ValueError(f"Refusing to delete {resolved} — path looks too broad. Check ANIMAWORKS_DATA_DIR.")
 
 
 def _create_default_config(data_dir: Path) -> None:
     """Generate a default config.json for a freshly initialized runtime."""
     from core.config import (
         DEFAULT_MODEL_MODE_PATTERNS,
+        AnimaModelConfig,
         AnimaWorksConfig,
         CredentialConfig,
-        AnimaModelConfig,
         save_config,
     )
 
@@ -636,11 +615,7 @@ def _maybe_migrate_config(data_dir: Path) -> None:
     if not animas_dir.exists():
         return
 
-    has_legacy = any(
-        (d / "config.md").exists()
-        for d in animas_dir.iterdir()
-        if d.is_dir()
-    )
+    has_legacy = any((d / "config.md").exists() for d in animas_dir.iterdir() if d.is_dir())
     if not has_legacy:
         return
 

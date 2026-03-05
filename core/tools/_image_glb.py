@@ -6,9 +6,9 @@
 # See LICENSE for the full license text.
 
 """GLB/FBX asset conversion, optimisation, and compression."""
+
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -53,7 +53,11 @@ def _run_gltf_transform(args: list[str], glb_path: Path) -> bool:
         logger.warning("gltf-transform not available; skipping for %s", glb_path)
         return False
     except subprocess.CalledProcessError as exc:
-        logger.warning("gltf-transform failed for %s: %s", glb_path, exc.stderr[:500].decode("utf-8", errors="replace") if exc.stderr else exc)
+        logger.warning(
+            "gltf-transform failed for %s: %s",
+            glb_path,
+            exc.stderr[:500].decode("utf-8", errors="replace") if exc.stderr else exc,
+        )
         return False
     except subprocess.TimeoutExpired:
         logger.warning("gltf-transform timed out for %s", glb_path)
@@ -83,10 +87,11 @@ def _ensure_gltf_transform_modules() -> Path:
     if not (node_modules / "@gltf-transform" / "core").is_dir():
         cache_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            ["npm", "install", "--save",
-             "@gltf-transform/core", "@gltf-transform/functions"],
+            ["npm", "install", "--save", "@gltf-transform/core", "@gltf-transform/functions"],
             cwd=str(cache_dir),
-            check=True, capture_output=True, timeout=120,
+            check=True,
+            capture_output=True,
+            timeout=120,
         )
         logger.info("Installed @gltf-transform modules to %s", cache_dir)
 
@@ -194,8 +199,7 @@ def _convert_fbx_to_glb(fbx_path: Path, glb_path: Path) -> bool:
         return False
     try:
         subprocess.run(
-            [str(fbx2gltf), "--binary", "--input", str(fbx_path),
-             "--output", str(glb_path)],
+            [str(fbx2gltf), "--binary", "--input", str(fbx_path), "--output", str(glb_path)],
             check=True,
             capture_output=True,
             timeout=120,
@@ -239,7 +243,8 @@ def _download_armature_animation(
             resp = httpx.get(armature_url, timeout=_DOWNLOAD_TIMEOUT)
             resp.raise_for_status()
             with tempfile.NamedTemporaryFile(
-                suffix=".fbx", delete=False,
+                suffix=".fbx",
+                delete=False,
             ) as f:
                 f.write(resp.content)
                 fbx_path = Path(f.name)
@@ -262,7 +267,8 @@ def _download_armature_animation(
 
     # ── Fallback: full GLB + strip ──
     logger.warning(
-        "Falling back to full GLB download + strip for %s", glb_path.name,
+        "Falling back to full GLB download + strip for %s",
+        glb_path.name,
     )
     glb_url = result.get("animation_glb_url")
     if not glb_url:
@@ -324,7 +330,9 @@ const { prune } = require("@gltf-transform/functions");
 
         node_modules = _ensure_gltf_transform_modules()
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".cjs", delete=False,
+            mode="w",
+            suffix=".cjs",
+            delete=False,
         ) as fd:
             fd.write(script)
             script_path = fd.name
@@ -332,7 +340,10 @@ const { prune } = require("@gltf-transform/functions");
         env = {**os.environ, "NODE_PATH": str(node_modules)}
         subprocess.run(
             [node, script_path, str(glb_path)],
-            check=True, capture_output=True, timeout=120, env=env,
+            check=True,
+            capture_output=True,
+            timeout=120,
+            env=env,
         )
         logger.info("Stripped mesh from %s (now %d bytes)", glb_path, glb_path.stat().st_size)
         return True
@@ -376,9 +387,7 @@ def simplify_glb(glb_path: Path, target_ratio: float = 0.27, error_threshold: fl
     tmp_path = glb_path.with_suffix(".simp.glb")
     try:
         if _run_gltf_transform(
-            ["simplify", str(glb_path), str(tmp_path),
-             "--ratio", str(target_ratio),
-             "--error", str(error_threshold)],
+            ["simplify", str(glb_path), str(tmp_path), "--ratio", str(target_ratio), "--error", str(error_threshold)],
             glb_path,
         ):
             tmp_path.rename(glb_path)
@@ -402,8 +411,7 @@ def compress_textures(glb_path: Path, resolution: int = 1024) -> bool:
     try:
         # Step 1: resize textures
         if not _run_gltf_transform(
-            ["resize", str(glb_path), str(tmp_path),
-             "--width", str(resolution), "--height", str(resolution)],
+            ["resize", str(glb_path), str(tmp_path), "--width", str(resolution), "--height", str(resolution)],
             glb_path,
         ):
             return False
@@ -415,7 +423,9 @@ def compress_textures(glb_path: Path, resolution: int = 1024) -> bool:
             tmp_path.unlink(missing_ok=True)
             logger.info(
                 "Compressed textures in %s to webp@%d (now %d bytes)",
-                glb_path, resolution, glb_path.stat().st_size,
+                glb_path,
+                resolution,
+                glb_path.stat().st_size,
             )
             return True
         # resize succeeded but webp failed — keep resized version

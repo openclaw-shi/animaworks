@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -81,11 +82,7 @@ class ExternalToolDispatcher:
                 continue
             try:
                 mod = importlib.import_module(module_path)
-                schemas = (
-                    mod.get_tool_schemas()
-                    if hasattr(mod, "get_tool_schemas")
-                    else []
-                )
+                schemas = mod.get_tool_schemas() if hasattr(mod, "get_tool_schemas") else []
                 if name not in [s["name"] for s in schemas]:
                     continue
                 return self._call_module(mod, name, args)
@@ -107,18 +104,15 @@ class ExternalToolDispatcher:
         for tool_name, file_path in self._personal_tools.items():
             try:
                 spec = importlib.util.spec_from_file_location(
-                    f"animaworks_tool_{tool_name}", file_path,
+                    f"animaworks_tool_{tool_name}",
+                    file_path,
                 )
                 if spec is None or spec.loader is None:
                     continue
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)  # type: ignore[union-attr]
 
-                schemas = (
-                    mod.get_tool_schemas()
-                    if hasattr(mod, "get_tool_schemas")
-                    else []
-                )
+                schemas = mod.get_tool_schemas() if hasattr(mod, "get_tool_schemas") else []
                 if name not in [s["name"] for s in schemas]:
                     continue
                 return self._call_module(mod, name, args)
@@ -152,7 +146,10 @@ class ExternalToolDispatcher:
 
             if isinstance(result, (dict, list)):
                 return json.dumps(
-                    result, ensure_ascii=False, indent=2, default=str,
+                    result,
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
                 )
             return str(result) if result is not None else "(no output)"
         except Exception as e:

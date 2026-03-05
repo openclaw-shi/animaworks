@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -75,7 +76,7 @@ class NotificationChannel(ABC):
         if not env_key:
             return ""
 
-        from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
+        from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
 
         if anima_name:
             per_key = f"{env_key}__{anima_name}"
@@ -93,9 +94,11 @@ _CHANNEL_REGISTRY: dict[str, type[NotificationChannel]] = {}
 
 def register_channel(channel_type: str):
     """Decorator to register a channel implementation."""
+
     def decorator(cls: type[NotificationChannel]):
         _CHANNEL_REGISTRY[channel_type] = cls
         return cls
+
     return decorator
 
 
@@ -159,15 +162,12 @@ class HumanNotifier:
             priority = "normal"
 
         results = await asyncio.gather(
-            *[
-                ch.send(subject, body, priority, anima_name=anima_name)
-                for ch in self._channels
-            ],
+            *[ch.send(subject, body, priority, anima_name=anima_name) for ch in self._channels],
             return_exceptions=True,
         )
 
         status: list[str] = []
-        for ch, result in zip(self._channels, results):
+        for ch, result in zip(self._channels, results, strict=False):
             if isinstance(result, BaseException):
                 msg = f"{ch.channel_type}: ERROR - {result}"
                 logger.error("Notification failed for %s: %s", ch.channel_type, result)
@@ -178,8 +178,7 @@ class HumanNotifier:
         failed_count = sum(1 for s in status if "ERROR" in s)
         if failed_count > 0:
             logger.warning(
-                "Human notification partial failure: subject=%s priority=%s "
-                "channels=%d failed=%d success=%d",
+                "Human notification partial failure: subject=%s priority=%s channels=%d failed=%d success=%d",
                 subject[:50],
                 priority,
                 len(self._channels),
@@ -206,8 +205,8 @@ def _ensure_channels_registered() -> None:
         return
     _builtins_registered = True
     # Import triggers @register_channel decorators
-    import core.notification.channels.slack  # noqa: F401
-    import core.notification.channels.line  # noqa: F401
-    import core.notification.channels.telegram  # noqa: F401
     import core.notification.channels.chatwork  # noqa: F401
+    import core.notification.channels.line  # noqa: F401
     import core.notification.channels.ntfy  # noqa: F401
+    import core.notification.channels.slack  # noqa: F401
+    import core.notification.channels.telegram  # noqa: F401

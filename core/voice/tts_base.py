@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field
 
@@ -30,9 +30,7 @@ class BaseTTSProvider(ABC):
     """Abstract TTS provider interface."""
 
     @abstractmethod
-    async def synthesize(
-        self, text: str, config: TTSConfig
-    ) -> AsyncIterator[bytes]:
+    async def synthesize(self, text: str, config: TTSConfig) -> AsyncIterator[bytes]:
         """Stream TTS audio chunks for given text.
 
         Raises:

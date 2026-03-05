@@ -57,7 +57,9 @@ def summarize_tool_args(tool_name: str, args: dict[str, Any]) -> str:
 
 
 def make_tool_detail_chunk(
-    tool_name: str, tool_id: str, args: dict[str, Any],
+    tool_name: str,
+    tool_id: str,
+    args: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Build a ``tool_detail`` chunk dict, or ``None`` if no summary."""
     detail = summarize_tool_args(tool_name, args)

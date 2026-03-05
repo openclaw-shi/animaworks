@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -29,10 +30,12 @@ def _extract_tool_uses_from_messages(messages: list[dict]) -> list[dict]:
         if msg.get("role") == "assistant" and msg.get("tool_calls"):
             for tc in msg["tool_calls"]:
                 fn = tc.get("function", {})
-                tool_uses.append({
-                    "name": fn.get("name", ""),
-                    "input": fn.get("arguments", "")[:500],
-                })
+                tool_uses.append(
+                    {
+                        "name": fn.get("name", ""),
+                        "input": fn.get("arguments", "")[:500],
+                    }
+                )
         elif msg.get("role") == "tool":
             if tool_uses:
                 tool_uses[-1]["result"] = str(msg.get("content", ""))[:500]
@@ -46,6 +49,7 @@ class ContextMixin:
         """Credential + model kwargs for ``litellm.acompletion``."""
         from core.config.models import resolve_max_tokens
         from core.execution.base import is_adaptive_model, is_anthropic_claude, resolve_thinking_effort
+
         _eff_max = resolve_max_tokens(
             self._model_config.model,
             self._model_config.max_tokens,
@@ -69,14 +73,16 @@ class ContextMixin:
             if model.startswith("bedrock/"):
                 if self._model_config.thinking:
                     kwargs["reasoning_effort"] = resolve_thinking_effort(
-                        model, self._model_config.thinking_effort,
+                        model,
+                        self._model_config.thinking_effort,
                     )
             elif is_anthropic_claude(model):
                 if self._model_config.thinking:
                     if is_adaptive_model(model):
                         kwargs["thinking"] = {"type": "adaptive"}
                         kwargs["reasoning_effort"] = resolve_thinking_effort(
-                            model, self._model_config.thinking_effort,
+                            model,
+                            self._model_config.thinking_effort,
                         )
                     else:
                         kwargs["thinking"] = {"type": "enabled", "budget_tokens": 10000}
@@ -114,24 +120,28 @@ class ContextMixin:
                 text = last["content"] if isinstance(last["content"], str) else ""
                 content_parts: list[dict[str, Any]] = []
                 for img in images:
-                    content_parts.append({
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{img['media_type']};base64,{img['data']}",
-                        },
-                    })
+                    content_parts.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{img['media_type']};base64,{img['data']}",
+                            },
+                        }
+                    )
                 content_parts.append({"type": "text", "text": text})
                 msgs[-1] = {"role": "user", "content": content_parts}
             return msgs  # prior_messages already includes the current user msg
         if images:
             content_parts: list[dict[str, Any]] = []
             for img in images:
-                content_parts.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{img['media_type']};base64,{img['data']}",
-                    },
-                })
+                content_parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img['media_type']};base64,{img['data']}",
+                        },
+                    }
+                )
             content_parts.append({"type": "text", "text": prompt})
             msgs.append({"role": "user", "content": content_parts})
         else:
@@ -176,30 +186,29 @@ class ContextMixin:
             if available - 128 >= 256:
                 clamped = available - 128
                 logger.info(
-                    "Clamping max_tokens %d -> %d "
-                    "(est_input ~%d, window %d)",
-                    configured_max, clamped, est_input, ctx_window,
+                    "Clamping max_tokens %d -> %d (est_input ~%d, window %d)",
+                    configured_max,
+                    clamped,
+                    est_input,
+                    ctx_window,
                 )
                 return {**llm_kwargs, "max_tokens": clamped}
 
             # Last resort: truncate system message to fit
-            if (
-                messages
-                and messages[0].get("role") == "system"
-                and isinstance(messages[0].get("content"), str)
-            ):
+            if messages and messages[0].get("role") == "system" and isinstance(messages[0].get("content"), str):
                 sys_content = messages[0]["content"]
                 excess_tokens = est_input - ctx_window + 512
                 excess_chars = excess_tokens * 4
                 if len(sys_content) > excess_chars + 2000:
-                    messages[0]["content"] = sys_content[
-                        : len(sys_content) - excess_chars
-                    ]
+                    messages[0]["content"] = sys_content[: len(sys_content) - excess_chars]
                     logger.warning(
                         "Hard-truncated system prompt by %d chars "
                         "to fit context window %d "
                         "(est_input ~%d, excess ~%d tokens)",
-                        excess_chars, ctx_window, est_input, excess_tokens,
+                        excess_chars,
+                        ctx_window,
+                        est_input,
+                        excess_tokens,
                     )
                     est_input = _estimate_tokens()
                     available = ctx_window - est_input
@@ -207,9 +216,9 @@ class ContextMixin:
                         return {**llm_kwargs, "max_tokens": available - 128}
 
             logger.error(
-                "Prompt too large for context window: "
-                "~%d tokens input, %d window",
-                est_input, ctx_window,
+                "Prompt too large for context window: ~%d tokens input, %d window",
+                est_input,
+                ctx_window,
             )
             return None
 

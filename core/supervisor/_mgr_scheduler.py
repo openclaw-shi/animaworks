@@ -71,6 +71,7 @@ class SchedulerMixin:
         # Load consolidation config
         try:
             from core.config import load_config
+
             config = load_config()
             consolidation_cfg = getattr(config, "consolidation", None)
         except Exception:
@@ -137,7 +138,9 @@ class SchedulerMixin:
             )
             logger.info(
                 "System cron: Monthly forgetting on day %d at %02d:%02d JST",
-                day_of_month, hour, minute,
+                day_of_month,
+                hour,
+                minute,
             )
 
         # Activity log rotation
@@ -147,6 +150,7 @@ class SchedulerMixin:
             activity_cfg: ActivityLogConfig | None = None
             try:
                 from core.config import load_config as _load_cfg
+
                 _al = getattr(_load_cfg(), "activity_log", None)
                 if isinstance(_al, ActivityLogConfig):
                     activity_cfg = _al
@@ -176,6 +180,7 @@ class SchedulerMixin:
             hk_cfg: HousekeepingConfig | None = None
             try:
                 from core.config import load_config as _load_hk
+
                 _hk = getattr(_load_hk(), "housekeeping", None)
                 if isinstance(_hk, HousekeepingConfig):
                     hk_cfg = _hk
@@ -245,6 +250,7 @@ class SchedulerMixin:
 
         try:
             from core.config import load_config
+
             config = load_config()
             consolidation_cfg = getattr(config, "consolidation", None)
         except Exception:
@@ -252,6 +258,7 @@ class SchedulerMixin:
             consolidation_cfg = None
 
         from core.config.models import ConsolidationConfig
+
         max_turns = ConsolidationConfig().max_turns
         if consolidation_cfg:
             max_turns = getattr(consolidation_cfg, "max_turns", max_turns)
@@ -275,7 +282,8 @@ class SchedulerMixin:
                 if response.error:
                     logger.error(
                         "Daily consolidation IPC error for %s: %s",
-                        anima_name, response.error,
+                        anima_name,
+                        response.error,
                     )
                     continue
 
@@ -289,25 +297,30 @@ class SchedulerMixin:
                 # Post-processing: Synaptic downscaling (metadata-based, no LLM)
                 try:
                     from core.memory.forgetting import ForgettingEngine
+
                     forgetter = ForgettingEngine(anima_dir, anima_name)
                     downscaling_result = forgetter.synaptic_downscaling()
                     logger.info(
                         "Synaptic downscaling for %s: %s",
-                        anima_name, downscaling_result,
+                        anima_name,
+                        downscaling_result,
                     )
                 except Exception:
                     logger.exception(
-                        "Synaptic downscaling failed for anima=%s", anima_name,
+                        "Synaptic downscaling failed for anima=%s",
+                        anima_name,
                     )
 
                 # Post-processing: Rebuild RAG index
                 try:
                     from core.memory.consolidation import ConsolidationEngine
+
                     engine = ConsolidationEngine(anima_dir, anima_name)
                     engine._rebuild_rag_index()
                 except Exception:
                     logger.exception(
-                        "RAG index rebuild failed for anima=%s", anima_name,
+                        "RAG index rebuild failed for anima=%s",
+                        anima_name,
                     )
 
                 await self._broadcast_event(
@@ -335,6 +348,7 @@ class SchedulerMixin:
 
         try:
             from core.config import load_config
+
             config = load_config()
             consolidation_cfg = getattr(config, "consolidation", None)
         except Exception:
@@ -342,6 +356,7 @@ class SchedulerMixin:
             consolidation_cfg = None
 
         from core.config.models import ConsolidationConfig as _CC
+
         max_turns = _CC().max_turns
         if consolidation_cfg:
             max_turns = getattr(consolidation_cfg, "max_turns", max_turns)
@@ -365,7 +380,8 @@ class SchedulerMixin:
                 if response.error:
                     logger.error(
                         "Weekly integration IPC error for %s: %s",
-                        anima_name, response.error,
+                        anima_name,
+                        response.error,
                     )
                     continue
 
@@ -379,11 +395,13 @@ class SchedulerMixin:
                 # Post-processing: Neurogenesis reorganization (metadata-based)
                 try:
                     from core.memory.forgetting import ForgettingEngine
+
                     forgetter = ForgettingEngine(anima_dir, anima_name)
                     reorg_result = await forgetter.neurogenesis_reorganize()
                     logger.info(
                         "Neurogenesis reorganization for %s: %s",
-                        anima_name, reorg_result,
+                        anima_name,
+                        reorg_result,
                     )
                 except Exception:
                     logger.exception(
@@ -394,11 +412,13 @@ class SchedulerMixin:
                 # Post-processing: Rebuild RAG index
                 try:
                     from core.memory.consolidation import ConsolidationEngine
+
                     engine = ConsolidationEngine(anima_dir, anima_name)
                     engine._rebuild_rag_index()
                 except Exception:
                     logger.exception(
-                        "RAG index rebuild failed for anima=%s", anima_name,
+                        "RAG index rebuild failed for anima=%s",
+                        anima_name,
                     )
 
                 await self._broadcast_event(
@@ -453,16 +473,24 @@ class SchedulerMixin:
 
         try:
             from core.config import load_config
+
             activity_cfg = getattr(load_config(), "activity_log", None)
         except Exception:
             logger.debug("Config load failed for activity log rotation", exc_info=True)
             activity_cfg = None
 
         from core.config.models import ActivityLogConfig
+
         defaults = ActivityLogConfig()
-        mode = getattr(activity_cfg, "rotation_mode", defaults.rotation_mode) if activity_cfg else defaults.rotation_mode
-        max_size_mb = getattr(activity_cfg, "max_size_mb", defaults.max_size_mb) if activity_cfg else defaults.max_size_mb
-        max_age_days = getattr(activity_cfg, "max_age_days", defaults.max_age_days) if activity_cfg else defaults.max_age_days
+        mode = (
+            getattr(activity_cfg, "rotation_mode", defaults.rotation_mode) if activity_cfg else defaults.rotation_mode
+        )
+        max_size_mb = (
+            getattr(activity_cfg, "max_size_mb", defaults.max_size_mb) if activity_cfg else defaults.max_size_mb
+        )
+        max_age_days = (
+            getattr(activity_cfg, "max_age_days", defaults.max_age_days) if activity_cfg else defaults.max_age_days
+        )
 
         try:
             from core.memory.activity import ActivityLogger
@@ -478,7 +506,9 @@ class SchedulerMixin:
                 total_deleted = sum(r.get("deleted_files", 0) for r in results.values())
                 logger.info(
                     "Activity log rotation complete: %d animas, %d files deleted, %d bytes freed",
-                    len(results), total_deleted, total_freed,
+                    len(results),
+                    total_deleted,
+                    total_freed,
                 )
             else:
                 logger.info("Activity log rotation: no files needed rotation")
@@ -499,6 +529,7 @@ class SchedulerMixin:
         except Exception:
             logger.debug("Config load failed for housekeeping", exc_info=True)
             from core.config.models import HousekeepingConfig
+
             hk_cfg = HousekeepingConfig()
 
         try:
@@ -550,6 +581,7 @@ class SchedulerMixin:
 
         try:
             from core.config import load_config
+
             consolidation_cfg = getattr(load_config(), "consolidation", None)
         except Exception:
             consolidation_cfg = None

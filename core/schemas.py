@@ -1,12 +1,11 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -15,29 +14,35 @@ from typing import Any, Literal, TypedDict
 from pydantic import BaseModel, Field
 
 from core.config.models import DEFAULT_ANIMA_MODEL
-
 from core.time_utils import now_jst
 
-
 # ── Skill Metadata ────────────────────────────────────────
+
 
 @dataclass
 class SkillMeta:
     """Metadata extracted from a skill file's YAML frontmatter."""
 
-    name: str           # frontmatter の name（なければファイル名 stem）
-    description: str    # frontmatter の description（なければ空文字列）
-    path: Path          # ファイルパス
-    is_common: bool     # common_skills/ に配置されているか
+    name: str  # frontmatter の name（なければファイル名 stem）
+    description: str  # frontmatter の description（なければ空文字列）
+    path: Path  # ファイルパス
+    is_common: bool  # common_skills/ に配置されているか
     allowed_tools: list[str] = field(default_factory=list)  # frontmatter の allowed_tools
 
 
 # ── Emotion Constants ─────────────────────────────────────
 
-VALID_EMOTIONS: frozenset[str] = frozenset({
-    "neutral", "smile", "laugh", "troubled",
-    "surprised", "thinking", "embarrassed",
-})
+VALID_EMOTIONS: frozenset[str] = frozenset(
+    {
+        "neutral",
+        "smile",
+        "laugh",
+        "troubled",
+        "surprised",
+        "thinking",
+        "embarrassed",
+    }
+)
 
 
 class CronTask(BaseModel):
@@ -52,6 +57,7 @@ class CronTask(BaseModel):
         - command: Bash command to execute
         - OR tool + args: Internal tool to invoke
     """
+
     name: str
     schedule: str
     type: str = "llm"  # "llm" or "command"
@@ -106,9 +112,7 @@ EXTERNAL_PLATFORM_SOURCES: frozenset[str] = frozenset({"slack", "chatwork"})
 
 
 class Message(BaseModel):
-    id: str = Field(
-        default_factory=lambda: now_jst().strftime("%Y%m%d_%H%M%S_%f")
-    )
+    id: str = Field(default_factory=lambda: now_jst().strftime("%Y%m%d_%H%M%S_%f"))
     thread_id: str = ""  # conversation thread (empty = new thread)
     reply_to: str = ""  # id of message being replied to
     from_person: str
@@ -131,10 +135,11 @@ class Message(BaseModel):
 
 # ── Shared TypedDicts ────────────────────────────────────────
 
+
 class ImageData(TypedDict):
     """Base64-encoded image payload used across core and server layers."""
 
-    data: str        # Base64 encoded (no data: prefix)
+    data: str  # Base64 encoded (no data: prefix)
     media_type: str  # "image/jpeg", "image/png", etc.
 
 

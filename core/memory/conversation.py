@@ -23,18 +23,16 @@ import logging
 import os
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-from core.time_utils import ensure_aware, now_iso, now_jst
-from typing import TYPE_CHECKING, Any, cast
-
-from core.exceptions import ConfigError, ExecutionError, LLMAPIError
+from core.exceptions import ConfigError
 from core.i18n import t
 from core.memory._io import atomic_write_text
 from core.paths import load_prompt
 from core.schemas import ModelConfig
+from core.time_utils import ensure_aware, now_iso, now_jst
 
 if TYPE_CHECKING:
     from core.memory.manager import MemoryManager
@@ -93,7 +91,7 @@ class ToolRecord:
 
     tool_name: str
     tool_id: str = ""
-    input_summary: str = ""   # max _MAX_TOOL_INPUT_SUMMARY chars
+    input_summary: str = ""  # max _MAX_TOOL_INPUT_SUMMARY chars
     result_summary: str = ""  # max _MAX_TOOL_RESULT_SUMMARY chars
     is_error: bool = False
 
@@ -104,7 +102,7 @@ class ToolRecord:
             self.result_summary = self.result_summary[:_MAX_TOOL_RESULT_SUMMARY] + "..."
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ToolRecord":
+    def from_dict(cls, d: dict) -> ToolRecord:
         """Create a ToolRecord from a dict (e.g., from CycleResult)."""
         return cls(
             tool_name=d.get("tool_name", ""),
@@ -210,6 +208,7 @@ class ConversationMemory:
         """Load model_context_windows from config.json for context resolution."""
         try:
             from core.config.models import load_config
+
             config = load_config()
             return config.model_context_windows or None
         except (ConfigError, OSError):
@@ -224,17 +223,13 @@ class ConversationMemory:
 
         if self._state_path.exists():
             try:
-                data = json.loads(
-                    self._state_path.read_text(encoding="utf-8")
-                )
+                data = json.loads(self._state_path.read_text(encoding="utf-8"))
                 turns = []
                 for t in data.get("turns", []):
                     raw_records = t.get("tool_records", [])
                     filtered = {k: v for k, v in t.items() if k != "tool_records"}
                     turn = ConversationTurn(**filtered)
-                    turn.tool_records = [
-                        ToolRecord(**r) for r in raw_records
-                    ]
+                    turn.tool_records = [ToolRecord(**r) for r in raw_records]
                     turns.append(turn)
                 self._state = ConversationState(
                     anima_name=data.get("anima_name", self.anima_name),
@@ -424,7 +419,9 @@ class ConversationMemory:
         if len(content) > _MAX_STORED_CONTENT_CHARS:
             logger.info(
                 "Truncating %s turn content from %d to %d chars",
-                role, len(content), _MAX_STORED_CONTENT_CHARS,
+                role,
+                len(content),
+                _MAX_STORED_CONTENT_CHARS,
             )
             content = content[:_MAX_STORED_CONTENT_CHARS] + t("conversation.truncated_suffix", length=len(content))
         # Cap tool records per turn
@@ -432,7 +429,8 @@ class ConversationMemory:
         if len(records) > _MAX_TOOL_RECORDS_PER_TURN:
             records = records[:_MAX_TOOL_RECORDS_PER_TURN]
         turn = ConversationTurn(
-            role=role, content=content,
+            role=role,
+            content=content,
             attachments=attachments or [],
             tool_records=records,
         )
@@ -502,17 +500,21 @@ class ConversationMemory:
 
         # Compressed summary as context
         if state.compressed_summary:
-            messages.append({
-                "role": "user",
-                "content": (
-                    t("conversation.summary_label", count=state.compressed_turn_count)
-                    + f"\n\n{state.compressed_summary}"
-                ),
-            })
-            messages.append({
-                "role": "assistant",
-                "content": t("conversation.summary_ack"),
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        t("conversation.summary_label", count=state.compressed_turn_count)
+                        + f"\n\n{state.compressed_summary}"
+                    ),
+                }
+            )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": t("conversation.summary_ack"),
+                }
+            )
 
         # Track total tool records rendered
         rendered_tool_count = 0
@@ -528,9 +530,7 @@ class ConversationMemory:
                     display = display[:_MAX_HUMAN_CHARS_IN_HISTORY] + "..."
                 if fmt == "anthropic" and pending_tool_results:
                     # Merge tool_result blocks with this user message
-                    merged_content = pending_tool_results + [
-                        {"type": "text", "text": display}
-                    ]
+                    merged_content = pending_tool_results + [{"type": "text", "text": display}]
                     messages.append({"role": "user", "content": merged_content})
                     pending_tool_results = []
                 else:
@@ -541,10 +541,7 @@ class ConversationMemory:
                 if len(display) > _MAX_RESPONSE_CHARS_IN_HISTORY:
                     display = display[:_MAX_RESPONSE_CHARS_IN_HISTORY] + "..."
 
-                has_tools = (
-                    turn.tool_records
-                    and rendered_tool_count < _MAX_RENDERED_TOOL_RECORDS
-                )
+                has_tools = turn.tool_records and rendered_tool_count < _MAX_RENDERED_TOOL_RECORDS
 
                 if has_tools and fmt == "openai":
                     # OpenAI/LiteLLM format
@@ -552,35 +549,37 @@ class ConversationMemory:
                     for tr in turn.tool_records:
                         if rendered_tool_count >= _MAX_RENDERED_TOOL_RECORDS:
                             break
-                        tool_calls.append({
-                            "id": tr.tool_id or f"hist_{rendered_tool_count}",
-                            "type": "function",
-                            "function": {
-                                "name": tr.tool_name,
-                                "arguments": json.dumps(
-                                    {"_summary": tr.input_summary},
-                                    ensure_ascii=False,
-                                ),
-                            },
-                        })
+                        tool_calls.append(
+                            {
+                                "id": tr.tool_id or f"hist_{rendered_tool_count}",
+                                "type": "function",
+                                "function": {
+                                    "name": tr.tool_name,
+                                    "arguments": json.dumps(
+                                        {"_summary": tr.input_summary},
+                                        ensure_ascii=False,
+                                    ),
+                                },
+                            }
+                        )
                         rendered_tool_count += 1
-                    messages.append({
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": tool_calls,
-                    })
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": tool_calls,
+                        }
+                    )
                     # Tool results — match by index (tool_calls and tool_records are built in same order)
                     for i, tc in enumerate(tool_calls):
-                        result_text = (
-                            turn.tool_records[i].result_summary
-                            if i < len(turn.tool_records)
-                            else ""
+                        result_text = turn.tool_records[i].result_summary if i < len(turn.tool_records) else ""
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "content": result_text or "(completed)",
+                            }
                         )
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc["id"],
-                            "content": result_text or "(completed)",
-                        })
 
                 elif has_tools and fmt == "anthropic":
                     # Anthropic format
@@ -591,17 +590,21 @@ class ConversationMemory:
                         if rendered_tool_count >= _MAX_RENDERED_TOOL_RECORDS:
                             break
                         tid = tr.tool_id or f"hist_{rendered_tool_count}"
-                        content_blocks.append({
-                            "type": "tool_use",
-                            "id": tid,
-                            "name": tr.tool_name,
-                            "input": {"_summary": tr.input_summary},
-                        })
-                        pending_tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": tid,
-                            "content": tr.result_summary or "(completed)",
-                        })
+                        content_blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tid,
+                                "name": tr.tool_name,
+                                "input": {"_summary": tr.input_summary},
+                            }
+                        )
+                        pending_tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tid,
+                                "content": tr.result_summary or "(completed)",
+                            }
+                        )
                         rendered_tool_count += 1
                     messages.append({"role": "assistant", "content": content_blocks})
 
@@ -611,9 +614,7 @@ class ConversationMemory:
 
         # Current user message (merge with any pending tool_results)
         if pending_tool_results:
-            merged_content = pending_tool_results + [
-                {"type": "text", "text": content}
-            ]
+            merged_content = pending_tool_results + [{"type": "text", "text": content}]
             messages.append({"role": "user", "content": merged_content})
         elif fmt == "anthropic" and messages and messages[-1]["role"] == "user":
             # Merge to avoid consecutive user roles (Anthropic API requirement)
@@ -695,9 +696,7 @@ class ConversationMemory:
 
         from core.prompt.context import resolve_context_window
 
-        window = resolve_context_window(
-            self.model_config.model, self._load_context_window_overrides()
-        )
+        window = resolve_context_window(self.model_config.model, self._load_context_window_overrides())
 
         # Auto-scale threshold for small context models.
         # Formula: min(configured, max(0.10, window / 64000 * 0.30))
@@ -753,23 +752,21 @@ class ConversationMemory:
         # never trigger the 10-minute idle finalization.
         if state.last_finalized_turn_index > 0:
             state.last_finalized_turn_index = max(
-                0, state.last_finalized_turn_index - removed_count,
+                0,
+                state.last_finalized_turn_index - removed_count,
             )
 
         self.save()
 
         logger.info(
-            "Conversation compressed for %s: %d turns -> summary (%d chars), "
-            "keeping %d recent turns",
+            "Conversation compressed for %s: %d turns -> summary (%d chars), keeping %d recent turns",
             self.anima_name,
             len(to_compress),
             len(summary),
             len(to_keep),
         )
 
-    def _format_turns_for_compression(
-        self, turns: list[ConversationTurn]
-    ) -> str:
+    def _format_turns_for_compression(self, turns: list[ConversationTurn]) -> str:
         """Format turns into readable text for the compression prompt."""
         lines: list[str] = []
         for turn in turns:
@@ -788,15 +785,18 @@ class ConversationMemory:
         model = self.model_config.fallback_model or self.model_config.model
         kwargs: dict[str, Any] = {}
         self._apply_provider_kwargs(model, kwargs)
-        response = cast(Any, await litellm.acompletion(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            **kwargs,
-        ))
+        response = cast(
+            Any,
+            await litellm.acompletion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=max_tokens,
+                **kwargs,
+            ),
+        )
         return response.choices[0].message.content or ""
 
     def _apply_provider_kwargs(self, model: str, kwargs: dict[str, Any]) -> None:
@@ -820,9 +820,7 @@ class ConversationMemory:
                 if val:
                     kwargs[key] = val
 
-    async def _call_compression_llm(
-        self, old_summary: str, new_turns: str
-    ) -> str:
+    async def _call_compression_llm(self, old_summary: str, new_turns: str) -> str:
         """Call the LLM to produce a compressed conversation summary."""
         system = load_prompt("memory/conversation_compression")
 
@@ -861,7 +859,7 @@ class ConversationMemory:
         state = self.load()
 
         # Only process turns since last finalization
-        new_turns = state.turns[state.last_finalized_turn_index:]
+        new_turns = state.turns[state.last_finalized_turn_index :]
         if len(new_turns) < min_turns:
             logger.debug(
                 "Session finalization skipped: only %d new turns (min %d)",
@@ -876,7 +874,8 @@ class ConversationMemory:
         # Generate summary with state extraction
         try:
             raw_summary = await self._summarize_session_with_state(
-                new_turns, activity_context,
+                new_turns,
+                activity_context,
             )
         except Exception:
             logger.exception("Failed to summarize session; skipping episode write")
@@ -904,7 +903,8 @@ class ConversationMemory:
         # 3.5. Auto-track procedure outcomes for injected procedures
         if injected_procedures:
             self._auto_track_procedure_outcomes(
-                memory_mgr, new_turns,
+                memory_mgr,
+                new_turns,
                 injected_procedures=injected_procedures,
                 session_id=session_id,
             )
@@ -949,7 +949,8 @@ class ConversationMemory:
             if state.last_finalized_turn_index > len(state.turns):
                 logger.info(
                     "Clamping stale last_finalized_turn_index %d -> %d",
-                    state.last_finalized_turn_index, len(state.turns),
+                    state.last_finalized_turn_index,
+                    len(state.turns),
                 )
                 state.last_finalized_turn_index = len(state.turns)
                 self.save()
@@ -962,15 +963,16 @@ class ConversationMemory:
             # Pre-compress idle conversations so next chat is not blocked
             if is_idle and self.needs_compression():
                 logger.info(
-                    "Pre-compressing idle conversation for %s "
-                    "(idle %.0fs, %d turns)",
-                    self.anima_name, idle_seconds, len(state.turns),
+                    "Pre-compressing idle conversation for %s (idle %.0fs, %d turns)",
+                    self.anima_name,
+                    idle_seconds,
+                    len(state.turns),
                 )
                 await self._compress()
                 state = self.load()  # reload after compression shifted turns
 
             # No unrecorded turns → skip episode finalization
-            new_turns = state.turns[state.last_finalized_turn_index:]
+            new_turns = state.turns[state.last_finalized_turn_index :]
             if not new_turns:
                 return False
             if not is_idle:
@@ -1004,16 +1006,18 @@ class ConversationMemory:
                 days=1,
                 limit=30,
                 types=[
-                    "message_sent", "message_received", "channel_post", "channel_read",
-                    "tool_use", "human_notify", "cron_executed",
+                    "message_sent",
+                    "message_received",
+                    "channel_post",
+                    "channel_read",
+                    "tool_use",
+                    "human_notify",
+                    "cron_executed",
                 ],
             )
 
             # Filter to session timeframe (between first and last turn)
-            session_entries = [
-                e for e in entries
-                if first_ts <= e.ts <= last_ts
-            ]
+            session_entries = [e for e in entries if first_ts <= e.ts <= last_ts]
 
             if not session_entries:
                 return ""
@@ -1030,7 +1034,9 @@ class ConversationMemory:
             return ""
 
     async def _summarize_session_with_state(
-        self, turns: list[ConversationTurn], activity_context: str = "",
+        self,
+        turns: list[ConversationTurn],
+        activity_context: str = "",
     ) -> str:
         """Summarize a conversation session with state change extraction.
 
@@ -1057,7 +1063,8 @@ class ConversationMemory:
         # Extract ## エピソード要約 section
         episode_match = re.search(
             r"##\s*エピソード要約\s*\n(.+?)(?=##\s*ステート変更|\Z)",
-            raw, re.DOTALL,
+            raw,
+            re.DOTALL,
         )
         episode_body = episode_match.group(1).strip() if episode_match else raw.strip()
 
@@ -1068,7 +1075,8 @@ class ConversationMemory:
         # Extract ## ステート変更 section
         state_match = re.search(
             r"##\s*ステート変更\s*\n(.+)",
-            raw, re.DOTALL,
+            raw,
+            re.DOTALL,
         )
 
         resolved_items: list[str] = []
@@ -1081,7 +1089,8 @@ class ConversationMemory:
             # ### 解決済み
             resolved_match = re.search(
                 r"###\s*解決済み\s*\n(.+?)(?=###|\Z)",
-                state_text, re.DOTALL,
+                state_text,
+                re.DOTALL,
             )
             if resolved_match:
                 for line in resolved_match.group(1).strip().splitlines():
@@ -1092,7 +1101,8 @@ class ConversationMemory:
             # ### 新規タスク
             tasks_match = re.search(
                 r"###\s*新規タスク\s*\n(.+?)(?=###|\Z)",
-                state_text, re.DOTALL,
+                state_text,
+                re.DOTALL,
             )
             if tasks_match:
                 for line in tasks_match.group(1).strip().splitlines():
@@ -1103,7 +1113,8 @@ class ConversationMemory:
             # ### 現在の状態
             status_match = re.search(
                 r"###\s*現在の状態\s*\n(.+?)(?=###|\Z)",
-                state_text, re.DOTALL,
+                state_text,
+                re.DOTALL,
             )
             if status_match:
                 current_status = status_match.group(1).strip()
@@ -1118,7 +1129,9 @@ class ConversationMemory:
         )
 
     def _update_state_from_summary(
-        self, memory_mgr: "MemoryManager", parsed: ParsedSessionSummary,
+        self,
+        memory_mgr: MemoryManager,
+        parsed: ParsedSessionSummary,
     ) -> None:
         """Auto-update state/current_task.md based on conversation conclusions."""
         current = memory_mgr.read_current_state()
@@ -1127,14 +1140,14 @@ class ConversationMemory:
         # Append resolved items with checkmark
         for item in parsed.resolved_items:
             if item not in current:
-                marker = t("conversation.resolved_marker", item=item, ts=now_jst().strftime('%m/%d %H:%M'))
+                marker = t("conversation.resolved_marker", item=item, ts=now_jst().strftime("%m/%d %H:%M"))
                 current += f"\n{marker}"
                 updated = True
 
         # Append new tasks
         for task in parsed.new_tasks:
             if task not in current:
-                current += "\n" + t("conversation.new_task_marker", task=task, ts=now_jst().strftime('%m/%d %H:%M'))
+                current += "\n" + t("conversation.new_task_marker", task=task, ts=now_jst().strftime("%m/%d %H:%M"))
                 updated = True
 
         if updated:
@@ -1185,7 +1198,8 @@ class ConversationMemory:
                 if session_id and meta.get("_reported_session_id") == session_id:
                     logger.debug(
                         "Skipping auto-track for %s: already reported in session %s",
-                        proc_path.name, session_id,
+                        proc_path.name,
+                        session_id,
                     )
                     continue
 
@@ -1205,14 +1219,18 @@ class ConversationMemory:
 
                 logger.debug(
                     "Auto-tracked procedure outcome: %s success=%s confidence=%.2f",
-                    proc_path.name, not has_error, meta["confidence"],
+                    proc_path.name,
+                    not has_error,
+                    meta["confidence"],
                 )
 
         except Exception:
             logger.debug("Failed to auto-track procedure outcomes", exc_info=True)
 
     def _record_resolutions(
-        self, memory_mgr: "MemoryManager", resolved_items: list[str],
+        self,
+        memory_mgr: MemoryManager,
+        resolved_items: list[str],
     ) -> None:
         """Record resolution events to ActivityLogger and shared registry."""
         from core.memory.activity import ActivityLogger

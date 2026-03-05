@@ -6,6 +6,7 @@
 # See LICENSE for the full license text.
 
 """CLI entry point for ``animaworks-tool image_gen``."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,18 +17,17 @@ from typing import Any
 
 import httpx
 
-from core.tools._base import logger
 from core.tools._image_clients import (
     _BUSTUP_PROMPT,
     _CHIBI_PROMPT,
     _DEFAULT_ANIMATIONS,
     _HTTP_TIMEOUT,
-    _image_to_data_uri,
-    _retry,
-    FluxKontextClient,
     MESHY_RIGGING_URL,
+    FluxKontextClient,
     MeshyClient,
     NovelAIClient,
+    _image_to_data_uri,
+    _retry,
 )
 from core.tools._image_pipeline import ImageGenPipeline
 
@@ -48,15 +48,21 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_pipe.add_argument("prompt", help="Character appearance tags")
     p_pipe.add_argument("-n", "--negative", default="", help="Negative prompt")
     p_pipe.add_argument(
-        "-d", "--anima-dir", required=True, help="Anima data directory",
+        "-d",
+        "--anima-dir",
+        required=True,
+        help="Anima data directory",
     )
     p_pipe.add_argument(
-        "--steps", nargs="*",
+        "--steps",
+        nargs="*",
         choices=["fullbody", "bustup", "chibi", "3d", "rigging", "animations"],
         help="Steps to run (default: all)",
     )
     p_pipe.add_argument(
-        "--no-skip", action="store_true", help="Regenerate even if files exist",
+        "--no-skip",
+        action="store_true",
+        help="Regenerate even if files exist",
     )
     p_pipe.add_argument("-j", "--json", action="store_true", help="JSON output")
 
@@ -97,7 +103,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_rig.add_argument("model", help="Path to GLB model file")
     p_rig.add_argument("-o", "--output-dir", default=".", help="Output directory")
     p_rig.add_argument(
-        "--height", type=float, default=1.0,
+        "--height",
+        type=float,
+        default=1.0,
         help="Character height in meters (default: 1.0 for chibi)",
     )
     p_rig.add_argument("-j", "--json", action="store_true")
@@ -107,11 +115,14 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_anim.add_argument("model", help="Path to GLB model file")
     p_anim.add_argument("-o", "--output-dir", default=".", help="Output directory")
     p_anim.add_argument(
-        "--height", type=float, default=1.0,
+        "--height",
+        type=float,
+        default=1.0,
         help="Character height in meters (default: 1.0 for chibi)",
     )
     p_anim.add_argument(
-        "--actions", nargs="*",
+        "--actions",
+        nargs="*",
         help="Animation names to generate (default: idle sitting waving talking)",
     )
     p_anim.add_argument("-j", "--json", action="store_true")
@@ -138,7 +149,7 @@ def cli_main(argv: list[str] | None = None) -> None:
                 from core.tools._image_clients import _convert_anime_to_realistic
 
                 prompt = _convert_anime_to_realistic(prompt)
-                print(f"[info] Auto-converted anime prompt to realistic", file=sys.stderr)
+                print("[info] Auto-converted anime prompt to realistic", file=sys.stderr)
 
         pipe = ImageGenPipeline(Path(args.anima_dir), config=image_config)
         result = pipe.generate_all(
@@ -203,7 +214,9 @@ def cli_main(argv: list[str] | None = None) -> None:
         img_bytes = Path(args.image).read_bytes()
         client = MeshyClient()
         task_id = client.create_task(
-            img_bytes, ai_model=args.ai_model, target_polycount=args.polycount,
+            img_bytes,
+            ai_model=args.ai_model,
+            target_polycount=args.polycount,
         )
         print(f"Meshy task: {task_id}", file=sys.stderr)
         task = client.poll_task(task_id)
@@ -293,10 +306,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         # Determine animations to generate
         anim_map = _DEFAULT_ANIMATIONS.copy()
         if args.actions:
-            anim_map = {
-                name: _DEFAULT_ANIMATIONS.get(name, 0)
-                for name in args.actions
-            }
+            anim_map = {name: _DEFAULT_ANIMATIONS.get(name, 0) for name in args.actions}
 
         out_dir = Path(args.output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)

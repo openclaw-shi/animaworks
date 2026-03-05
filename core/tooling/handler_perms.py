@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -13,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from core.i18n import t
-
 from core.tooling.handler_base import (
     _BLOCKED_CMD_PATTERNS,
     _INJECTION_RE,
@@ -61,6 +61,7 @@ class PermissionsMixin:
         external_available: list[str] = []
         try:
             from core.tools import TOOL_MODULES
+
             all_categories = sorted(TOOL_MODULES.keys())
             for cat in all_categories:
                 if cat in (self._external.registry if self._external else []):
@@ -129,7 +130,7 @@ class PermissionsMixin:
             rf"[-*]?\s*{re.escape(kind)}\s*:\s*(OK|yes|enabled|true)\s*$",
             re.IGNORECASE,
         )
-        for line in permissions.splitlines():
+        for line in permissions.splitlines():  # noqa: SIM110
             if _perm_re.match(line.strip()):
                 return True
         return False
@@ -215,8 +216,14 @@ class PermissionsMixin:
 
         # Framework shared directories — read-only for all Animas
         if not write:
-            from core.paths import get_shared_dir, get_common_knowledge_dir, get_common_skills_dir, get_company_dir
-            for shared_dir in (get_shared_dir(), get_common_knowledge_dir(), get_common_skills_dir(), get_company_dir()):
+            from core.paths import get_common_knowledge_dir, get_common_skills_dir, get_company_dir, get_shared_dir
+
+            for shared_dir in (
+                get_shared_dir(),
+                get_common_knowledge_dir(),
+                get_common_skills_dir(),
+                get_company_dir(),
+            ):
                 if shared_dir.exists() and resolved.is_relative_to(shared_dir.resolve()):
                     return None
 
@@ -228,23 +235,29 @@ class PermissionsMixin:
 
         # Parse allowed directory whitelist from permissions.md
         raw_items = self._parse_permission_section(header)
-        allowed_dirs = [
-            Path(item).resolve() for item in raw_items if item.startswith("/")
-        ]
+        allowed_dirs = [Path(item).resolve() for item in raw_items if item.startswith("/")]
 
         if not allowed_dirs:
             logger.warning("permission_denied anima=%s path=%s reason=no_allowed_dirs", self._anima_name, path)
-            return _error_result("PermissionDenied", t("handler.no_file_ops_paths"), suggestion="Add directory paths to permissions.md")
+            return _error_result(
+                "PermissionDenied", t("handler.no_file_ops_paths"), suggestion="Add directory paths to permissions.md"
+            )
 
         for allowed in allowed_dirs:
             if resolved.is_relative_to(allowed):
                 return None
 
         logger.warning("permission_denied anima=%s path=%s reason=outside_allowed_dirs", self._anima_name, path)
-        return _error_result("PermissionDenied", f"'{path}' is not under any allowed directory", context={"allowed_dirs": [str(d) for d in allowed_dirs]})
+        return _error_result(
+            "PermissionDenied",
+            f"'{path}' is not under any allowed directory",
+            context={"allowed_dirs": [str(d) for d in allowed_dirs]},
+        )
 
     def _find_section_header(
-        self, permissions: str, candidates: tuple[str, ...],
+        self,
+        permissions: str,
+        candidates: tuple[str, ...],
     ) -> str | None:
         """Return the first matching section header found in *permissions*."""
         for header in candidates:
@@ -255,7 +268,8 @@ class PermissionsMixin:
     def _parse_denied_commands(self, permissions: str) -> list[str]:
         """Parse the denied-commands section from permissions.md."""
         header = self._find_section_header(
-            permissions, self._DENIED_CMD_SECTION_HEADERS,
+            permissions,
+            self._DENIED_CMD_SECTION_HEADERS,
         )
         if header is None:
             return []
@@ -296,7 +310,8 @@ class PermissionsMixin:
         if _INJECTION_RE.search(command):
             logger.warning(
                 "permission_denied anima=%s command=%s reason=injection_pattern",
-                self._anima_name, command[:80],
+                self._anima_name,
+                command[:80],
             )
             return _error_result(
                 "PermissionDenied",
@@ -309,7 +324,9 @@ class PermissionsMixin:
             if pattern.search(command):
                 logger.warning(
                     "permission_denied anima=%s command=%s reason=blocked_pattern(%s)",
-                    self._anima_name, command[:80], reason,
+                    self._anima_name,
+                    command[:80],
+                    reason,
                 )
                 return _error_result("PermissionDenied", reason)
 
@@ -317,11 +334,7 @@ class PermissionsMixin:
         permissions = self._memory.read_permissions()
         denied_items = self._parse_denied_commands(permissions)
         if denied_items:
-            segments = [
-                s.strip()
-                for s in re.split(r"\|(?!\|)|\&\&|\|\|", command)
-                if s.strip()
-            ]
+            segments = [s.strip() for s in re.split(r"\|(?!\|)|\&\&|\|\|", command) if s.strip()]
             for segment in segments:
                 try:
                     seg_argv = shlex.split(segment)
@@ -334,7 +347,9 @@ class PermissionsMixin:
                     if denied in cmd_base or denied in segment:
                         logger.warning(
                             "permission_denied anima=%s command=%s reason=denied_list(%s)",
-                            self._anima_name, command[:80], denied,
+                            self._anima_name,
+                            command[:80],
+                            denied,
                         )
                         return _error_result(
                             "PermissionDenied",
@@ -344,7 +359,9 @@ class PermissionsMixin:
         # Layer 3: permissions.md section check
         header = self._find_section_header(permissions, self._CMD_SECTION_HEADERS)
         if header is None:
-            logger.warning("permission_denied anima=%s command=%s reason=cmd_not_enabled", self._anima_name, command[:80])
+            logger.warning(
+                "permission_denied anima=%s command=%s reason=cmd_not_enabled", self._anima_name, command[:80]
+            )
             return _error_result("PermissionDenied", "Command execution not enabled in permissions.md")
 
         # Layer 4: Per-command allowlist check
@@ -362,7 +379,9 @@ class PermissionsMixin:
                 if cmd_base not in allowed:
                     logger.warning(
                         "permission_denied anima=%s command=%s reason=not_in_allowed_list cmd=%s",
-                        self._anima_name, command[:80], cmd_base,
+                        self._anima_name,
+                        command[:80],
+                        cmd_base,
                     )
                     return _error_result(
                         "PermissionDenied",

@@ -1,26 +1,26 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import asyncio
 import base64
 import json
 import logging
 import re
-from pathlib import Path
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from core.exceptions import AnimaNotFoundError, IPCConnectionError as IPCConnError  # noqa: F401
-from core.schemas import ImageData
+from core.exceptions import AnimaNotFoundError  # noqa: F401
+from core.exceptions import IPCConnectionError as IPCConnError
 from core.i18n import t
+from core.schemas import ImageData
 from core.time_utils import now_jst
-from server.dependencies import get_anima
-from server.events import emit, emit_notification, emit_direct, emit_notification_direct
+from server.events import emit, emit_direct, emit_notification, emit_notification_direct
 from server.stream_registry import StreamRegistry, format_sse_with_id
 
 logger = logging.getLogger("animaworks.routes.chat")
@@ -67,6 +67,7 @@ class ChatResponse(BaseModel):
 
 # ── Image Helpers ─────────────────────────────────────────────
 
+
 def _validate_images(images: list[ImageAttachment]) -> str | None:
     """Validate image attachments. Returns error message or None."""
     if not images:
@@ -105,7 +106,8 @@ def save_images(anima_name: str, images: list[ImageAttachment]) -> list[str]:
 
 
 def build_content_blocks(
-    message: str, images: list[ImageAttachment],
+    message: str,
+    images: list[ImageAttachment],
 ) -> str | list[dict[str, Any]]:
     """Convert text + images to LLM content blocks.
 
@@ -115,14 +117,16 @@ def build_content_blocks(
         return message
     blocks: list[dict[str, Any]] = []
     for img in images:
-        blocks.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": img.media_type,
-                "data": img.data,
-            },
-        })
+        blocks.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img.media_type,
+                    "data": img.data,
+                },
+            }
+        )
     if message.strip():
         blocks.append({"type": "text", "text": message})
     return blocks
@@ -130,11 +134,11 @@ def build_content_blocks(
 
 # ── SSE Helpers ───────────────────────────────────────────────
 
+
 def _format_sse(event: str, payload: dict[str, Any]) -> str:
     """Format a single SSE frame."""
     data = json.dumps(payload, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {data}\n\n"
-
 
 
 # ── Emotion Extraction ────────────────────────────────────
@@ -142,7 +146,8 @@ def _format_sse(event: str, payload: dict[str, Any]) -> str:
 from core.schemas import VALID_EMOTIONS
 
 _EMOTION_PATTERN = re.compile(
-    r'<!--\s*emotion:\s*(\{.*?\})\s*-->', re.DOTALL,
+    r"<!--\s*emotion:\s*(\{.*?\})\s*-->",
+    re.DOTALL,
 )
 
 
@@ -195,16 +200,22 @@ def _handle_chunk(
         return _format_sse("text_delta", {"text": chunk["text"]}), ""
 
     if event_type == "tool_start":
-        return _format_sse("tool_start", {
-            "tool_name": chunk["tool_name"],
-            "tool_id": chunk["tool_id"],
-        }), ""
+        return _format_sse(
+            "tool_start",
+            {
+                "tool_name": chunk["tool_name"],
+                "tool_id": chunk["tool_id"],
+            },
+        ), ""
 
     if event_type == "tool_end":
-        return _format_sse("tool_end", {
-            "tool_id": chunk["tool_id"],
-            "tool_name": chunk.get("tool_name", ""),
-        }), ""
+        return _format_sse(
+            "tool_end",
+            {
+                "tool_id": chunk["tool_id"],
+                "tool_name": chunk.get("tool_name", ""),
+            },
+        ), ""
 
     if event_type == "chain_start":
         return _format_sse("chain_start", {"chain": chunk["chain"]}), ""
@@ -212,26 +223,37 @@ def _handle_chunk(
     if event_type == "bootstrap_start":
         if request and anima_name:
             import asyncio
-            asyncio.ensure_future(emit(
-                request, "anima.bootstrap",
-                {"name": anima_name, "status": "started"},
-            ))
+
+            asyncio.ensure_future(
+                emit(
+                    request,
+                    "anima.bootstrap",
+                    {"name": anima_name, "status": "started"},
+                )
+            )
         return _format_sse("bootstrap", {"status": "started"}), ""
 
     if event_type == "bootstrap_complete":
         if request and anima_name:
             import asyncio
-            asyncio.ensure_future(emit(
-                request, "anima.bootstrap",
-                {"name": anima_name, "status": "completed"},
-            ))
+
+            asyncio.ensure_future(
+                emit(
+                    request,
+                    "anima.bootstrap",
+                    {"name": anima_name, "status": "completed"},
+                )
+            )
         return _format_sse("bootstrap", {"status": "completed"}), ""
 
     if event_type == "bootstrap_busy":
-        return _format_sse("bootstrap", {
-            "status": "busy",
-            "message": chunk.get("message", t("chat.bootstrap_busy")),
-        }), ""
+        return _format_sse(
+            "bootstrap",
+            {
+                "status": "busy",
+                "message": chunk.get("message", t("chat.bootstrap_busy")),
+            },
+        ), ""
 
     if event_type == "compression_start":
         return _format_sse("compression_start", {}), ""
@@ -240,14 +262,20 @@ def _handle_chunk(
         return _format_sse("compression_end", {}), ""
 
     if event_type == "heartbeat_relay_start":
-        return _format_sse("heartbeat_relay_start", {
-            "message": chunk.get("message", t("chat.heartbeat_processing")),
-        }), ""
+        return _format_sse(
+            "heartbeat_relay_start",
+            {
+                "message": chunk.get("message", t("chat.heartbeat_processing")),
+            },
+        ), ""
 
     if event_type == "heartbeat_relay":
-        return _format_sse("heartbeat_relay", {
-            "text": chunk.get("text", ""),
-        }), chunk.get("text", "")
+        return _format_sse(
+            "heartbeat_relay",
+            {
+                "text": chunk.get("text", ""),
+            },
+        ), chunk.get("text", "")
 
     if event_type == "heartbeat_relay_done":
         return _format_sse("heartbeat_relay_done", {}), ""
@@ -265,10 +293,9 @@ def _handle_chunk(
         # Broadcast notification to all WebSocket clients (with queue support)
         if request:
             import asyncio
+
             notif_data = chunk.get("data", {})
-            asyncio.ensure_future(
-                emit_notification(request, notif_data)
-            )
+            asyncio.ensure_future(emit_notification(request, notif_data))
         return None, ""
 
     if event_type == "cycle_done":
@@ -370,17 +397,20 @@ async def _emit_ws_side_effects(
     event_type = chunk.get("type")
     if event_type == "bootstrap_start" and ws_manager:
         await emit_direct(
-            ws_manager, "anima.bootstrap",
+            ws_manager,
+            "anima.bootstrap",
             {"name": anima_name, "status": "started"},
         )
     elif event_type == "bootstrap_complete" and ws_manager:
         await emit_direct(
-            ws_manager, "anima.bootstrap",
+            ws_manager,
+            "anima.bootstrap",
             {"name": anima_name, "status": "completed"},
         )
     elif event_type == "notification_sent" and ws_manager:
         await emit_notification_direct(
-            ws_manager, chunk.get("data", {}),
+            ws_manager,
+            chunk.get("data", {}),
         )
     elif event_type in ("tool_start", "tool_end", "tool_detail") and ws_manager:
         ws_payload: dict[str, Any] = {
@@ -418,6 +448,7 @@ async def _run_producer(
     ipc_chunk_count = 0
     keepalive_count = 0
     import time as _time
+
     _start = _time.monotonic()
 
     try:
@@ -427,12 +458,16 @@ async def _run_producer(
         stream.add_event("stream_start", {"response_id": stream.response_id})
 
         from core.config import load_config
+
         _config = load_config()
         _timeout = float(_config.server.ipc_stream_timeout)
 
         logger.info(
             "[PRODUCER] start anima=%s stream=%s user=%s timeout=%.1f",
-            name, stream.response_id, body.from_person, _timeout,
+            name,
+            stream.response_id,
+            body.from_person,
+            _timeout,
         )
 
         async for ipc_response in supervisor.send_request_stream(
@@ -463,8 +498,12 @@ async def _run_producer(
                 elapsed = _time.monotonic() - _start
                 logger.info(
                     "[PRODUCER] IPC done anima=%s stream=%s ipc_chunks=%d keepalives=%d elapsed=%.1fs response_len=%d",
-                    name, stream.response_id, ipc_chunk_count,
-                    keepalive_count, elapsed, len(clean_text),
+                    name,
+                    stream.response_id,
+                    ipc_chunk_count,
+                    keepalive_count,
+                    elapsed,
+                    len(clean_text),
                 )
                 stream.add_event("done", cycle_result or {"summary": clean_text, "emotion": emotion})
                 stream_done = True
@@ -481,7 +520,10 @@ async def _run_producer(
                         elapsed = _time.monotonic() - _start
                         logger.debug(
                             "[PRODUCER] keepalive anima=%s stream=%s keepalive#%d elapsed=%.1fs",
-                            name, stream.response_id, keepalive_count, elapsed,
+                            name,
+                            stream.response_id,
+                            keepalive_count,
+                            elapsed,
                         )
                         continue
 
@@ -518,12 +560,18 @@ async def _run_producer(
             elapsed = _time.monotonic() - _start
             logger.warning(
                 "[PRODUCER] INCOMPLETE anima=%s stream=%s ipc_chunks=%d elapsed=%.1fs",
-                name, stream.response_id, ipc_chunk_count, elapsed,
+                name,
+                stream.response_id,
+                ipc_chunk_count,
+                elapsed,
             )
-            stream.add_event("error", {
-                "code": "STREAM_INCOMPLETE",
-                "message": t("chat.stream_incomplete"),
-            })
+            stream.add_event(
+                "error",
+                {
+                    "code": "STREAM_INCOMPLETE",
+                    "message": t("chat.stream_incomplete"),
+                },
+            )
 
         registry.mark_complete(stream.response_id, done=stream_done)
 
@@ -531,7 +579,10 @@ async def _run_producer(
         elapsed = _time.monotonic() - _start
         logger.info(
             "[PRODUCER] cancelled anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d",
-            name, stream.response_id, elapsed, ipc_chunk_count,
+            name,
+            stream.response_id,
+            elapsed,
+            ipc_chunk_count,
         )
         registry.mark_complete(stream.response_id, done=False)
         raise
@@ -540,25 +591,41 @@ async def _run_producer(
         elapsed = _time.monotonic() - _start
         error_str = str(e)
         if "Process restarting" in error_str:
-            logger.warning("[PRODUCER] ANIMA_RESTARTING anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed)
+            logger.warning(
+                "[PRODUCER] ANIMA_RESTARTING anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed
+            )
             stream.add_event("error", {"code": "ANIMA_RESTARTING", "message": t("chat.anima_restarting")})
         elif "Not connected" in error_str:
-            logger.error("[PRODUCER] ANIMA_UNAVAILABLE anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed)
+            logger.error(
+                "[PRODUCER] ANIMA_UNAVAILABLE anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed
+            )
             stream.add_event("error", {"code": "ANIMA_UNAVAILABLE", "message": t("chat.anima_unavailable")})
         elif "Connection closed during stream" in error_str:
-            logger.error("[PRODUCER] CONNECTION_LOST anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d", name, stream.response_id, elapsed, ipc_chunk_count)
+            logger.error(
+                "[PRODUCER] CONNECTION_LOST anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d",
+                name,
+                stream.response_id,
+                elapsed,
+                ipc_chunk_count,
+            )
             stream.add_event("error", {"code": "CONNECTION_LOST", "message": t("chat.connection_lost")})
         elif "IPC protocol error" in error_str:
-            logger.error("[PRODUCER] IPC_PROTOCOL_ERROR anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed)
+            logger.error(
+                "[PRODUCER] IPC_PROTOCOL_ERROR anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed
+            )
             stream.add_event("error", {"code": "IPC_PROTOCOL_ERROR", "message": t("chat.communication_error")})
         else:
-            logger.exception("[PRODUCER] RUNTIME_ERROR anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed)
+            logger.exception(
+                "[PRODUCER] RUNTIME_ERROR anima=%s stream=%s elapsed=%.1fs", name, stream.response_id, elapsed
+            )
             stream.add_event("error", {"code": "STREAM_ERROR", "message": t("chat.internal_error")})
         registry.mark_complete(stream.response_id, done=False)
 
     except (ValueError, IPCConnError) as e:
         elapsed = _time.monotonic() - _start
-        logger.error("[PRODUCER] IPC_ERROR anima=%s stream=%s elapsed=%.1fs error=%s", name, stream.response_id, elapsed, e)
+        logger.error(
+            "[PRODUCER] IPC_ERROR anima=%s stream=%s elapsed=%.1fs error=%s", name, stream.response_id, elapsed, e
+        )
         stream.add_event("error", {"code": "IPC_ERROR", "message": str(e)})
         registry.mark_complete(stream.response_id, done=False)
 
@@ -570,13 +637,25 @@ async def _run_producer(
 
     except TimeoutError:
         elapsed = _time.monotonic() - _start
-        logger.error("[PRODUCER] IPC_TIMEOUT anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d", name, stream.response_id, elapsed, ipc_chunk_count)
+        logger.error(
+            "[PRODUCER] IPC_TIMEOUT anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d",
+            name,
+            stream.response_id,
+            elapsed,
+            ipc_chunk_count,
+        )
         stream.add_event("error", {"code": "IPC_TIMEOUT", "message": t("chat.timeout")})
         registry.mark_complete(stream.response_id, done=False)
 
     except Exception:
         elapsed = _time.monotonic() - _start
-        logger.exception("[PRODUCER] STREAM_ERROR anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d", name, stream.response_id, elapsed, ipc_chunk_count)
+        logger.exception(
+            "[PRODUCER] STREAM_ERROR anima=%s stream=%s elapsed=%.1fs ipc_chunks=%d",
+            name,
+            stream.response_id,
+            elapsed,
+            ipc_chunk_count,
+        )
         stream.add_event("error", {"code": "STREAM_ERROR", "message": "Internal server error"})
         registry.mark_complete(stream.response_id, done=False)
 
@@ -584,8 +663,12 @@ async def _run_producer(
         elapsed = _time.monotonic() - _start
         logger.info(
             "[PRODUCER] finalize anima=%s stream=%s ipc_chunks=%d keepalives=%d elapsed=%.1fs done=%s",
-            name, stream.response_id, ipc_chunk_count,
-            keepalive_count, elapsed, stream_done,
+            name,
+            stream.response_id,
+            ipc_chunk_count,
+            keepalive_count,
+            elapsed,
+            stream_done,
         )
         try:
             await emit_direct(ws_manager, "anima.status", {"name": name, "status": "idle"})
@@ -611,7 +694,8 @@ async def _sse_tail(
         if await request.is_disconnected():
             logger.info(
                 "[SSE-TAIL] client disconnected stream=%s seq=%d",
-                stream.response_id, seq,
+                stream.response_id,
+                seq,
             )
             break
 
@@ -632,7 +716,9 @@ async def _sse_tail(
                 yield format_sse_with_id(event.event, event.payload, event.event_id)
             logger.info(
                 "[SSE-TAIL] complete stream=%s seq=%d done=%s",
-                stream.response_id, seq, stream.done,
+                stream.response_id,
+                seq,
+                stream.done,
             )
             break
 
@@ -655,20 +741,24 @@ async def _stream_events(
     attachment_paths: list[str] | None = None,
 ) -> AsyncIterator[str]:
     """Async generator that yields SSE frames for a streaming chat session."""
-    full_response = ""
+    _full_response = ""
     try:
         await emit(request, "anima.status", {"name": name, "status": "thinking"})
 
         async for chunk in anima.process_message_stream(
-            body.message, from_person=body.from_person,
+            body.message,
+            from_person=body.from_person,
             intent=body.intent,
-            images=images, attachment_paths=attachment_paths,
+            images=images,
+            attachment_paths=attachment_paths,
         ):
             frame, response_text = _handle_chunk(
-                chunk, request=request, anima_name=name,
+                chunk,
+                request=request,
+                anima_name=name,
             )
             if response_text:
-                full_response = response_text
+                _full_response = response_text
             if frame:
                 yield frame
 
@@ -681,6 +771,7 @@ async def _stream_events(
 
 
 # ── Router ────────────────────────────────────────────────────
+
 
 def create_chat_router() -> APIRouter:
     router = APIRouter()
@@ -732,7 +823,7 @@ def create_chat_router() -> APIRouter:
                     "attachment_paths": saved_paths,
                     "thread_id": body.thread_id,
                 },
-                timeout=60.0
+                timeout=60.0,
             )
 
             response = result.get("response", "")
@@ -753,19 +844,23 @@ def create_chat_router() -> APIRouter:
 
         except (KeyError, AnimaNotFoundError):
             from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
+
+            raise HTTPException(status_code=404, detail=f"Anima not found: {name}") from None
         except (ValueError, IPCConnError) as e:
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
-        except asyncio.TimeoutError:
+
+            raise HTTPException(status_code=500, detail=str(e)) from None
+        except TimeoutError:
             logger.error("Timeout waiting for chat response from anima=%s", name)
             return JSONResponse(
-                {"error": "Request timed out"}, status_code=504,
+                {"error": "Request timed out"},
+                status_code=504,
             )
         except RuntimeError as e:
             logger.exception("Runtime error in chat for anima=%s", name)
             return JSONResponse(
-                {"error": f"Internal server error: {e}"}, status_code=500,
+                {"error": f"Internal server error: {e}"},
+                status_code=500,
             )
 
     @router.post("/animas/{name}/greet")
@@ -801,19 +896,23 @@ def create_chat_router() -> APIRouter:
 
         except (KeyError, AnimaNotFoundError):
             from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
+
+            raise HTTPException(status_code=404, detail=f"Anima not found: {name}") from None
         except (ValueError, IPCConnError) as e:
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
-        except asyncio.TimeoutError:
+
+            raise HTTPException(status_code=500, detail=str(e)) from None
+        except TimeoutError:
             logger.error("Timeout waiting for greet response from anima=%s", name)
             return JSONResponse(
-                {"error": "Request timed out"}, status_code=504,
+                {"error": "Request timed out"},
+                status_code=504,
             )
         except RuntimeError as e:
             logger.exception("Runtime error in greet for anima=%s", name)
             return JSONResponse(
-                {"error": f"Internal server error: {e}"}, status_code=500,
+                {"error": f"Internal server error: {e}"},
+                status_code=500,
             )
 
     @router.post("/animas/{name}/chat/stream")
@@ -828,12 +927,14 @@ def create_chat_router() -> APIRouter:
         # Verify anima exists before starting the stream
         if name not in supervisor.processes:
             from fastapi import HTTPException
+
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
 
         # Guard: reject oversized messages
         message_size = len(body.message.encode("utf-8"))
         if message_size > MAX_CHAT_MESSAGE_SIZE:
             from fastapi import HTTPException
+
             raise HTTPException(
                 status_code=413,
                 detail=t("chat.message_too_large", size_mb=message_size // 1024 // 1024),
@@ -844,6 +945,7 @@ def create_chat_router() -> APIRouter:
             img_error = _validate_images(body.images)
             if img_error:
                 from fastapi import HTTPException
+
                 raise HTTPException(status_code=413, detail=img_error)
 
         # Save images to disk
@@ -851,11 +953,15 @@ def create_chat_router() -> APIRouter:
 
         # Guard: return immediately if anima is bootstrapping
         if supervisor.is_bootstrapping(name):
+
             async def _bootstrap_busy() -> AsyncIterator[str]:
-                yield _format_sse("bootstrap", {
-                    "status": "busy",
-                    "message": t("chat.bootstrap_error"),
-                })
+                yield _format_sse(
+                    "bootstrap",
+                    {
+                        "status": "busy",
+                        "message": t("chat.bootstrap_error"),
+                    },
+                )
 
             return StreamingResponse(
                 _bootstrap_busy(),
@@ -876,15 +982,22 @@ def create_chat_router() -> APIRouter:
             return _handle_resume(registry, body.resume, last_event_id, name, from_person=body.from_person)
 
         stream = registry.register(
-            name, from_person=body.from_person, thread_id=body.thread_id,
+            name,
+            from_person=body.from_person,
+            thread_id=body.thread_id,
         )
 
         # Launch producer task (runs in background, independent of SSE)
         ws_manager = getattr(request.app.state, "ws_manager", None)
         task = asyncio.create_task(
             _run_producer(
-                stream, registry, supervisor, ws_manager,
-                name=name, body=body, saved_paths=saved_paths,
+                stream,
+                registry,
+                supervisor,
+                ws_manager,
+                name=name,
+                body=body,
+                saved_paths=saved_paths,
             ),
             name=f"producer-{stream.response_id}",
         )
@@ -927,7 +1040,8 @@ def create_chat_router() -> APIRouter:
         stream = registry.get(response_id)
         if stream is None or stream.anima_name != name:
             return JSONResponse(
-                {"error": "Stream not found"}, status_code=404,
+                {"error": "Stream not found"},
+                status_code=404,
             )
         return {
             "response_id": stream.response_id,
@@ -955,7 +1069,10 @@ def _handle_resume(
     """Handle SSE stream resume request."""
     logger.info(
         "[SSE-RESUME] request stream=%s anima=%s last_event_id=%s from=%s",
-        resume_id, anima_name, last_event_id, from_person,
+        resume_id,
+        anima_name,
+        last_event_id,
+        from_person,
     )
     stream = registry.get(resume_id)
     if stream is None or stream.anima_name != anima_name or stream.from_person != from_person:
@@ -966,8 +1083,10 @@ def _handle_resume(
             stream.anima_name == anima_name if stream else "N/A",
             stream.from_person == from_person if stream else "N/A",
         )
+
         async def _not_found():
             yield _format_sse("error", {"code": "STREAM_NOT_FOUND", "message": t("chat.stream_not_found")})
+
         return StreamingResponse(
             _not_found(),
             media_type="text/event-stream",
@@ -984,11 +1103,15 @@ def _handle_resume(
 
     logger.info(
         "[SSE-RESUME] replaying stream=%s after_seq=%d complete=%s total_events=%d",
-        resume_id, after_seq, stream.complete, stream.event_count,
+        resume_id,
+        after_seq,
+        stream.complete,
+        stream.event_count,
     )
 
     async def _replay_events():
         from server.stream_registry import format_sse_with_id
+
         current_seq = after_seq
         replay_count = 0
         for event in stream.events_after(after_seq):
@@ -998,7 +1121,10 @@ def _handle_resume(
 
         logger.info(
             "[SSE-RESUME] replayed stream=%s count=%d current_seq=%d complete=%s",
-            resume_id, replay_count, current_seq, stream.complete,
+            resume_id,
+            replay_count,
+            current_seq,
+            stream.complete,
         )
 
         if not stream.complete:
@@ -1009,7 +1135,9 @@ def _handle_resume(
                     wait_count += 1
                     logger.info(
                         "[SSE-RESUME] keepalive stream=%s wait#%d current_seq=%d",
-                        resume_id, wait_count, current_seq,
+                        resume_id,
+                        wait_count,
+                        current_seq,
                     )
                     yield ": keepalive\n\n"
                     continue
@@ -1019,7 +1147,9 @@ def _handle_resume(
                     current_seq = event.seq
                 logger.info(
                     "[SSE-RESUME] new_events stream=%s count=%d current_seq=%d",
-                    resume_id, len(new_events), current_seq,
+                    resume_id,
+                    len(new_events),
+                    current_seq,
                 )
         logger.info("[SSE-RESUME] done stream=%s final_seq=%d", resume_id, current_seq)
 

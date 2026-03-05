@@ -23,9 +23,7 @@ def cli_main() -> None:
         log_dir=get_data_dir() / "logs",
     )
 
-    parser = argparse.ArgumentParser(
-        description="AnimaWorks - Digital Anima Framework"
-    )
+    parser = argparse.ArgumentParser(description="AnimaWorks - Digital Anima Framework")
     parser.add_argument("--gateway-url", default=None, help="Gateway URL")
     parser.add_argument(
         "--data-dir",
@@ -38,53 +36,63 @@ def cli_main() -> None:
     p_init = sub.add_parser("init", help="Initialize runtime directory from templates")
     init_mode = p_init.add_mutually_exclusive_group()
     init_mode.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Merge missing template files into existing runtime",
     )
     init_mode.add_argument(
-        "--template", metavar="NAME",
+        "--template",
+        metavar="NAME",
         help="Non-interactive: create anima from named template",
     )
     init_mode.add_argument(
-        "--from-md", metavar="PATH",
+        "--from-md",
+        metavar="PATH",
         help="Non-interactive: create anima from MD file",
     )
     init_mode.add_argument(
-        "--blank", metavar="NAME",
+        "--blank",
+        metavar="NAME",
         help="Non-interactive: create blank anima with given name",
     )
     init_mode.add_argument(
-        "--skip-anima", action="store_true",
+        "--skip-anima",
+        action="store_true",
         help="Initialize infrastructure only, skip anima creation",
     )
     p_init.add_argument(
-        "--name", default=None,
+        "--name",
+        default=None,
         help="Override anima name (used with --from-md)",
     )
     p_init.set_defaults(func=_lazy_init)
 
     # ── Create Anima ─────────────────────────────────────
-    p_create = sub.add_parser(
-        "create-anima", help="Create a new Digital Anima"
-    )
+    p_create = sub.add_parser("create-anima", help="Create a new Digital Anima")
     p_create.add_argument(
-        "--name", default=None,
+        "--name",
+        default=None,
         help="Anima name (required for blank, optional for template/md)",
     )
     p_create.add_argument(
-        "--template", default=None,
+        "--template",
+        default=None,
         help="Create from a named template",
     )
     p_create.add_argument(
-        "--from-md", default=None, metavar="PATH",
+        "--from-md",
+        default=None,
+        metavar="PATH",
         help="Create from an MD file",
     )
     p_create.add_argument(
-        "--supervisor", default=None,
+        "--supervisor",
+        default=None,
         help="Supervisor anima name (overrides character sheet)",
     )
     p_create.add_argument(
-        "--role", default=None,
+        "--role",
+        default=None,
         choices=["engineer", "researcher", "manager", "writer", "ops", "general"],
         help="Role template to apply (default: general)",
     )
@@ -95,7 +103,9 @@ def cli_main() -> None:
     p_start.add_argument("--host", default="0.0.0.0")
     p_start.add_argument("--port", type=int, default=18500)
     p_start.add_argument(
-        "--foreground", "-f", action="store_true",
+        "--foreground",
+        "-f",
+        action="store_true",
         help="Run in foreground with log output (default: daemonize)",
     )
     p_start.set_defaults(func=_lazy_start)
@@ -105,7 +115,9 @@ def cli_main() -> None:
     p_serve.add_argument("--host", default="0.0.0.0")
     p_serve.add_argument("--port", type=int, default=18500)
     p_serve.add_argument(
-        "--foreground", "-f", action="store_true",
+        "--foreground",
+        "-f",
+        action="store_true",
         help="Run in foreground with log output (default: daemonize)",
     )
     p_serve.set_defaults(func=_lazy_serve)
@@ -113,17 +125,20 @@ def cli_main() -> None:
     # ── Stop ──────────────────────────────────────────────
     p_stop = sub.add_parser("stop", help="Stop the running server")
     p_stop.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Force stop: SIGKILL after SIGTERM timeout, also kill orphan runners",
     )
     p_stop.set_defaults(func=_lazy_stop)
 
     # ── Reset ─────────────────────────────────────────────
     p_reset = sub.add_parser(
-        "reset", help="Stop server, delete runtime directory, and re-initialize",
+        "reset",
+        help="Stop server, delete runtime directory, and re-initialize",
     )
     p_reset.add_argument(
-        "--restart", action="store_true",
+        "--restart",
+        action="store_true",
         help="Start the server after reset",
     )
     p_reset.set_defaults(func=_lazy_reset)
@@ -133,11 +148,14 @@ def cli_main() -> None:
     p_restart.add_argument("--host", default="0.0.0.0")
     p_restart.add_argument("--port", type=int, default=18500)
     p_restart.add_argument(
-        "--foreground", "-f", action="store_true",
+        "--foreground",
+        "-f",
+        action="store_true",
         help="Run in foreground with log output (default: daemonize)",
     )
     p_restart.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Force stop: SIGKILL after SIGTERM timeout, also kill orphan runners",
     )
     p_restart.set_defaults(func=_lazy_restart)
@@ -154,11 +172,11 @@ def cli_main() -> None:
     p_chat = sub.add_parser("chat", help="Chat with an anima")
     p_chat.add_argument("anima", help="Anima name")
     p_chat.add_argument("message", help="Message to send")
+    p_chat.add_argument("--local", action="store_true", help="(deprecated) Direct mode (no gateway)")
     p_chat.add_argument(
-        "--local", action="store_true", help="(deprecated) Direct mode (no gateway)"
-    )
-    p_chat.add_argument(
-        "--from", dest="from_person", default="human",
+        "--from",
+        dest="from_person",
+        default="human",
         help="Sender name (default: human)",
     )
     p_chat.set_defaults(func=_lazy_chat)
@@ -166,9 +184,7 @@ def cli_main() -> None:
     # ── Heartbeat ─────────────────────────────────────────
     p_hb = sub.add_parser("heartbeat", help="Trigger heartbeat")
     p_hb.add_argument("anima", help="Anima name")
-    p_hb.add_argument(
-        "--local", action="store_true", help="(deprecated) Direct mode (no gateway)"
-    )
+    p_hb.add_argument("--local", action="store_true", help="(deprecated) Direct mode (no gateway)")
     p_hb.set_defaults(func=_lazy_heartbeat)
 
     # ── Send ──────────────────────────────────────────────
@@ -179,7 +195,8 @@ def cli_main() -> None:
     p_send.add_argument("--thread-id", default=None, help="Thread ID")
     p_send.add_argument("--reply-to", default=None, help="Reply to message ID")
     p_send.add_argument(
-        "--intent", default="",
+        "--intent",
+        default="",
         help="Message intent: delegation, report, question, or empty",
     )
     p_send.set_defaults(func=_lazy_send)
@@ -193,7 +210,9 @@ def cli_main() -> None:
     p_board_read.add_argument("channel", help="Channel name (e.g. general, ops)")
     p_board_read.add_argument("--limit", type=int, default=20, help="Max messages")
     p_board_read.add_argument(
-        "--human-only", action="store_true", help="Show human messages only",
+        "--human-only",
+        action="store_true",
+        help="Show human messages only",
     )
     p_board_read.set_defaults(func=_lazy_board_read)
 
@@ -213,9 +232,7 @@ def cli_main() -> None:
 
     # ── List ──────────────────────────────────────────────
     p_list = sub.add_parser("list", help="List all animas")
-    p_list.add_argument(
-        "--local", action="store_true", help="Scan filesystem directly"
-    )
+    p_list.add_argument("--local", action="store_true", help="Scan filesystem directly")
     p_list.set_defaults(func=_lazy_list)
 
     # ── Status ────────────────────────────────────────────
@@ -238,7 +255,9 @@ def cli_main() -> None:
 
     p_config = sub.add_parser("config", help="Manage configuration")
     p_config.add_argument(
-        "--interactive", "-i", action="store_true",
+        "--interactive",
+        "-i",
+        action="store_true",
         help="Interactive setup wizard",
     )
     p_config.set_defaults(func=cmd_config_dispatch, config_parser=p_config)
@@ -247,7 +266,9 @@ def cli_main() -> None:
     p_cfg_get = config_sub.add_parser("get", help="Get a config value")
     p_cfg_get.add_argument("key", help="Dot-notation key (e.g. system.gateway.port)")
     p_cfg_get.add_argument(
-        "--show-secrets", action="store_true", help="Show API key values",
+        "--show-secrets",
+        action="store_true",
+        help="Show API key values",
     )
     p_cfg_get.set_defaults(func=cmd_config_get)
 
@@ -259,7 +280,9 @@ def cli_main() -> None:
     p_cfg_list = config_sub.add_parser("list", help="List all config values")
     p_cfg_list.add_argument("--section", default=None, help="Filter by section")
     p_cfg_list.add_argument(
-        "--show-secrets", action="store_true", help="Show API key values",
+        "--show-secrets",
+        action="store_true",
+        help="Show API key values",
     )
     p_cfg_list.set_defaults(func=cmd_config_list)
 
@@ -268,7 +291,8 @@ def cli_main() -> None:
         help="Export system sections from DB to template files",
     )
     p_cfg_export.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Show what would change without writing files",
     )
     p_cfg_export.set_defaults(func=cmd_config_export_sections)
@@ -284,32 +308,35 @@ def cli_main() -> None:
 
     # anima status
     p_anima_status = anima_sub.add_parser("status", help="Show anima process status")
-    p_anima_status.add_argument(
-        "anima", nargs="?", default=None,
-        help="Anima name (omit for all animas)"
-    )
+    p_anima_status.add_argument("anima", nargs="?", default=None, help="Anima name (omit for all animas)")
     p_anima_status.set_defaults(func=_lazy_anima_status)
 
     # anima create
     p_anima_create = anima_sub.add_parser("create", help="Create a new anima")
     p_anima_create.add_argument(
-        "--name", default=None,
+        "--name",
+        default=None,
         help="Anima name (required for blank, optional for template/md)",
     )
     p_anima_create.add_argument(
-        "--template", default=None,
+        "--template",
+        default=None,
         help="Create from a named template",
     )
     p_anima_create.add_argument(
-        "--from-md", default=None, metavar="PATH",
+        "--from-md",
+        default=None,
+        metavar="PATH",
         help="Create from an MD file",
     )
     p_anima_create.add_argument(
-        "--supervisor", default=None,
+        "--supervisor",
+        default=None,
         help="Supervisor anima name (overrides character sheet)",
     )
     p_anima_create.add_argument(
-        "--role", default=None,
+        "--role",
+        default=None,
         choices=["engineer", "researcher", "manager", "writer", "ops", "general"],
         help="Role template to apply (default: general)",
     )
@@ -319,11 +346,13 @@ def cli_main() -> None:
     p_anima_delete = anima_sub.add_parser("delete", help="Delete an anima (with optional archive)")
     p_anima_delete.add_argument("anima", help="Anima name to delete")
     p_anima_delete.add_argument(
-        "--no-archive", action="store_true",
+        "--no-archive",
+        action="store_true",
         help="Skip creating a ZIP archive before deletion",
     )
     p_anima_delete.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Skip confirmation prompt",
     )
     p_anima_delete.set_defaults(func=_lazy_anima_delete)
@@ -340,18 +369,19 @@ def cli_main() -> None:
 
     # anima list
     p_anima_list = anima_sub.add_parser("list", help="List all animas with status")
-    p_anima_list.add_argument(
-        "--local", action="store_true", help="Scan filesystem directly"
-    )
+    p_anima_list.add_argument("--local", action="store_true", help="Scan filesystem directly")
     p_anima_list.set_defaults(func=_lazy_anima_list)
 
     # anima info
     p_anima_info = anima_sub.add_parser(
-        "info", help="Show detailed configuration for an anima",
+        "info",
+        help="Show detailed configuration for an anima",
     )
     p_anima_info.add_argument("anima", help="Anima name")
     p_anima_info.add_argument(
-        "--json", action="store_true", dest="json_output",
+        "--json",
+        action="store_true",
+        dest="json_output",
         help="Output as JSON",
     )
     p_anima_info.set_defaults(func=_lazy_anima_info)
@@ -394,11 +424,14 @@ def cli_main() -> None:
     # anima reload
     p_anima_reload = anima_sub.add_parser("reload", help="Hot-reload anima config from status.json")
     p_anima_reload.add_argument(
-        "anima", nargs="?", default=None,
+        "anima",
+        nargs="?",
+        default=None,
         help="Anima name (not required with --all)",
     )
     p_anima_reload.add_argument(
-        "--all", action="store_true",
+        "--all",
+        action="store_true",
         help="Reload config for all running animas",
     )
     p_anima_reload.set_defaults(func=_lazy_anima_reload)
@@ -428,58 +461,57 @@ def cli_main() -> None:
     p_anima_rename.add_argument("old_name", help="Current anima name")
     p_anima_rename.add_argument("new_name", help="New anima name")
     p_anima_rename.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Skip confirmation prompt",
     )
     p_anima_rename.set_defaults(func=_lazy_anima_rename)
 
     # anima audit
     p_anima_audit = anima_sub.add_parser(
-        "audit", help="Audit a subordinate anima's recent activity",
+        "audit",
+        help="Audit a subordinate anima's recent activity",
     )
     p_anima_audit.add_argument("anima", help="Target anima name to audit")
     p_anima_audit.add_argument(
-        "--days", type=int, default=1,
+        "--days",
+        type=int,
+        default=1,
         help="Number of days to audit (default: 1, max: 30)",
     )
     p_anima_audit.set_defaults(func=_lazy_anima_audit)
 
     # ── Logs ──────────────────────────────────────────────────
     p_logs = sub.add_parser("logs", help="View anima logs")
-    p_logs.add_argument(
-        "anima", nargs="?", default=None,
-        help="Anima name (required unless --all)"
-    )
-    p_logs.add_argument(
-        "--all", action="store_true",
-        help="Show all logs (server + all animas)"
-    )
-    p_logs.add_argument(
-        "--lines", type=int, default=50,
-        help="Number of lines to show (default: 50)"
-    )
-    p_logs.add_argument(
-        "--date", default=None,
-        help="Specific date (YYYYMMDD format)"
-    )
+    p_logs.add_argument("anima", nargs="?", default=None, help="Anima name (required unless --all)")
+    p_logs.add_argument("--all", action="store_true", help="Show all logs (server + all animas)")
+    p_logs.add_argument("--lines", type=int, default=50, help="Number of lines to show (default: 50)")
+    p_logs.add_argument("--date", default=None, help="Specific date (YYYYMMDD format)")
     p_logs.set_defaults(func=_lazy_logs)
 
     # ── Cost ──────────────────────────────────────────────────
     p_cost = sub.add_parser("cost", help=t("cli.cost_help", fallback="Show token usage and estimated cost"))
     p_cost.add_argument(
-        "anima", nargs="?", default=None,
+        "anima",
+        nargs="?",
+        default=None,
         help="Anima name (omit for all animas)",
     )
     p_cost.add_argument(
-        "--days", type=int, default=30,
+        "--days",
+        type=int,
+        default=30,
         help="Number of days to aggregate (default: 30)",
     )
     p_cost.add_argument(
-        "--today", action="store_true",
+        "--today",
+        action="store_true",
         help="Show today only",
     )
     p_cost.add_argument(
-        "--json", action="store_true", dest="json_output",
+        "--json",
+        action="store_true",
+        dest="json_output",
         help="Output as JSON",
     )
     p_cost.set_defaults(func=_lazy_cost)

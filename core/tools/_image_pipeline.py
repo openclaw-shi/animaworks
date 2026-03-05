@@ -6,12 +6,14 @@
 # See LICENSE for the full license text.
 
 """ImageGenPipeline – orchestrates the full character asset generation."""
+
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from core.tools._base import logger
 from core.tools._image_clients import (
@@ -19,10 +21,8 @@ from core.tools._image_clients import (
     _DEFAULT_ANIMATIONS,
     _EXPRESSION_GUIDANCE,
     _EXPRESSION_PROMPTS,
-    _REALISTIC_BUSTUP_PROMPT,
     _REALISTIC_EXPRESSION_GUIDANCE,
     _REALISTIC_EXPRESSION_PROMPTS,
-    _image_to_data_uri,
 )
 from core.tools._image_glb import (
     _download_armature_animation,
@@ -102,7 +102,7 @@ class ImageGenPipeline:
     def __init__(
         self,
         anima_dir: Path,
-        config: "ImageGenConfig | None" = None,
+        config: ImageGenConfig | None = None,
     ) -> None:
         from core.config.models import ImageGenConfig
 
@@ -196,7 +196,7 @@ class ImageGenPipeline:
         vibe_strength: float | None = None,
         vibe_info_extracted: float | None = None,
         seed: int | None = None,
-        progress_callback: "Callable[[str, str, int], None] | None" = None,
+        progress_callback: Callable[[str, str, int], None] | None = None,
     ) -> PipelineResult:
         """Run the 6-step pipeline synchronously.
 
@@ -259,9 +259,7 @@ class ImageGenPipeline:
                     _notify("fullbody", "generating", 0)
                     if self._is_realistic:
                         if not os.environ.get("FAL_KEY"):
-                            raise RuntimeError(
-                                "FAL_KEY required for realistic image generation."
-                            )
+                            raise RuntimeError("FAL_KEY required for realistic image generation.")
                         logger.info("Step 1: Generating realistic full-body with Fal Flux Pro …")
                         client: NovelAIClient | FalTextToImageClient = FalTextToImageClient()
                     elif os.environ.get("NOVELAI_TOKEN"):
@@ -273,10 +271,7 @@ class ImageGenPipeline:
                         )
                         client = FalTextToImageClient()
                     else:
-                        raise RuntimeError(
-                            "No image generation API key configured. "
-                            "Set NOVELAI_TOKEN or FAL_KEY."
-                        )
+                        raise RuntimeError("No image generation API key configured. Set NOVELAI_TOKEN or FAL_KEY.")
 
                     # ── A: Load style reference for Vibe Transfer ──
                     # Direct vibe_image parameter takes precedence over config
@@ -287,19 +282,11 @@ class ImageGenPipeline:
                             effective_vibe = style_path.read_bytes()
                             logger.debug("Loaded style reference: %s", style_path)
                         else:
-                            logger.warning(
-                                "Style reference not found: %s", style_path
-                            )
+                            logger.warning("Style reference not found: %s", style_path)
 
-                    effective_vibe_strength = (
-                        vibe_strength
-                        if vibe_strength is not None
-                        else self._config.vibe_strength
-                    )
+                    effective_vibe_strength = vibe_strength if vibe_strength is not None else self._config.vibe_strength
                     effective_vibe_info = (
-                        vibe_info_extracted
-                        if vibe_info_extracted is not None
-                        else self._config.vibe_info_extracted
+                        vibe_info_extracted if vibe_info_extracted is not None else self._config.vibe_info_extracted
                     )
 
                     # ── B: Apply style prefix/suffix to prompt ──
@@ -339,9 +326,7 @@ class ImageGenPipeline:
         if fullbody_bytes is None:
             # Cannot proceed without a reference image
             if not result.errors:
-                result.errors.append(
-                    "fullbody: No full-body image available as reference"
-                )
+                result.errors.append("fullbody: No full-body image available as reference")
             return result
 
         # ── Step 2 & 3: Bust-up and Chibi (sequential, same client) ──
@@ -350,8 +335,11 @@ class ImageGenPipeline:
         if "bustup" in enabled:
             _notify("bustup", "generating", 0)
             expr_list = expressions or list(_EXPRESSION_PROMPTS.keys())
-            logger.info("Step 2: Generating bustup expressions (%s): %s",
-                        "realistic" if self._is_realistic else "anime", expr_list)
+            logger.info(
+                "Step 2: Generating bustup expressions (%s): %s",
+                "realistic" if self._is_realistic else "anime",
+                expr_list,
+            )
 
             bustup_ref_bytes: bytes | None = None
             neutral_path = self._assets_dir / self._bustup_filename("neutral")
@@ -470,10 +458,7 @@ class ImageGenPipeline:
                 result.skipped.append("rigging")
                 result.rigged_model_path = rigged_path
             elif meshy_task_id is None:
-                result.errors.append(
-                    "rigging: No Meshy task_id available "
-                    "(run 3d step first or provide model)"
-                )
+                result.errors.append("rigging: No Meshy task_id available (run 3d step first or provide model)")
             else:
                 try:
                     _notify("rigging", "generating", 0)
@@ -498,11 +483,15 @@ class ImageGenPipeline:
                         anim_path.write_bytes(anim_bytes)
                         if not strip_mesh_from_glb(anim_path):
                             result.errors.append(f"mesh_strip: failed for {anim_path.name}")
-                            logger.warning("Mesh strip failed for %s, animation saved with embedded mesh", anim_path.name)
+                            logger.warning(
+                                "Mesh strip failed for %s, animation saved with embedded mesh", anim_path.name
+                            )
                         result.animation_paths[anim_name] = anim_path
                         logger.info(
                             "Animation '%s' saved: %s (%d bytes)",
-                            anim_name, anim_path, len(anim_bytes),
+                            anim_name,
+                            anim_path,
+                            len(anim_bytes),
                         )
                     logger.info("Step 5 complete: rigged + %d animations", len(basic_anims))
                     _notify("rigging", "completed", 100)
@@ -514,10 +503,7 @@ class ImageGenPipeline:
         # ── Step 6: Additional animations ──
         if "animations" in enabled and anim_map:
             if rig_task_id is None:
-                result.errors.append(
-                    "animations: No rigging task_id available "
-                    "(run rigging step first)"
-                )
+                result.errors.append("animations: No rigging task_id available (run rigging step first)")
             else:
                 _notify("animations", "generating", 0)
                 if meshy is None:
@@ -531,29 +517,34 @@ class ImageGenPipeline:
                     try:
                         logger.info(
                             "Step 6: Generating '%s' animation (action_id=%d) …",
-                            anim_name, action_id,
+                            anim_name,
+                            action_id,
                         )
                         anim_task_id = meshy.create_animation_task(
-                            rig_task_id, action_id,
+                            rig_task_id,
+                            action_id,
                         )
                         logger.info(
                             "Animation task '%s' created: %s",
-                            anim_name, anim_task_id,
+                            anim_name,
+                            anim_task_id,
                         )
                         anim_task = meshy.poll_animation_task(anim_task_id)
                         if not _download_armature_animation(anim_task, anim_path):
-                            raise RuntimeError(
-                                f"All download methods failed for {anim_path.name}"
-                            )
+                            raise RuntimeError(f"All download methods failed for {anim_path.name}")
                         result.animation_paths[anim_name] = anim_path
                         logger.info(
                             "Animation '%s' saved: %s (%d bytes)",
-                            anim_name, anim_path, anim_path.stat().st_size,
+                            anim_name,
+                            anim_path,
+                            anim_path.stat().st_size,
                         )
                     except Exception as exc:
                         result.errors.append(f"anim_{anim_name}: {exc}")
                         logger.error(
-                            "Animation '%s' failed: %s", anim_name, exc,
+                            "Animation '%s' failed: %s",
+                            anim_name,
+                            exc,
                         )
                 _notify("animations", "completed", 100)
 

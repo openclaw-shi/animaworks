@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -37,9 +38,9 @@ from core.execution.base import (
     ToolCallRecord,
     _truncate_for_record,
 )
+from core.memory.shortterm import ShortTermMemory
 from core.prompt.context import ContextTracker
 from core.schemas import ImageData, ModelConfig
-from core.memory.shortterm import ShortTermMemory
 
 logger = logging.getLogger("animaworks.execution.codex_sdk")
 
@@ -55,10 +56,11 @@ _RESUME_PROMPT_SIZE_LIMIT = 50_000
 
 # ── Model name helpers ───────────────────────────────────────
 
+
 def _resolve_codex_model(model: str) -> str:
     """Strip the ``codex/`` prefix to get the bare model name for the CLI."""
     if model.startswith("codex/"):
-        return model[len("codex/"):]
+        return model[len("codex/") :]
     return model
 
 
@@ -66,6 +68,7 @@ def is_codex_sdk_available() -> bool:
     """Return True when ``openai_codex_sdk`` is importable."""
     try:
         import openai_codex_sdk  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -82,6 +85,7 @@ def _escape_toml_string(value: str) -> str:
 
 
 # ── Session (thread) ID persistence ──────────────────────────
+
 
 def _thread_id_path(anima_dir: Path, session_type: str, chat_thread_id: str = "default") -> Path:
     base = anima_dir / "shortterm" / session_type
@@ -116,6 +120,7 @@ def clear_codex_thread_ids(anima_dir: Path, chat_thread_id: str = "default") -> 
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
 
 def _get_thread_id(thread: Any) -> str | None:
     """Safely extract the thread ID from a Codex Thread object."""
@@ -183,8 +188,8 @@ def _synthesise_fallback(tool_records: list[ToolCallRecord]) -> str:
     suffix = ", …" if len(tool_records) > 5 else ""
     fallback = f"(completed {len(tool_records)} tool call(s): {', '.join(names)}{suffix})"
     logger.warning(
-        "Codex SDK produced no text output; synthesised fallback "
-        "(tools=%d)", len(tool_records),
+        "Codex SDK produced no text output; synthesised fallback (tools=%d)",
+        len(tool_records),
     )
     return fallback
 
@@ -247,6 +252,7 @@ def _wrap_result_message(
 
 # ── Executor ─────────────────────────────────────────────────
 
+
 class CodexSDKExecutor(BaseExecutor):
     """Execute via Codex SDK (Mode C).
 
@@ -289,8 +295,7 @@ class CodexSDKExecutor(BaseExecutor):
             env["OPENAI_API_KEY"] = api_key
         elif api_key:
             logger.debug(
-                "Skipping non-OpenAI API key for Codex env "
-                "(prefix=%s…); relying on cached ChatGPT auth",
+                "Skipping non-OpenAI API key for Codex env (prefix=%s…); relying on cached ChatGPT auth",
                 api_key[:8],
             )
         if self._model_config.api_base_url:
@@ -362,11 +367,8 @@ class CodexSDKExecutor(BaseExecutor):
         bare_model = _resolve_codex_model(self._model_config.model)
         esc = _escape_toml_string
 
-        from core.paths import PROJECT_DIR
         mcp_env = self._build_mcp_env()
-        mcp_env_lines = "\n".join(
-            f'{k} = "{esc(v)}"' for k, v in mcp_env.items()
-        )
+        mcp_env_lines = "\n".join(f'{k} = "{esc(v)}"' for k, v in mcp_env.items())
 
         config_toml = (
             f'model = "{esc(bare_model)}"\n'
@@ -395,10 +397,7 @@ class CodexSDKExecutor(BaseExecutor):
         try:
             from openai_codex_sdk import Codex
         except ModuleNotFoundError as e:
-            raise ImportError(
-                "openai_codex_sdk is required for Mode C "
-                "(install openai-codex-sdk)."
-            ) from e
+            raise ImportError("openai_codex_sdk is required for Mode C (install openai-codex-sdk).") from e
 
         return Codex({"env": self._build_env()})
 
@@ -416,15 +415,17 @@ class CodexSDKExecutor(BaseExecutor):
                 return thread
             except Exception as e:
                 logger.warning(
-                    "Codex thread resume failed (thread_id=%s): %s. "
-                    "Starting fresh thread.",
-                    thread_id, e,
+                    "Codex thread resume failed (thread_id=%s): %s. Starting fresh thread.",
+                    thread_id,
+                    e,
                 )
                 _clear_thread_id(self._anima_dir, session_type)
-        thread = codex.start_thread({
-            "working_directory": str(self._anima_dir),
-            "skip_git_repo_check": True,
-        })
+        thread = codex.start_thread(
+            {
+                "working_directory": str(self._anima_dir),
+                "skip_git_repo_check": True,
+            }
+        )
         logger.info("Started fresh Codex thread")
         return thread
 
@@ -451,9 +452,9 @@ class CodexSDKExecutor(BaseExecutor):
         prompt_bytes = len(system_prompt.encode("utf-8"))
         if thread_id and prompt_bytes > _RESUME_PROMPT_SIZE_LIMIT:
             logger.info(
-                "Skipping Codex resume (prompt=%d bytes > %d limit) "
-                "to avoid LimitOverrunError; using fresh thread",
-                prompt_bytes, _RESUME_PROMPT_SIZE_LIMIT,
+                "Skipping Codex resume (prompt=%d bytes > %d limit) to avoid LimitOverrunError; using fresh thread",
+                prompt_bytes,
+                _RESUME_PROMPT_SIZE_LIMIT,
             )
             thread_id = None
 
@@ -466,15 +467,17 @@ class CodexSDKExecutor(BaseExecutor):
         except Exception as e:
             if thread_id:
                 logger.warning(
-                    "Codex execute failed with resume (thread=%s): %s. "
-                    "Retrying with fresh thread.",
-                    thread_id, e,
+                    "Codex execute failed with resume (thread=%s): %s. Retrying with fresh thread.",
+                    thread_id,
+                    e,
                 )
                 _clear_thread_id(self._anima_dir, session_type)
-                thread = codex.start_thread({
-                    "working_directory": str(self._anima_dir),
-                    "skip_git_repo_check": True,
-                })
+                thread = codex.start_thread(
+                    {
+                        "working_directory": str(self._anima_dir),
+                        "skip_git_repo_check": True,
+                    }
+                )
                 try:
                     turn = await thread.run(prompt)
                 except Exception as retry_exc:
@@ -552,9 +555,9 @@ class CodexSDKExecutor(BaseExecutor):
         prompt_bytes = len(system_prompt.encode("utf-8"))
         if thread_id and prompt_bytes > _RESUME_PROMPT_SIZE_LIMIT:
             logger.info(
-                "Skipping Codex resume (prompt=%d bytes > %d limit) "
-                "to avoid LimitOverrunError; using fresh thread",
-                prompt_bytes, _RESUME_PROMPT_SIZE_LIMIT,
+                "Skipping Codex resume (prompt=%d bytes > %d limit) to avoid LimitOverrunError; using fresh thread",
+                prompt_bytes,
+                _RESUME_PROMPT_SIZE_LIMIT,
             )
             thread_id = None
 
@@ -612,16 +615,17 @@ class CodexSDKExecutor(BaseExecutor):
                         text = _extract_item_text(item)
                         if text:
                             logger.info(
-                                "Codex item.completed unhandled type=%s "
-                                "but has text (%d chars); emitting",
-                                item_type, len(text),
+                                "Codex item.completed unhandled type=%s but has text (%d chars); emitting",
+                                item_type,
+                                len(text),
                             )
                             response_text_parts.append(text)
                             yield {"type": "text_delta", "text": text}
                         else:
                             logger.debug(
                                 "Codex item.completed unhandled type=%s: %s",
-                                item_type, repr(item)[:300],
+                                item_type,
+                                repr(item)[:300],
                             )
                 elif etype == "turn.completed":
                     turn_result = _wrap_result_message(event, thread)
@@ -660,12 +664,12 @@ class CodexSDKExecutor(BaseExecutor):
                 first_event: dict[str, Any] | None = None
                 try:
                     first_event = await asyncio.wait_for(
-                        gen.__anext__(), timeout=RESUME_TIMEOUT_SEC,
+                        gen.__anext__(),
+                        timeout=RESUME_TIMEOUT_SEC,
                     )
-                except (asyncio.TimeoutError, StopAsyncIteration):
+                except (TimeoutError, StopAsyncIteration):
                     logger.warning(
-                        "Codex resume timed out or empty (thread=%s), "
-                        "falling back to fresh thread.",
+                        "Codex resume timed out or empty (thread=%s), falling back to fresh thread.",
                         thread_id,
                     )
                     _clear_thread_id(self._anima_dir, session_type)
@@ -674,7 +678,8 @@ class CodexSDKExecutor(BaseExecutor):
                 except Exception as e:
                     logger.warning(
                         "Codex resume stream failed (thread=%s): %s",
-                        thread_id, e,
+                        thread_id,
+                        e,
                     )
                     _clear_thread_id(self._anima_dir, session_type)
                     fell_back = True
@@ -686,7 +691,8 @@ class CodexSDKExecutor(BaseExecutor):
                         yield ev
             except Exception as e:
                 logger.warning(
-                    "Codex stream resume error: %s. Fresh thread.", e,
+                    "Codex stream resume error: %s. Fresh thread.",
+                    e,
                 )
                 _clear_thread_id(self._anima_dir, session_type)
                 fell_back = True

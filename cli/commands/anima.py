@@ -8,7 +8,6 @@ import argparse
 import asyncio
 import sys
 
-
 # ── Create Anima ─────────────────────────────────────────
 
 
@@ -16,16 +15,15 @@ def cmd_create_anima(args: argparse.Namespace) -> None:
     """Create a new Digital Anima."""
     from pathlib import Path
 
-    from core.init import ensure_runtime_dir
-    from core.paths import get_data_dir, get_animas_dir
+    from cli.commands.init_cmd import _register_anima_in_config
     from core.anima_factory import (
         create_blank,
         create_from_md,
         create_from_template,
         validate_anima_name,
     )
-
-    from cli.commands.init_cmd import _register_anima_in_config
+    from core.init import ensure_runtime_dir
+    from core.paths import get_animas_dir, get_data_dir
 
     ensure_runtime_dir(skip_animas=True)
     data_dir = get_data_dir()
@@ -38,16 +36,18 @@ def cmd_create_anima(args: argparse.Namespace) -> None:
         md_path = Path(args.from_md).resolve()
         role = getattr(args, "role", None)
         anima_dir = create_from_md(
-            animas_dir, md_path, name=args.name, supervisor=supervisor, role=role,
+            animas_dir,
+            md_path,
+            name=args.name,
+            supervisor=supervisor,
+            role=role,
         )
         _register_anima_in_config(data_dir, anima_dir.name)
         print(f"Created anima '{anima_dir.name}' from {md_path.name}")
         return
 
     if args.template:
-        anima_dir = create_from_template(
-            animas_dir, args.template, anima_name=args.name
-        )
+        anima_dir = create_from_template(animas_dir, args.template, anima_name=args.name)
         _register_anima_in_config(data_dir, anima_dir.name)
         print(f"Created anima '{anima_dir.name}' from template '{args.template}'")
         return
@@ -73,15 +73,16 @@ def cmd_chat(args: argparse.Namespace) -> None:
     """Chat with an anima (via gateway or direct)."""
     if args.local:
         import warnings
+
         warnings.warn(
             "--local is deprecated and bypasses ProcessSupervisor. "
             "Use the server (animaworks server start) and omit --local.",
             DeprecationWarning,
             stacklevel=2,
         )
+        from core.anima import DigitalAnima
         from core.init import ensure_runtime_dir
         from core.paths import get_animas_dir, get_shared_dir
-        from core.anima import DigitalAnima
 
         ensure_runtime_dir()
         anima_dir = get_animas_dir() / args.anima
@@ -90,9 +91,7 @@ def cmd_chat(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         anima = DigitalAnima(anima_dir, get_shared_dir())
-        response = asyncio.run(
-            anima.process_message(args.message, from_person=args.from_person)
-        )
+        response = asyncio.run(anima.process_message(args.message, from_person=args.from_person))
         print(response)
     else:
         from cli._gateway import gateway_request
@@ -114,15 +113,16 @@ def cmd_heartbeat(args: argparse.Namespace) -> None:
     """Trigger heartbeat (via gateway or direct)."""
     if args.local:
         import warnings
+
         warnings.warn(
             "--local is deprecated and bypasses ProcessSupervisor. "
             "Use the server (animaworks server start) and omit --local.",
             DeprecationWarning,
             stacklevel=2,
         )
+        from core.anima import DigitalAnima
         from core.init import ensure_runtime_dir
         from core.paths import get_animas_dir, get_shared_dir
-        from core.anima import DigitalAnima
 
         ensure_runtime_dir()
         anima_dir = get_animas_dir() / args.anima

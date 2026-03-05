@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import json
 import logging
 import os
@@ -32,19 +32,26 @@ class CronLogger:
         return self._anima_dir / self._LOG_DIR
 
     def append_cron_log(
-        self, task_name: str, *, summary: str, duration_ms: int,
+        self,
+        task_name: str,
+        *,
+        summary: str,
+        duration_ms: int,
     ) -> None:
         """Append a cron execution result to the daily log."""
         log_dir = self._log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         path = log_dir / f"{now_jst().date().isoformat()}.jsonl"
 
-        entry = json.dumps({
-            "timestamp": now_iso(),
-            "task": task_name,
-            "summary": summary[:500],
-            "duration_ms": duration_ms,
-        }, ensure_ascii=False)
+        entry = json.dumps(
+            {
+                "timestamp": now_iso(),
+                "task": task_name,
+                "summary": summary[:500],
+                "duration_ms": duration_ms,
+            },
+            ensure_ascii=False,
+        )
         with open(path, "a", encoding="utf-8") as f:
             f.write(entry + "\n")
             f.flush()
@@ -54,7 +61,8 @@ class CronLogger:
         lines = path.read_text(encoding="utf-8").strip().splitlines()
         if len(lines) > self._MAX_LINES:
             from core.memory._io import atomic_write_text
-            atomic_write_text(path, "\n".join(lines[-self._MAX_LINES:]) + "\n")
+
+            atomic_write_text(path, "\n".join(lines[-self._MAX_LINES :]) + "\n")
 
     def append_cron_command_log(
         self,
@@ -114,7 +122,8 @@ class CronLogger:
         lines = path.read_text(encoding="utf-8").strip().splitlines()
         if len(lines) > self._MAX_LINES:
             from core.memory._io import atomic_write_text
-            atomic_write_text(path, "\n".join(lines[-self._MAX_LINES:]) + "\n")
+
+            atomic_write_text(path, "\n".join(lines[-self._MAX_LINES :]) + "\n")
 
     def read_cron_log(self, days: int = 1) -> str:
         """Read cron logs for the last *days* days."""
@@ -133,21 +142,12 @@ class CronLogger:
                 try:
                     e = json.loads(line)
                     if "summary" in e:
-                        line_text = (
-                            f"- {e['timestamp']}: [{e['task']}] "
-                            f"{e['summary'][:200]} ({e['duration_ms']}ms)"
-                        )
+                        line_text = f"- {e['timestamp']}: [{e['task']}] {e['summary'][:200]} ({e['duration_ms']}ms)"
                     else:
                         exit_code = e.get("exit_code", "?")
-                        preview = (
-                            e.get("stdout_preview", "")
-                            or e.get("stderr_preview", "")
-                        )[:100]
+                        preview = (e.get("stdout_preview", "") or e.get("stderr_preview", ""))[:100]
                         dur = e.get("duration_ms", 0)
-                        line_text = (
-                            f"- {e['timestamp']}: [{e['task']}] "
-                            f"exit={exit_code} {preview} ({dur}ms)"
-                        )
+                        line_text = f"- {e['timestamp']}: [{e['task']}] exit={exit_code} {preview} ({dur}ms)"
                     parts.append(line_text)
                 except (json.JSONDecodeError, KeyError):
                     continue

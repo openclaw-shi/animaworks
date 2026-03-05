@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -23,16 +24,17 @@ if TYPE_CHECKING:
     from core.memory.shortterm import StreamCheckpoint
 
 from core.memory import MemoryManager
-from core.time_utils import now_iso
 from core.memory.shortterm import SessionState, ShortTermMemory
 from core.paths import load_prompt
-from core.prompt.builder import BuildResult, build_system_prompt, inject_shortterm
+from core.prompt.builder import BuildResult, inject_shortterm
 from core.prompt.context import ContextTracker
+from core.time_utils import now_iso
 
 logger = logging.getLogger("animaworks.execution.session")
 
 
 # ── Public helper ─────────────────────────────────────────
+
 
 async def handle_session_chaining(
     tracker: ContextTracker,
@@ -109,11 +111,7 @@ async def handle_session_chaining(
     # Combine accumulated text with the latest response fragment
     full_accumulated = accumulated_response
     if current_text:
-        full_accumulated = (
-            f"{accumulated_response}\n{current_text}"
-            if accumulated_response
-            else current_text
-        )
+        full_accumulated = f"{accumulated_response}\n{current_text}" if accumulated_response else current_text
 
     shortterm.save(
         SessionState(
@@ -148,7 +146,7 @@ def build_continuation_prompt() -> str:
     return load_prompt("session_continuation")
 
 
-def build_stream_retry_prompt(checkpoint: "StreamCheckpoint") -> str:
+def build_stream_retry_prompt(checkpoint: StreamCheckpoint) -> str:
     """Build a continuation prompt from a stream checkpoint.
 
     Summarises what was completed before the disconnect and instructs the
@@ -160,7 +158,6 @@ def build_stream_retry_prompt(checkpoint: "StreamCheckpoint") -> str:
     Returns:
         A prompt string for the retry session.
     """
-    from core.memory.shortterm import StreamCheckpoint  # avoid circular at module level
 
     completed_lines: list[str] = []
     for i, tool in enumerate(checkpoint.completed_tools, 1):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -65,13 +66,15 @@ class MessageDeduplicator:
             if match_count >= 2:
                 logger.debug(
                     "Resolved topic detected: %d keywords matched from '%s'",
-                    match_count, issue[:50],
+                    match_count,
+                    issue[:50],
                 )
                 return True
         return False
 
     def consolidate_messages(
-        self, messages: list[Any],
+        self,
+        messages: list[Any],
     ) -> tuple[list[Any], list[Any]]:
         """Consolidate messages from same sender when 3+ messages exist.
 
@@ -98,14 +101,11 @@ class MessageDeduplicator:
         for m in messages:
             by_sender.setdefault(m.from_person, []).append(m)
 
-        for sender, sender_msgs in by_sender.items():
+        for _, sender_msgs in by_sender.items():
             if len(sender_msgs) >= _CONSOLIDATION_THRESHOLD:
                 first = copy(sender_msgs[0])
                 parts = [m.content for m in sender_msgs]
-                summary_text = (
-                    t("dedup.messages_merged", count=len(sender_msgs))
-                    + "\n\n---\n\n".join(parts)
-                )
+                summary_text = t("dedup.messages_merged", count=len(sender_msgs)) + "\n\n---\n\n".join(parts)
                 first.content = summary_text
                 consolidated.append(first)
                 suppressed.extend(sender_msgs[1:])
@@ -115,7 +115,8 @@ class MessageDeduplicator:
         return consolidated, suppressed
 
     def apply_rate_limit(
-        self, messages: list[Any],
+        self,
+        messages: list[Any],
     ) -> tuple[list[Any], list[Any]]:
         """Rate limit: defer messages when same sender has 5+ messages.
 

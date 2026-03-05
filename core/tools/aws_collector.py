@@ -21,7 +21,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from core.tools._base import logger
@@ -29,9 +29,9 @@ from core.tools._base import logger
 # ── Execution Profile ─────────────────────────────────────
 
 EXECUTION_PROFILE: dict[str, dict[str, object]] = {
-    "ecs-status":  {"expected_seconds": 15, "background_eligible": False},
-    "error-logs":  {"expected_seconds": 20, "background_eligible": False},
-    "metrics":     {"expected_seconds": 15, "background_eligible": False},
+    "ecs-status": {"expected_seconds": 15, "background_eligible": False},
+    "error-logs": {"expected_seconds": 20, "background_eligible": False},
+    "metrics": {"expected_seconds": 15, "background_eligible": False},
 }
 
 # ---------------------------------------------------------------------------
@@ -59,6 +59,7 @@ DEFAULT_ERROR_PATTERNS: list[str] = [
 # ──────────────────────────────────────────────────────────────────────────────
 # AWSCollector
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class AWSCollector:
     """Stateless AWS data collection for ECS services and CloudWatch."""
@@ -95,21 +96,21 @@ class AWSCollector:
         if boto3 is None:
             raise ImportError(_MISSING_MSG)
         try:
-            resp = self._ecs.describe_services(
-                cluster=cluster, services=[service]
-            )
+            resp = self._ecs.describe_services(cluster=cluster, services=[service])
             if not resp.get("services"):
                 return {"error": f"Service '{service}' not found in cluster '{cluster}'"}
 
             svc = resp["services"][0]
             deployments = []
             for dep in svc.get("deployments", []):
-                deployments.append({
-                    "status": dep.get("status"),
-                    "runningCount": dep.get("runningCount", 0),
-                    "desiredCount": dep.get("desiredCount", 0),
-                    "taskDefinition": dep.get("taskDefinition", ""),
-                })
+                deployments.append(
+                    {
+                        "status": dep.get("status"),
+                        "runningCount": dep.get("runningCount", 0),
+                        "desiredCount": dep.get("desiredCount", 0),
+                        "taskDefinition": dep.get("taskDefinition", ""),
+                    }
+                )
 
             return {
                 "runningCount": svc.get("runningCount", 0),
@@ -122,9 +123,7 @@ class AWSCollector:
             logger.error("get_ecs_status failed: %s", exc)
             return {"error": str(exc)}
 
-    def get_ecs_events(
-        self, cluster: str, service: str, limit: int = 20
-    ) -> list[dict[str, Any]]:
+    def get_ecs_events(self, cluster: str, service: str, limit: int = 20) -> list[dict[str, Any]]:
         """Return recent ECS service events (task restarts, health-check failures, etc.).
 
         Args:
@@ -138,9 +137,7 @@ class AWSCollector:
         if boto3 is None:
             raise ImportError(_MISSING_MSG)
         try:
-            resp = self._ecs.describe_services(
-                cluster=cluster, services=[service]
-            )
+            resp = self._ecs.describe_services(cluster=cluster, services=[service])
             if not resp.get("services"):
                 return []
 
@@ -185,9 +182,7 @@ class AWSCollector:
         kw = patterns if patterns is not None else DEFAULT_ERROR_PATTERNS
         filter_pattern = " ".join(f"?{p}" for p in kw)
 
-        start_ms = int(
-            (datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp() * 1000
-        )
+        start_ms = int((datetime.now(UTC) - timedelta(hours=hours)).timestamp() * 1000)
 
         try:
             resp = self._logs.filter_log_events(
@@ -201,9 +196,7 @@ class AWSCollector:
                 {
                     "timestamp": ev.get("timestamp", 0),
                     "datetime": (
-                        datetime.fromtimestamp(
-                            ev["timestamp"] / 1000, tz=timezone.utc
-                        ).isoformat()
+                        datetime.fromtimestamp(ev["timestamp"] / 1000, tz=UTC).isoformat()
                         if ev.get("timestamp")
                         else None
                     ),
@@ -238,7 +231,7 @@ class AWSCollector:
         if boto3 is None:
             raise ImportError(_MISSING_MSG)
 
-        end = datetime.now(timezone.utc)
+        end = datetime.now(UTC)
         start = end - timedelta(hours=hours)
 
         try:
@@ -297,6 +290,7 @@ class AWSCollector:
 # Tool schemas (Anthropic tool_use format)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def get_tool_schemas() -> list[dict[str, Any]]:
     """Return Anthropic-compatible tool schemas for the AWS collector."""
     return []
@@ -331,9 +325,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         prog="animaworks-aws",
         description="AnimaWorks AWS collector CLI",
     )
-    parser.add_argument(
-        "--region", default=None, help="AWS region (default: AWS_REGION env or ap-northeast-1)"
-    )
+    parser.add_argument("--region", default=None, help="AWS region (default: AWS_REGION env or ap-northeast-1)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # ecs-status
@@ -360,13 +352,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     if args.command == "ecs-status":
         result = collector.get_ecs_status(args.cluster, args.service)
     elif args.command == "error-logs":
-        result = collector.get_error_logs(
-            args.log_group, hours=args.hours, patterns=args.patterns
-        )
+        result = collector.get_error_logs(args.log_group, hours=args.hours, patterns=args.patterns)
     elif args.command == "metrics":
-        result = collector.get_metrics(
-            args.cluster, args.service, metric=args.metric, hours=args.hours
-        )
+        result = collector.get_metrics(args.cluster, args.service, metric=args.metric, hours=args.hours)
     else:
         parser.print_help()
         sys.exit(1)

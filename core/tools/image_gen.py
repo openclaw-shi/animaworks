@@ -18,19 +18,43 @@ Pipeline:
   5. Meshy Rigging → rigged GLB + walking/running animations
   6. Meshy Animations → idle/sitting/waving/talking GLBs
 """
+
 from __future__ import annotations
 
-import sys
-import httpx  # noqa: F401 — patch compatibility
 import os  # noqa: F401 — patch compatibility
+import sys
 import time  # noqa: F401 — patch compatibility
 from pathlib import Path
 from typing import Any
 
+import httpx  # noqa: F401 — patch compatibility
+
+# ── Mutable cache proxy ───────────────────────────────
+# Tests manipulate _FBX2GLTF_PATH / _GLTF_MODULES_DIR via the facade module.
+# These live in _image_glb; we proxy reads and writes so that
+# ``import core.tools.image_gen as mod; mod._FBX2GLTF_PATH = X`` propagates.
+import core.tools._image_glb as _glb_mod  # noqa: E402
+
+# Re-export for `from core.tools.image_gen import _VALID_EXPRESSION_NAMES`
+from core.schemas import VALID_EMOTIONS as _VALID_EXPRESSION_NAMES
 from core.tools._base import get_credential, logger  # noqa: F401 — patch compatibility
+
+# ── Re-exports: _image_cli ─────────────────────────────────
+from core.tools._image_cli import cli_main
 
 # ── Re-exports: _image_clients ─────────────────────────────
 from core.tools._image_clients import (
+    _BUSTUP_PROMPT,
+    _CHIBI_PROMPT,
+    _DEFAULT_ANIMATIONS,
+    _DOWNLOAD_TIMEOUT,
+    _EXPRESSION_GUIDANCE,
+    _EXPRESSION_PROMPTS,
+    _HTTP_TIMEOUT,
+    _REALISTIC_BUSTUP_PROMPT,
+    _REALISTIC_EXPRESSION_GUIDANCE,
+    _REALISTIC_EXPRESSION_PROMPTS,
+    _RETRYABLE_CODES,
     EXECUTION_PROFILE,
     FAL_FLUX_PRO_SUBMIT_URL,
     FAL_KONTEXT_SUBMIT_URL,
@@ -47,17 +71,6 @@ from core.tools._image_clients import (
     FluxKontextClient,
     MeshyClient,
     NovelAIClient,
-    _BUSTUP_PROMPT,
-    _CHIBI_PROMPT,
-    _DEFAULT_ANIMATIONS,
-    _DOWNLOAD_TIMEOUT,
-    _EXPRESSION_GUIDANCE,
-    _EXPRESSION_PROMPTS,
-    _HTTP_TIMEOUT,
-    _REALISTIC_BUSTUP_PROMPT,
-    _REALISTIC_EXPRESSION_GUIDANCE,
-    _REALISTIC_EXPRESSION_PROMPTS,
-    _RETRYABLE_CODES,
     _image_to_data_uri,
     _retry,
 )
@@ -81,20 +94,6 @@ from core.tools._image_pipeline import ImageGenPipeline, PipelineResult
 
 # ── Re-exports: _image_schemas ─────────────────────────────
 from core.tools._image_schemas import get_cli_guide, get_tool_schemas
-
-# ── Re-exports: _image_cli ─────────────────────────────────
-from core.tools._image_cli import cli_main
-
-# Re-export for `from core.tools.image_gen import _VALID_EXPRESSION_NAMES`
-from core.schemas import VALID_EMOTIONS as _VALID_EXPRESSION_NAMES
-
-
-# ── Mutable cache proxy ───────────────────────────────
-# Tests manipulate _FBX2GLTF_PATH / _GLTF_MODULES_DIR via the facade module.
-# These live in _image_glb; we proxy reads and writes so that
-# ``import core.tools.image_gen as mod; mod._FBX2GLTF_PATH = X`` propagates.
-
-import core.tools._image_glb as _glb_mod  # noqa: E402
 
 _MUTABLE_GLB_ATTRS = {"_FBX2GLTF_PATH", "_GLTF_MODULES_DIR"}
 
@@ -122,10 +121,16 @@ _this.__class__ = _FacadeModule
 
 # ── Helpers ───────────────────────────────────────────
 
-_ANIME_MARKER_TAGS = frozenset({
-    "anime coloring", "clean lineart", "soft shading",
-    "masterpiece", "best quality", "absurdres",
-})
+_ANIME_MARKER_TAGS = frozenset(
+    {
+        "anime coloring",
+        "clean lineart",
+        "soft shading",
+        "masterpiece",
+        "best quality",
+        "absurdres",
+    }
+)
 
 
 def _looks_like_anime_prompt(prompt: str) -> bool:
@@ -166,13 +171,9 @@ def dispatch(tool_name: str, args: dict[str, Any]) -> Any:
         # Use supervisor's fullbody image as Vibe Transfer reference
         if supervisor_name:
             ref_name = (
-                "avatar_fullbody_realistic.png"
-                if image_config.image_style == "realistic"
-                else "avatar_fullbody.png"
+                "avatar_fullbody_realistic.png" if image_config.image_style == "realistic" else "avatar_fullbody.png"
             )
-            supervisor_fullbody = (
-                get_animas_dir() / supervisor_name / "assets" / ref_name
-            )
+            supervisor_fullbody = get_animas_dir() / supervisor_name / "assets" / ref_name
             if supervisor_fullbody.exists():
                 image_config = image_config.model_copy(
                     update={"style_reference": str(supervisor_fullbody)},
@@ -268,7 +269,8 @@ def dispatch(tool_name: str, args: dict[str, Any]) -> Any:
             return {"error": "No 3D model found for rigging"}
         client = MeshyClient()
         data_uri = _image_to_data_uri(
-            glb_path.read_bytes(), mime="model/gltf-binary",
+            glb_path.read_bytes(),
+            mime="model/gltf-binary",
         )
         body = {
             "model_url": data_uri,
@@ -308,7 +310,8 @@ def dispatch(tool_name: str, args: dict[str, Any]) -> Any:
             return {"error": "No 3D model found for animation"}
         client = MeshyClient()
         data_uri = _image_to_data_uri(
-            glb_path.read_bytes(), mime="model/gltf-binary",
+            glb_path.read_bytes(),
+            mime="model/gltf-binary",
         )
         body = {"model_url": data_uri, "height_meters": 1.0}
         resp = _httpx.post(

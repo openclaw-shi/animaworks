@@ -10,14 +10,14 @@ separate subprocesses communicating via Unix Domain Sockets.
 
 from __future__ import annotations
 
-from core.supervisor.ipc import IPCClient, IPCServer, IPCRequest, IPCResponse, IPCEvent
-from core.supervisor.process_handle import ProcessHandle, ProcessState, ProcessStats
+from core.supervisor.ipc import IPCClient, IPCEvent, IPCRequest, IPCResponse, IPCServer
 from core.supervisor.manager import (
-    ProcessSupervisor,
-    RestartPolicy,
     HealthConfig,
+    ProcessSupervisor,
     ReconciliationConfig,
+    RestartPolicy,
 )
+from core.supervisor.process_handle import ProcessHandle, ProcessState, ProcessStats
 
 __all__ = [
     "IPCClient",

@@ -24,17 +24,18 @@ from core.tools._base import logger
 # ── Execution Profile ─────────────────────────────────────
 
 EXECUTION_PROFILE: dict[str, dict[str, object]] = {
-    "issues":       {"expected_seconds": 15, "background_eligible": False},
-    "issue":        {"expected_seconds": 10, "background_eligible": False},
+    "issues": {"expected_seconds": 15, "background_eligible": False},
+    "issue": {"expected_seconds": 10, "background_eligible": False},
     "create-issue": {"expected_seconds": 15, "background_eligible": False},
-    "prs":          {"expected_seconds": 15, "background_eligible": False},
-    "create-pr":    {"expected_seconds": 15, "background_eligible": False},
+    "prs": {"expected_seconds": 15, "background_eligible": False},
+    "create-pr": {"expected_seconds": 15, "background_eligible": False},
 }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # GitHubClient
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class GitHubClient:
     """GitHub operations via the ``gh`` CLI."""
@@ -63,13 +64,10 @@ class GitHubClient:
             )
         except FileNotFoundError:
             raise RuntimeError(
-                "GitHub CLI 'gh' is not installed. "
-                "See https://cli.github.com/ for installation instructions."
-            )
+                "GitHub CLI 'gh' is not installed. See https://cli.github.com/ for installation instructions."
+            ) from None
         except subprocess.CalledProcessError:
-            raise RuntimeError(
-                "GitHub CLI 'gh' is not authenticated. Run: gh auth login"
-            )
+            raise RuntimeError("GitHub CLI 'gh' is not authenticated. Run: gh auth login") from None
 
     def _run(self, args: list[str], input_text: str | None = None) -> str:
         """Execute a ``gh`` sub-command and return *stdout*.
@@ -111,10 +109,14 @@ class GitHubClient:
             List of issue dicts.
         """
         args = [
-            "issue", "list",
-            "--state", state,
-            "--limit", str(limit),
-            "--json", "number,title,state,labels,createdAt,author,assignees,body",
+            "issue",
+            "list",
+            "--state",
+            state,
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,state,labels,createdAt,author,assignees,body",
         ]
         if labels:
             args.extend(["--label", ",".join(labels)])
@@ -130,7 +132,9 @@ class GitHubClient:
             Issue dict with body, comments, labels, etc.
         """
         args = [
-            "issue", "view", str(number),
+            "issue",
+            "view",
+            str(number),
             "--json",
             "number,title,state,body,labels,comments,createdAt,author,assignees",
         ]
@@ -178,9 +182,12 @@ class GitHubClient:
             List of PR dicts.
         """
         args = [
-            "pr", "list",
-            "--state", state,
-            "--limit", str(limit),
+            "pr",
+            "list",
+            "--state",
+            state,
+            "--limit",
+            str(limit),
             "--json",
             "number,title,state,headRefName,baseRefName,createdAt,author,isDraft",
         ]
@@ -207,11 +214,16 @@ class GitHubClient:
             Dict with ``number``, ``url``, and ``title``.
         """
         args = [
-            "pr", "create",
-            "--title", title,
-            "--body", body,
-            "--head", head,
-            "--base", base,
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--head",
+            head,
+            "--base",
+            base,
         ]
         if draft:
             args.append("--draft")
@@ -230,8 +242,11 @@ class GitHubClient:
             Returns an empty list if checks cannot be retrieved.
         """
         args = [
-            "pr", "checks", str(number),
-            "--json", "name,state,conclusion",
+            "pr",
+            "checks",
+            str(number),
+            "--json",
+            "name,state,conclusion",
         ]
         try:
             return json.loads(self._run(args))
@@ -242,6 +257,7 @@ class GitHubClient:
 # ──────────────────────────────────────────────────────────────────────────────
 # Tool schemas (Anthropic tool_use format)
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def get_tool_schemas() -> list[dict[str, Any]]:
     """Return Anthropic-compatible tool schemas for GitHub operations."""
@@ -282,9 +298,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         prog="animaworks-github",
         description="AnimaWorks GitHub CLI",
     )
-    parser.add_argument(
-        "--repo", default=None, help="Repository in 'owner/repo' format"
-    )
+    parser.add_argument("--repo", default=None, help="Repository in 'owner/repo' format")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # issues
@@ -320,15 +334,11 @@ def cli_main(argv: list[str] | None = None) -> None:
     client = GitHubClient(repo=args.repo)
 
     if args.command == "issues":
-        result = client.list_issues(
-            state=args.state, labels=args.labels, limit=args.limit
-        )
+        result = client.list_issues(state=args.state, labels=args.labels, limit=args.limit)
     elif args.command == "issue":
         result = client.get_issue(args.number)
     elif args.command == "create-issue":
-        result = client.create_issue(
-            title=args.title, body=args.body, labels=args.labels
-        )
+        result = client.create_issue(title=args.title, body=args.body, labels=args.labels)
     elif args.command == "prs":
         result = client.list_prs(state=args.state, limit=args.limit)
     elif args.command == "create-pr":

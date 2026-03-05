@@ -21,25 +21,24 @@ import json
 import logging
 import os
 import sys
-from pathlib import Path
-
-from core.time_utils import ensure_aware, now_jst
-
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any, Union
+from pathlib import Path
+from typing import Any
 
-from core.exceptions import ProcessError, MemoryWriteError, ExecutionError  # noqa: F401
 from core.anima import DigitalAnima
+from core.exceptions import ExecutionError, MemoryWriteError, ProcessError  # noqa: F401
 from core.memory.streaming_journal import StreamingJournal
-from core.supervisor.ipc import IPCServer, IPCRequest, IPCResponse
 from core.supervisor.inbox_rate_limiter import InboxRateLimiter
+from core.supervisor.ipc import IPCRequest, IPCResponse, IPCServer
 from core.supervisor.pending_executor import PendingTaskExecutor
 from core.supervisor.scheduler_manager import SchedulerManager
 from core.supervisor.streaming_handler import StreamingIPCHandler
+from core.time_utils import ensure_aware, now_jst
 
 logger = logging.getLogger(__name__)
 
 # ── AnimaRunner ──────────────────────────────────────────────────
+
 
 class AnimaRunner:
     """
@@ -50,13 +49,7 @@ class AnimaRunner:
     task execution to dedicated classes.
     """
 
-    def __init__(
-        self,
-        anima_name: str,
-        socket_path: Path,
-        animas_dir: Path,
-        shared_dir: Path
-    ):
+    def __init__(self, anima_name: str, socket_path: Path, animas_dir: Path, shared_dir: Path):
         self.anima_name = anima_name
         self.socket_path = socket_path
         self.animas_dir = animas_dir
@@ -98,7 +91,8 @@ class AnimaRunner:
             existing_pid = pid_path.read_text().strip() if pid_path.exists() else "unknown"
             logger.error(
                 "DUPLICATE PROCESS: %s is already running (pid=%s). Exiting.",
-                self.anima_name, existing_pid,
+                self.anima_name,
+                existing_pid,
             )
             self._lock_file.close()
             self._lock_file = None
@@ -120,19 +114,13 @@ class AnimaRunner:
             self._acquire_process_lock()
 
             # Start IPC server first so the socket is created immediately.
-            self.ipc_server = IPCServer(
-                socket_path=self.socket_path,
-                request_handler=self._handle_request
-            )
+            self.ipc_server = IPCServer(socket_path=self.socket_path, request_handler=self._handle_request)
             await self.ipc_server.start()
 
             logger.info("Initializing Anima: %s", self.anima_name)
 
             # Initialize DigitalAnima (heavy: RAG indexer, model loading)
-            self.anima = DigitalAnima(
-                anima_dir=self._anima_dir,
-                shared_dir=self.shared_dir
-            )
+            self.anima = DigitalAnima(anima_dir=self._anima_dir, shared_dir=self.shared_dir)
 
             # Create delegate instances
             self._scheduler_mgr = SchedulerManager(
@@ -158,9 +146,7 @@ class AnimaRunner:
                 self._pending_executor.wake,
             )
             # Wire active parallel tasks getter for Priming channel E
-            self.anima.agent._active_parallel_tasks_getter = (
-                lambda: self.anima._active_parallel_tasks
-            )
+            self.anima.agent._active_parallel_tasks_getter = lambda: self.anima._active_parallel_tasks
             self._streaming_handler = StreamingIPCHandler(
                 anima=self.anima,
                 anima_name=self.anima_name,
@@ -168,18 +154,19 @@ class AnimaRunner:
             )
 
             inbox_limiter = self._inbox_limiter
-            self.anima.set_on_lock_released(
-                lambda: asyncio.ensure_future(inbox_limiter.on_anima_lock_released())
-            )
+            self.anima.set_on_lock_released(lambda: asyncio.ensure_future(inbox_limiter.on_anima_lock_released()))
 
             # Wire on_message_sent callback for WebSocket event emission
             def _on_message_sent(from_name: str, to_name: str, content: str) -> None:
-                self._emit_event("anima.interaction", {
-                    "from_person": from_name,
-                    "to_person": to_name,
-                    "type": "message",
-                    "summary": content[:200],
-                })
+                self._emit_event(
+                    "anima.interaction",
+                    {
+                        "from_person": from_name,
+                        "to_person": to_name,
+                        "type": "message",
+                        "summary": content[:200],
+                    },
+                )
 
             self.anima.set_on_message_sent(_on_message_sent)
 
@@ -188,6 +175,7 @@ class AnimaRunner:
 
             # Clean up stale .tmp files left by interrupted atomic writes
             from core.memory._io import cleanup_tmp_files
+
             cleanup_tmp_files(self._anima_dir / "state")
             cleanup_tmp_files(self._anima_dir / "knowledge")
 
@@ -197,14 +185,10 @@ class AnimaRunner:
             self._scheduler_mgr.setup()
 
             # Start inbox watcher
-            self.inbox_watcher_task = asyncio.create_task(
-                self._inbox_limiter.inbox_watcher_loop()
-            )
+            self.inbox_watcher_task = asyncio.create_task(self._inbox_limiter.inbox_watcher_loop())
 
             # Start pending task watcher (picks up animaworks-tool submit)
-            self.pending_task_watcher_task = asyncio.create_task(
-                self._pending_executor.watcher_loop()
-            )
+            self.pending_task_watcher_task = asyncio.create_task(self._pending_executor.watcher_loop())
 
             logger.info("Anima process ready: %s", self.anima_name)
 
@@ -225,7 +209,9 @@ class AnimaRunner:
             # 全内部ハンドラをすり抜けた BaseException の最終安全弁。
             logger.critical(
                 "FATAL BaseException in AnimaRunner (%s): %s: %s",
-                self.anima_name, type(e).__name__, e,
+                self.anima_name,
+                type(e).__name__,
+                e,
             )
             sys.exit(getattr(e, "code", 1) if isinstance(e, SystemExit) else 1)
 
@@ -267,15 +253,13 @@ class AnimaRunner:
                 elif recovery.recovered_text and self.anima:
                     try:
                         from core.memory.conversation import ConversationMemory
+
                         conv_memory = ConversationMemory(
                             self._anima_dir,
                             self.anima.model_config,
                             thread_id=thread_id,
                         )
-                        saved_text = (
-                            recovery.recovered_text
-                            + "\n[応答が中断されました]"
-                        )
+                        saved_text = recovery.recovered_text + "\n[応答が中断されました]"
                         conv_memory.append_turn("assistant", saved_text)
                         conv_memory.save()
                         StreamingJournal.confirm_recovery(self._anima_dir, session_type, thread_id=thread_id)
@@ -302,6 +286,7 @@ class AnimaRunner:
                         recovery_note_path = self._anima_dir / "state" / "recovery_note.md"
                         from core.i18n import t
                         from core.time_utils import now_iso
+
                         note_content = t(
                             "anima.recovery_crash_info",
                             ts=recovery.last_event_at or recovery.started_at or now_iso(),
@@ -314,16 +299,16 @@ class AnimaRunner:
                     except Exception:
                         logger.debug(
                             "Failed to save recovery note for crashed heartbeat: %s",
-                            self.anima_name, exc_info=True,
+                            self.anima_name,
+                            exc_info=True,
                         )
 
                 # Record crash event in activity log
                 try:
                     from core.memory.activity import ActivityLogger
+
                     activity = ActivityLogger(self._anima_dir)
-                    recovery_summary = (
-                        f"応答が中断されました（前回セッションの未完了ストリームを回復, {session_type}）"
-                    )
+                    recovery_summary = f"応答が中断されました（前回セッションの未完了ストリームを回復, {session_type}）"
                     recovery_content = recovery_summary
                     if recovery.recovered_text:
                         recovery_content = f"{recovery.recovered_text}\n\n{recovery_summary}"
@@ -355,6 +340,7 @@ class AnimaRunner:
                 if recovery.tool_calls:
                     try:
                         from core.memory.activity import ActivityLogger as _AL
+
                         _activity = _AL(self._anima_dir)
                         for tc in recovery.tool_calls:
                             _activity.log(
@@ -377,6 +363,7 @@ class AnimaRunner:
     def _emit_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Write an event file for the parent process to pick up."""
         import time as _time
+
         events_dir = self.shared_dir.parent / "run" / "events" / self.anima_name
         events_dir.mkdir(parents=True, exist_ok=True)
         # Use monotonic timestamp for uniqueness
@@ -388,9 +375,7 @@ class AnimaRunner:
 
     # ── IPC Handlers ──────────────────────────────────────────────
 
-    async def _handle_request(
-        self, request: IPCRequest
-    ) -> Union[IPCResponse, AsyncIterator[IPCResponse]]:
+    async def _handle_request(self, request: IPCRequest) -> IPCResponse | AsyncIterator[IPCResponse]:
         """
         Handle incoming IPC request.
 
@@ -400,21 +385,13 @@ class AnimaRunner:
         """
         try:
             # Check for streaming process_message
-            if (
-                request.method == "process_message"
-                and request.params.get("stream")
-                and self._streaming_handler
-            ):
+            if request.method == "process_message" and request.params.get("stream") and self._streaming_handler:
                 return self._streaming_handler.handle_stream(request)
 
             handler = self._get_handler(request.method)
             if not handler:
                 return IPCResponse(
-                    id=request.id,
-                    error={
-                        "code": "UNKNOWN_METHOD",
-                        "message": f"Unknown method: {request.method}"
-                    }
+                    id=request.id, error={"code": "UNKNOWN_METHOD", "message": f"Unknown method: {request.method}"}
                 )
 
             result = await handler(request.params)
@@ -422,13 +399,7 @@ class AnimaRunner:
 
         except Exception as e:
             logger.exception("Error handling request %s: %s", request.method, e)
-            return IPCResponse(
-                id=request.id,
-                error={
-                    "code": "EXECUTION_ERROR",
-                    "message": str(e)
-                }
-            )
+            return IPCResponse(id=request.id, error={"code": "EXECUTION_ERROR", "message": str(e)})
 
     def _get_handler(self, method: str) -> Callable[..., Awaitable[dict[str, Any]]] | None:
         """Get handler for method."""
@@ -461,9 +432,11 @@ class AnimaRunner:
         thread_id = params.get("thread_id", "default")
 
         result = await self.anima.process_message(
-            message, from_person=from_person,
+            message,
+            from_person=from_person,
             intent=intent,
-            images=images, attachment_paths=attachment_paths,
+            images=images,
+            attachment_paths=attachment_paths,
             thread_id=thread_id,
             include_cycle_result=True,
         )
@@ -515,7 +488,11 @@ class AnimaRunner:
         if not self.anima:
             return {"error": "Anima not ready"}
         result = await self.anima.process_inbox_message()
-        return result.model_dump() if hasattr(result, "model_dump") else {"action": result.action, "summary": result.summary}
+        return (
+            result.model_dump()
+            if hasattr(result, "model_dump")
+            else {"action": result.action, "summary": result.summary}
+        )
 
     async def _handle_run_cron_task(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle run_cron_task request."""
@@ -577,13 +554,9 @@ class AnimaRunner:
         is_busy = False
         if self.anima is not None:
             try:
-                any_conversation_locked = any(
-                    lock.locked() for lock in self.anima._conversation_locks.values()
-                )
+                any_conversation_locked = any(lock.locked() for lock in self.anima._conversation_locks.values())
                 is_busy = (
-                    any_conversation_locked
-                    or self.anima._background_lock.locked()
-                    or self.anima._inbox_lock.locked()
+                    any_conversation_locked or self.anima._background_lock.locked() or self.anima._inbox_lock.locked()
                 )
             except Exception:
                 logger.debug("Failed to compute ping busy status", exc_info=True)
@@ -662,6 +635,7 @@ class AnimaRunner:
 
 # ── CLI Entry Point ────────────────────────────────────────────────
 
+
 def setup_logging(anima_name: str, log_dir: Path) -> None:
     """Setup logging for child process with anima-specific log files."""
     from core.logging_config import setup_anima_logging
@@ -670,44 +644,18 @@ def setup_logging(anima_name: str, log_dir: Path) -> None:
         anima_name=anima_name,
         log_dir=log_dir,
         level="INFO",
-        also_to_console=False  # Child processes log to file only
+        also_to_console=False,  # Child processes log to file only
     )
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Run an Anima in a subprocess"
-    )
-    parser.add_argument(
-        "--anima-name",
-        required=True,
-        help="Name of the anima to run"
-    )
-    parser.add_argument(
-        "--socket-path",
-        required=True,
-        type=Path,
-        help="Path to Unix socket file"
-    )
-    parser.add_argument(
-        "--animas-dir",
-        required=True,
-        type=Path,
-        help="Path to animas directory"
-    )
-    parser.add_argument(
-        "--shared-dir",
-        required=True,
-        type=Path,
-        help="Path to shared directory"
-    )
-    parser.add_argument(
-        "--log-dir",
-        required=True,
-        type=Path,
-        help="Path to log directory"
-    )
+    parser = argparse.ArgumentParser(description="Run an Anima in a subprocess")
+    parser.add_argument("--anima-name", required=True, help="Name of the anima to run")
+    parser.add_argument("--socket-path", required=True, type=Path, help="Path to Unix socket file")
+    parser.add_argument("--animas-dir", required=True, type=Path, help="Path to animas directory")
+    parser.add_argument("--shared-dir", required=True, type=Path, help="Path to shared directory")
+    parser.add_argument("--log-dir", required=True, type=Path, help="Path to log directory")
     return parser.parse_args()
 
 
@@ -723,7 +671,9 @@ def _install_signal_diagnostics(anima_name: str) -> None:
         sig_name = _sig.Signals(signum).name if signum in _sig.Signals._value2member_map_ else str(signum)
         logger.error(
             "SIGNAL RECEIVED: %s (%d) in anima=%s — exiting",
-            sig_name, signum, anima_name,
+            sig_name,
+            signum,
+            anima_name,
         )
         sys.exit(128 + signum)
 
@@ -740,10 +690,7 @@ async def main() -> None:
     _install_signal_diagnostics(args.anima_name)
 
     runner = AnimaRunner(
-        anima_name=args.anima_name,
-        socket_path=args.socket_path,
-        animas_dir=args.animas_dir,
-        shared_dir=args.shared_dir
+        anima_name=args.anima_name, socket_path=args.socket_path, animas_dir=args.animas_dir, shared_dir=args.shared_dir
     )
 
     await runner.run()

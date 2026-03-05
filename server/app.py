@@ -1,12 +1,11 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
-
 import asyncio
 import logging
 import time
@@ -25,23 +24,25 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse as StarletteJSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from core.auth.manager import load_auth, validate_session, find_user
+from core.auth.manager import find_user, load_auth, validate_session
 from core.config import load_config
 from core.supervisor import ProcessSupervisor
 from server.localhost import _is_safe_localhost_request
 from server.routes import create_router
 from server.routes.setup import create_setup_router
-from server.websocket import WebSocketManager
 from server.stream_registry import StreamRegistry
+from server.websocket import WebSocketManager
 
 logger = logging.getLogger("animaworks.server")
 
 # Paths to exclude from request logging (noisy health checks, etc.)
-_NOISY_PATHS = frozenset({
-    "/api/system/health",
-    "/api/system/status",
-    "/ws",
-})
+_NOISY_PATHS = frozenset(
+    {
+        "/api/system/health",
+        "/api/system/status",
+        "/ws",
+    }
+)
 
 
 class RequestLoggingMiddleware:
@@ -62,7 +63,8 @@ class RequestLoggingMiddleware:
 
         request = Request(scope)
         request_id = request.headers.get(
-            "X-Request-ID", uuid.uuid4().hex[:12],
+            "X-Request-ID",
+            uuid.uuid4().hex[:12],
         )
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
@@ -113,7 +115,9 @@ async def _reconcile_assets_at_startup(animas_dir: Path) -> None:
             pass
 
         results = await reconcile_all_assets(
-            animas_dir, enable_3d=enable_3d, image_style=image_style,
+            animas_dir,
+            enable_3d=enable_3d,
+            image_style=image_style,
         )
         if results:
             logger.info("Startup asset reconciliation: %d anima(s) processed", len(results))
@@ -154,7 +158,9 @@ async def _startup_animas_background(app: FastAPI) -> None:
             for _aname in app.state.anima_names:
                 _adir = app.state.animas_dir / _aname
                 _fm_svc = FrontmatterService(
-                    _adir, _adir / "knowledge", _adir / "procedures",
+                    _adir,
+                    _adir / "knowledge",
+                    _adir / "procedures",
                 )
                 _migrated_total += _fm_svc.ensure_procedure_frontmatter()
                 _migrated_total += _fm_svc.ensure_knowledge_frontmatter()
@@ -252,6 +258,7 @@ async def lifespan(app: FastAPI):
                 image_style = "realistic"
                 try:
                     from core.config.models import load_config
+
                     _cfg = load_config()
                     enable_3d = _cfg.image_gen.enable_3d
                     image_style = _cfg.image_gen.image_style or "realistic"
@@ -359,6 +366,7 @@ def create_app(animas_dir: Path, shared_dir: Path) -> FastAPI:
 
     # Initialize ProcessSupervisor
     from core.paths import get_data_dir
+
     log_dir = get_data_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -406,7 +414,8 @@ def create_app(animas_dir: Path, shared_dir: Path) -> FastAPI:
     async def global_exception_handler(request: Request, exc: Exception):
         logger.exception("Unhandled exception: %s", exc)
         return StarletteJSONResponse(
-            {"error": "Internal server error"}, status_code=500,
+            {"error": "Internal server error"},
+            status_code=500,
         )
 
     # ── Request logging middleware ─────────────────────────

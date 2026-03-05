@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -19,15 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from core.prompt.context import ContextTracker
-from core.execution.reminder import SystemReminderQueue
-from core.schemas import ImageData, ModelConfig
-from core.memory.shortterm import ShortTermMemory
-
-
 # ── Streaming error ──────────────────────────────────────────
-
 from core.exceptions import StreamDisconnectedError  # noqa: F401 – re-export
+from core.execution.reminder import SystemReminderQueue
+from core.memory.shortterm import ShortTermMemory
+from core.prompt.context import ContextTracker
+from core.schemas import ImageData, ModelConfig
 
 # ── Per-task interrupt event ─────────────────────────────────
 # Each asyncio task (i.e. each concurrent HTTP request) gets its own
@@ -35,7 +33,8 @@ from core.exceptions import StreamDisconnectedError  # noqa: F401 – re-export
 # multiple chat threads share a single executor instance.
 
 _active_interrupt_event: ContextVar[asyncio.Event | None] = ContextVar(
-    "_active_interrupt_event", default=None,
+    "_active_interrupt_event",
+    default=None,
 )
 
 
@@ -99,7 +98,7 @@ def strip_thinking_tags(text: str) -> tuple[str, str]:
     """
     m = _THINK_TAG_RE.match(text)
     if m:
-        return m.group(1), text[m.end():]
+        return m.group(1), text[m.end() :]
     return "", text
 
 
@@ -131,8 +130,7 @@ class StreamingThinkFilter:
         # Early exit: if accumulated text clearly doesn't start with <think>,
         # pass through immediately so non-think streams aren't buffered.
         stripped = self._buffer.lstrip()
-        if stripped and not stripped.startswith(self._THINK_OPEN) \
-                and not self._THINK_OPEN.startswith(stripped):
+        if stripped and not stripped.startswith(self._THINK_OPEN) and not self._THINK_OPEN.startswith(stripped):
             self._done = True
             text = self._buffer
             self._buffer = ""
@@ -163,11 +161,16 @@ class StreamingThinkFilter:
 
 # Per-tool base budgets (character count) calibrated for a 128K context model.
 _TOOL_RESULT_BASE_BUDGET: dict[str, int] = {
-    "Read": 4000, "Grep": 4000, "Glob": 4000,
+    "Read": 4000,
+    "Grep": 4000,
+    "Glob": 4000,
     "Bash": 2000,
-    "web_search": 1500, "x_search": 1500,
-    "write_file": 500, "edit_file": 500,
-    "search_memory": 1500, "read_file": 4000,
+    "web_search": 1500,
+    "x_search": 1500,
+    "write_file": 500,
+    "edit_file": 500,
+    "search_memory": 1500,
+    "read_file": 4000,
 }
 _TOOL_RESULT_DEFAULT_BUDGET = 1000
 _TOOL_INPUT_BASE_BUDGET = 500
@@ -247,7 +250,7 @@ class TokenUsage:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
 
-    def merge(self, other: "TokenUsage") -> None:
+    def merge(self, other: TokenUsage) -> None:
         """Accumulate usage from another TokenUsage (for chaining)."""
         self.input_tokens += other.input_tokens
         self.output_tokens += other.output_tokens
@@ -344,12 +347,10 @@ class BaseExecutor(ABC):
         """Check if this anima has any subordinates (is a supervisor)."""
         try:
             from core.config.models import load_config
+
             config = load_config()
             my_name = self._anima_dir.name
-            return any(
-                cfg.supervisor == my_name
-                for cfg in config.animas.values()
-            )
+            return any(cfg.supervisor == my_name for cfg in config.animas.values())
         except Exception:
             return False
 
@@ -425,6 +426,7 @@ class BaseExecutor(ABC):
         """Resolve LLM API retry count from ``config.server.llm_num_retries``."""
         try:
             from core.config import load_config
+
             return load_config().server.llm_num_retries
         except (OSError, AttributeError, ValueError):
             return 3
@@ -434,6 +436,7 @@ class BaseExecutor(ABC):
         from core.config import load_config
         from core.exceptions import ConfigError
         from core.prompt.context import resolve_context_window
+
         try:
             overrides = load_config().model_context_windows
         except (ConfigError, OSError):
@@ -444,6 +447,7 @@ class BaseExecutor(ABC):
         """Return config model_context_windows or None."""
         from core.config import load_config
         from core.exceptions import ConfigError
+
         try:
             return load_config().model_context_windows
         except (ConfigError, OSError):

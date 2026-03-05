@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -122,6 +123,7 @@ TOOL_TRUST_LEVELS: dict[str, str] = {
 
 
 # ── Boundary wrappers ──────────────────────────────────────────
+
 
 def wrap_tool_result(
     tool_name: str,

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -13,20 +14,21 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncGenerator
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pathlib import Path
+
     from core.execution.base import ExecutionResult
 
 from core._agent_prompt_log import _save_prompt_log, _save_prompt_log_end
-from core.prompt.builder import BuildResult, build_system_prompt, inject_shortterm
-from core.prompt.context import ContextTracker
+from core.i18n import t
 from core.memory.shortterm import SessionState, ShortTermMemory
+from core.paths import load_prompt
+from core.prompt.builder import build_system_prompt, inject_shortterm
+from core.prompt.context import ContextTracker
 from core.schemas import CycleResult, ImageData
 from core.time_utils import now_iso
-from core.paths import load_prompt
-from core.i18n import t
 
 logger = logging.getLogger("animaworks.agent")
 
@@ -43,7 +45,7 @@ def _merge_stream_usage(acc: dict[str, int], chunk_usage: dict[str, int] | None)
 
 
 def _log_session_token_usage(
-    anima_dir: "Path",
+    anima_dir: Path,
     *,
     model: str,
     mode: str,
@@ -58,6 +60,7 @@ def _log_session_token_usage(
         return
     try:
         from core.memory.token_usage import TokenUsageLogger
+
         tul = TokenUsageLogger(anima_dir)
         tul.log(
             model=model,
@@ -127,12 +130,15 @@ class CycleMixin:
         mode = self._resolve_execution_mode()
         logger.info(
             "run_cycle START trigger=%s prompt_len=%d mode=%s",
-            trigger, len(prompt), mode,
+            trigger,
+            len(prompt),
+            mode,
         )
 
         # ── Resolve context window and prompt tier ────────────
-        from core.prompt.context import resolve_context_window
         from core.prompt.builder import resolve_prompt_tier
+        from core.prompt.context import resolve_context_window
+
         _ctx_window = resolve_context_window(
             self.model_config.model,
             overrides=self._load_context_window_overrides(),
@@ -173,12 +179,17 @@ class CycleMixin:
 
         # ── Context-window-aware tier downgrade ────────────
         system_prompt = self._fit_prompt_to_context_window(
-            system_prompt, prompt, _ctx_window,
-            priming_section=priming_section, mode=mode, trigger=trigger,
+            system_prompt,
+            prompt,
+            _ctx_window,
+            priming_section=priming_section,
+            mode=mode,
+            trigger=trigger,
         )
 
         if injected_procedures:
             from core.memory.conversation import ConversationMemory as _CM
+
             _cm = _CM(self.anima_dir, self.model_config)
             _cm.store_injected_procedures(
                 injected_procedures,
@@ -190,6 +201,7 @@ class CycleMixin:
 
         # ── Prompt log: save full payload for debugging ───
         from core.tooling.schemas import load_all_tool_schemas
+
         _tool_schemas = load_all_tool_schemas(
             tool_registry=self._tool_registry,
             personal_tools=self._personal_tools,
@@ -210,8 +222,9 @@ class CycleMixin:
         )
 
         # ── Helper: convert ExecutionResult tool records to dicts ──
-        def _tool_records_to_dicts(result: "ExecutionResult") -> list[dict]:
+        def _tool_records_to_dicts(result: ExecutionResult) -> list[dict]:
             from dataclasses import asdict as _asdict
+
             return [_asdict(r) for r in result.tool_call_records]
 
         # ── Mode B: text-based tool-call loop ─────────────
@@ -231,12 +244,18 @@ class CycleMixin:
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 "run_cycle END (mode-b) trigger=%s duration_ms=%d response_len=%d",
-                trigger, duration_ms, len(result.text),
+                trigger,
+                duration_ms,
+                len(result.text),
             )
             _b_usage = result.usage.to_dict() if result.usage else None
             _log_session_token_usage(
-                self.anima_dir, model=self.model_config.model, mode="b",
-                trigger=trigger, usage=_b_usage, duration_ms=duration_ms,
+                self.anima_dir,
+                model=self.model_config.model,
+                mode="b",
+                trigger=trigger,
+                usage=_b_usage,
+                duration_ms=duration_ms,
             )
             return CycleResult(
                 trigger=trigger,
@@ -268,12 +287,18 @@ class CycleMixin:
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 "run_cycle END (c) trigger=%s duration_ms=%d response_len=%d",
-                trigger, duration_ms, len(result.text),
+                trigger,
+                duration_ms,
+                len(result.text),
             )
             _c_usage = result.usage.to_dict() if result.usage else None
             _log_session_token_usage(
-                self.anima_dir, model=self.model_config.model, mode="c",
-                trigger=trigger, usage=_c_usage, duration_ms=duration_ms,
+                self.anima_dir,
+                model=self.model_config.model,
+                mode="c",
+                trigger=trigger,
+                usage=_c_usage,
+                duration_ms=duration_ms,
             )
             return CycleResult(
                 trigger=trigger,
@@ -305,12 +330,18 @@ class CycleMixin:
             duration_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 "run_cycle END (a) trigger=%s duration_ms=%d response_len=%d",
-                trigger, duration_ms, len(result.text),
+                trigger,
+                duration_ms,
+                len(result.text),
             )
             _a_usage = result.usage.to_dict() if result.usage else None
             _log_session_token_usage(
-                self.anima_dir, model=self.model_config.model, mode="a",
-                trigger=trigger, usage=_a_usage, duration_ms=duration_ms,
+                self.anima_dir,
+                model=self.model_config.model,
+                mode="a",
+                trigger=trigger,
+                usage=_a_usage,
+                duration_ms=duration_ms,
             )
             return CycleResult(
                 trigger=trigger,
@@ -325,9 +356,12 @@ class CycleMixin:
         # ── Mode S: Claude Agent SDK ──────────────────────
         # Pre-flight: check prompt size to prevent Agent SDK buffer overflow
         from core.memory.conversation import ConversationMemory
+
         conv_memory = ConversationMemory(self.anima_dir, self.model_config)
         system_prompt, prompt, use_fallback = await self._preflight_size_check(
-            system_prompt, prompt, conv_memory,
+            system_prompt,
+            prompt,
+            conv_memory,
             priming_section=priming_section,
             mode=mode,
             message=prompt,
@@ -375,10 +409,7 @@ class CycleMixin:
         chain_count = 0
         accumulated_text = result.text
 
-        while (
-            tracker.threshold_exceeded
-            and chain_count < self.model_config.max_chains
-        ):
+        while tracker.threshold_exceeded and chain_count < self.model_config.max_chains:
             session_chained = True
             chain_count += 1
             logger.info(
@@ -406,6 +437,7 @@ class CycleMixin:
             if mode == "s":
                 try:
                     from core.execution.agent_sdk import clear_session_ids
+
                     clear_session_ids(self.anima_dir, thread_id)
                 except Exception:
                     logger.debug("Failed to clear session IDs for chain", exc_info=True)
@@ -464,13 +496,21 @@ class CycleMixin:
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info(
             "run_cycle END trigger=%s duration_ms=%d response_len=%d chained=%s",
-            trigger, duration_ms, len(accumulated_text), session_chained,
+            trigger,
+            duration_ms,
+            len(accumulated_text),
+            session_chained,
         )
         _cycle_usage = result.usage.to_dict() if result.usage else None
         _log_session_token_usage(
-            self.anima_dir, model=self.model_config.model, mode="s",
-            trigger=trigger, usage=_cycle_usage, duration_ms=duration_ms,
-            turns=total_turns, chains=chain_count if session_chained else 0,
+            self.anima_dir,
+            model=self.model_config.model,
+            mode="s",
+            trigger=trigger,
+            usage=_cycle_usage,
+            duration_ms=duration_ms,
+            turns=total_turns,
+            chains=chain_count if session_chained else 0,
         )
         return CycleResult(
             trigger=trigger,
@@ -505,7 +545,9 @@ class CycleMixin:
         mode = self._resolve_execution_mode()
         logger.info(
             "run_cycle_streaming START trigger=%s prompt_len=%d mode=%s",
-            trigger, len(prompt), mode,
+            trigger,
+            len(prompt),
+            mode,
         )
 
         # Non-streaming executors: fall back to blocking execution
@@ -528,8 +570,9 @@ class CycleMixin:
             return
 
         # ── Resolve context window and prompt tier ────────────
-        from core.prompt.context import resolve_context_window as _rcw
         from core.prompt.builder import resolve_prompt_tier as _rpt
+        from core.prompt.context import resolve_context_window as _rcw
+
         _ctx_window_s = _rcw(
             self.model_config.model,
             overrides=self._load_context_window_overrides(),
@@ -568,12 +611,17 @@ class CycleMixin:
 
         # ── Context-window-aware tier downgrade ────────────
         system_prompt = self._fit_prompt_to_context_window(
-            system_prompt, prompt, _ctx_window_s,
-            priming_section=priming_section, mode=mode, trigger=trigger,
+            system_prompt,
+            prompt,
+            _ctx_window_s,
+            priming_section=priming_section,
+            mode=mode,
+            trigger=trigger,
         )
 
         if build_result.injected_procedures:
             from core.memory.conversation import ConversationMemory as _CM
+
             _cm = _CM(self.anima_dir, self.model_config)
             _cm.store_injected_procedures(
                 build_result.injected_procedures,
@@ -584,9 +632,12 @@ class CycleMixin:
 
         # Pre-flight size check for streaming path
         from core.memory.conversation import ConversationMemory
+
         conv_memory = ConversationMemory(self.anima_dir, self.model_config)
         system_prompt, prompt, use_fallback = await self._preflight_size_check(
-            system_prompt, prompt, conv_memory,
+            system_prompt,
+            prompt,
+            conv_memory,
             priming_section=priming_section,
             mode=mode,
             message=prompt,
@@ -613,6 +664,7 @@ class CycleMixin:
 
         # ── Prompt log: save full payload for debugging ───
         from core.tooling.schemas import load_all_tool_schemas as _lats
+
         _tool_schemas_s = _lats(
             tool_registry=self._tool_registry,
             personal_tools=self._personal_tools,
@@ -644,7 +696,12 @@ class CycleMixin:
         all_tool_call_records: list[dict] = []
         result_message: Any = None
         _stream_force_chain = False
-        _stream_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+        _stream_usage: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+        }
         current_prompt = prompt
         current_system_prompt = system_prompt
         retry_count = 0
@@ -656,7 +713,9 @@ class CycleMixin:
 
             try:
                 async for chunk in self._executor.execute_streaming(
-                    current_system_prompt, current_prompt, tracker,
+                    current_system_prompt,
+                    current_prompt,
+                    tracker,
                     images=images,
                     prior_messages=prior_messages,
                     max_turns_override=max_turns_override,
@@ -667,9 +726,7 @@ class CycleMixin:
                         text_parts_this_attempt.append(chunk["full_text"])
                         result_message = chunk["result_message"]
                         # Accumulate tool call records from executor
-                        all_tool_call_records.extend(
-                            chunk.get("tool_call_records", [])
-                        )
+                        all_tool_call_records.extend(chunk.get("tool_call_records", []))
                         _merge_stream_usage(_stream_usage, chunk.get("usage"))
                         # Merge transcript replied_to
                         transcript_replied = chunk.get("replied_to_from_transcript", set())
@@ -681,25 +738,29 @@ class CycleMixin:
                         stream_succeeded = True
                     elif chunk["type"] == "tool_end" and checkpoint_enabled:
                         record = chunk.get("record")
-                        summary = (
-                            (getattr(record, "result_summary", "") if record else "")
-                            or chunk.get("tool_name", "unknown")
+                        summary = (getattr(record, "result_summary", "") if record else "") or chunk.get(
+                            "tool_name", "unknown"
                         )
-                        completed_tools.append({
-                            "tool_name": chunk.get("tool_name", ""),
-                            "tool_id": chunk.get("tool_id", ""),
-                            "summary": summary,
-                        })
+                        completed_tools.append(
+                            {
+                                "tool_name": chunk.get("tool_name", ""),
+                                "tool_id": chunk.get("tool_id", ""),
+                                "summary": summary,
+                            }
+                        )
                         # Save checkpoint after each tool completion
                         from core.memory.shortterm import StreamCheckpoint
-                        shortterm.save_checkpoint(StreamCheckpoint(
-                            timestamp=now_iso(),
-                            trigger=trigger,
-                            original_prompt=prompt,
-                            completed_tools=completed_tools,
-                            accumulated_text="\n".join(full_text_parts),
-                            retry_count=retry_count,
-                        ))
+
+                        shortterm.save_checkpoint(
+                            StreamCheckpoint(
+                                timestamp=now_iso(),
+                                trigger=trigger,
+                                original_prompt=prompt,
+                                completed_tools=completed_tools,
+                                accumulated_text="\n".join(full_text_parts),
+                                retry_count=retry_count,
+                            )
+                        )
                         yield chunk
                     else:
                         if chunk["type"] == "text_delta":
@@ -726,7 +787,8 @@ class CycleMixin:
                 if retry_count >= max_retries:
                     logger.error(
                         "Stream retry exhausted (%d/%d)",
-                        retry_count, max_retries,
+                        retry_count,
+                        max_retries,
                     )
                     yield {
                         "type": "error",
@@ -739,7 +801,9 @@ class CycleMixin:
                 actual_delay = 0.5 if skip_delay else retry_delay
                 logger.warning(
                     "Stream disconnected, retrying %d/%d after %.1fs%s",
-                    retry_count, max_retries, actual_delay,
+                    retry_count,
+                    max_retries,
+                    actual_delay,
                     " (immediate: buffer overflow)" if skip_delay else "",
                 )
                 # リトライ1回目は必ずfresh session（壊れたセッションIDを持ち越さない）
@@ -747,9 +811,11 @@ class CycleMixin:
                     try:
                         if mode == "c":
                             from core.execution.codex_sdk import clear_codex_thread_ids
+
                             clear_codex_thread_ids(self.anima_dir, thread_id)
                         else:
                             from core.execution.agent_sdk import clear_session_ids
+
                             clear_session_ids(self.anima_dir, thread_id)
                         logger.info("Session IDs cleared for retry 1 (fresh session forced)")
                     except Exception as e:
@@ -807,15 +873,9 @@ class CycleMixin:
         # Session chaining — force_chain from mid-session auto-compact.
         if _stream_force_chain and not tracker.threshold_exceeded:
             tracker.force_threshold()
-            logger.info(
-                "Context auto-compact (stream): forcing threshold_exceeded "
-                "for session chaining"
-            )
+            logger.info("Context auto-compact (stream): forcing threshold_exceeded for session chaining")
 
-        while (
-            tracker.threshold_exceeded
-            and chain_count < self.model_config.max_chains
-        ):
+        while tracker.threshold_exceeded and chain_count < self.model_config.max_chains:
             session_chained = True
             chain_count += 1
             logger.info(
@@ -846,6 +906,7 @@ class CycleMixin:
             if mode == "s":
                 try:
                     from core.execution.agent_sdk import clear_session_ids
+
                     clear_session_ids(self.anima_dir, thread_id)
                 except Exception:
                     logger.debug("Failed to clear session IDs for chain", exc_info=True)
@@ -869,16 +930,16 @@ class CycleMixin:
 
             try:
                 async for chunk in self._executor.execute_streaming(
-                    system_prompt_2, continuation_prompt, tracker,
+                    system_prompt_2,
+                    continuation_prompt,
+                    tracker,
                     max_turns_override=max_turns_override,
                     trigger=trigger,
                 ):
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
                         result_message = chunk["result_message"]
-                        all_tool_call_records.extend(
-                            chunk.get("tool_call_records", [])
-                        )
+                        all_tool_call_records.extend(chunk.get("tool_call_records", []))
                         _merge_stream_usage(_stream_usage, chunk.get("usage"))
                         if result_message:
                             total_turns += result_message.num_turns
@@ -890,7 +951,8 @@ class CycleMixin:
                         yield chunk
             except Exception:
                 logger.exception(
-                    "Chained session (stream) %d failed", chain_count,
+                    "Chained session (stream) %d failed",
+                    chain_count,
                 )
                 yield {"type": "error", "message": f"Session chain {chain_count} failed"}
                 break
@@ -908,14 +970,23 @@ class CycleMixin:
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info(
             "run_cycle_streaming END trigger=%s duration_ms=%d response_len=%d chained=%s retries=%d",
-            trigger, duration_ms, len(full_text), session_chained, retry_count,
+            trigger,
+            duration_ms,
+            len(full_text),
+            session_chained,
+            retry_count,
         )
 
         _final_usage = _stream_usage if any(_stream_usage.values()) else None
         _log_session_token_usage(
-            self.anima_dir, model=self.model_config.model, mode=mode,
-            trigger=trigger, usage=_final_usage, duration_ms=duration_ms,
-            turns=total_turns, chains=chain_count if session_chained else 0,
+            self.anima_dir,
+            model=self.model_config.model,
+            mode=mode,
+            trigger=trigger,
+            usage=_final_usage,
+            duration_ms=duration_ms,
+            turns=total_turns,
+            chains=chain_count if session_chained else 0,
         )
         yield {
             "type": "cycle_done",

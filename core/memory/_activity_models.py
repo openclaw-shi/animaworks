@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -106,12 +107,12 @@ class ActivityEntry:
 class EntryGroup:
     """A group of related activity entries for compact priming display."""
 
-    type: str                     # "dm", "hb", "cron", "single"
-    start_ts: str                 # Group start timestamp
-    end_ts: str                   # Group end timestamp
+    type: str  # "dm", "hb", "cron", "single"
+    start_ts: str  # Group start timestamp
+    end_ts: str  # Group end timestamp
     entries: list[ActivityEntry]  # Entries in this group
-    label: str                    # Group label (e.g. "yuki: boto3問題")
-    source_lines: str             # JSONL line number range (e.g. "L2-6")
+    label: str  # Group label (e.g. "yuki: boto3問題")
+    source_lines: str  # JSONL line number range (e.g. "L2-6")
 
 
 @dataclass

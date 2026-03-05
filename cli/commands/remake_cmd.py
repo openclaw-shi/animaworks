@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import logging
 import shutil
-from pathlib import Path
 
 from core.time_utils import now_jst
 
@@ -39,10 +38,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--steps",
         default=None,
-        help=(
-            "Comma-separated list of steps to run "
-            f"(choices: {', '.join(ALL_STEPS)}). Default: all steps"
-        ),
+        help=(f"Comma-separated list of steps to run (choices: {', '.join(ALL_STEPS)}). Default: all steps"),
     )
     parser.add_argument(
         "--prompt",
@@ -114,22 +110,17 @@ def _run(args: argparse.Namespace) -> None:
     is_realistic = image_style == "realistic"
 
     # ── Validate style reference image ──
-    style_ref_filename = (
-        "avatar_fullbody_realistic.png" if is_realistic
-        else "avatar_fullbody.png"
-    )
+    style_ref_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
     style_fullbody = style_dir / "assets" / style_ref_filename
     if not style_fullbody.exists():
-        print(
-            f"Error: Style reference anima '{args.style_from}' has no "
-            f"{style_ref_filename} at {style_fullbody}"
-        )
+        print(f"Error: Style reference anima '{args.style_from}' has no {style_ref_filename} at {style_fullbody}")
         return
 
     # ── Resolve prompt (style-aware) ──
     prompt = args.prompt
     if prompt is None:
         from core.asset_reconciler import _resolve_prompt
+
         prompt = _resolve_prompt(target_dir, style=image_style)
         if not prompt:
             print(
@@ -160,10 +151,7 @@ def _run(args: argparse.Namespace) -> None:
         return
 
     if not 0.0 <= args.vibe_info_extracted <= 1.0:
-        print(
-            f"Error: --vibe-info-extracted must be between 0.0 and 1.0 "
-            f"(got {args.vibe_info_extracted})"
-        )
+        print(f"Error: --vibe-info-extracted must be between 0.0 and 1.0 (got {args.vibe_info_extracted})")
         return
 
     # ── Dry-run summary ──

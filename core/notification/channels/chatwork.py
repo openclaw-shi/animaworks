@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -6,7 +7,6 @@ from __future__ import annotations
 """Chatwork API notification channel."""
 
 import logging
-from typing import Any
 
 import httpx
 
@@ -34,7 +34,9 @@ class ChatworkChannel(NotificationChannel):
         anima_name: str = "",
     ) -> str:
         token = self._resolve_credential_with_vault(
-            "api_token_env", anima_name=anima_name, fallback_env="CHATWORK_API_TOKEN",
+            "api_token_env",
+            anima_name=anima_name,
+            fallback_env="CHATWORK_API_TOKEN",
         )
         if not token:
             return "chatwork: ERROR - api_token_env not configured or env var not set"

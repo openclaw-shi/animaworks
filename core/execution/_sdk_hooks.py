@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -18,11 +19,9 @@ because the SDK is an optional dependency.
 import json
 import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-from core.prompt.context import CHARS_PER_TOKEN
 
 from core.execution._sanitize import TOOL_TRUST_LEVELS
 from core.execution._sdk_security import (
@@ -32,11 +31,13 @@ from core.execution._sdk_security import (
 )
 from core.execution._sdk_session import _CONTEXT_AUTOCOMPACT_SAFETY
 from core.execution._sdk_stream import _log_tool_use
+from core.prompt.context import CHARS_PER_TOKEN
 
 logger = logging.getLogger("animaworks.execution.agent_sdk")
 
 
 # ── Subordinate management ───────────────────────────────────
+
 
 def _collect_all_subordinates(
     anima_name: str,
@@ -95,6 +96,7 @@ def _cache_subordinate_paths(
 
 # ── Task interception ────────────────────────────────────────
 
+
 def _intercept_task_to_pending(
     anima_dir: Path,
     tool_input: dict[str, Any],
@@ -109,7 +111,6 @@ def _intercept_task_to_pending(
     minimal-context LLM session.  Returns the generated task_id.
     """
     import uuid as _uuid
-    from datetime import timezone as _tz
 
     task_id = _uuid.uuid4().hex[:12]
     description = tool_input.get("description", "Background task")
@@ -136,7 +137,7 @@ def _intercept_task_to_pending(
         "constraints": [],
         "file_paths": [],
         "submitted_by": "self_task_intercept",
-        "submitted_at": datetime.now(_tz.utc).isoformat(),
+        "submitted_at": datetime.now(UTC).isoformat(),
         "reply_to": anima_dir.name,
     }
 
@@ -149,13 +150,18 @@ def _intercept_task_to_pending(
     )
 
     _log_tool_use(
-        anima_dir, actual_tool_name, tool_input, tool_use_id=tool_use_id,
+        anima_dir,
+        actual_tool_name,
+        tool_input,
+        tool_use_id=tool_use_id,
         blocked=False,
     )
 
     logger.info(
         "%s tool intercepted → pending LLM task: id=%s title=%s",
-        actual_tool_name, task_id, description,
+        actual_tool_name,
+        task_id,
+        description,
     )
     return task_id
 
@@ -175,7 +181,9 @@ def _do_pending_intercept(
     )
 
     task_id = _intercept_task_to_pending(
-        anima_dir, tool_input, tool_use_id,
+        anima_dir,
+        tool_input,
+        tool_use_id,
         actual_tool_name=tool_name,
     )
     intercepted_task_ids.add(task_id)
@@ -201,6 +209,7 @@ def _do_pending_intercept(
 
 
 # ── Delegation helpers ────────────────────────────────────────
+
 
 def _read_status_json(anima_dir: Path) -> dict[str, Any]:
     """Read and parse status.json for an anima. Returns empty dict on failure."""
@@ -274,10 +283,7 @@ def _select_subordinate(
 
     my_name = anima_dir.name
     animas_dir = get_animas_dir()
-    direct_subs: list[str] = [
-        name for name, acfg in cfg.animas.items()
-        if acfg.supervisor == my_name
-    ]
+    direct_subs: list[str] = [name for name, acfg in cfg.animas.items() if acfg.supervisor == my_name]
     if not direct_subs:
         return None
 
@@ -318,9 +324,7 @@ def _intercept_task_to_delegation(
     or ``None`` if no suitable subordinate is available (caller should
     fall back to pending-task path).
     """
-    import uuid as _uuid
-    from datetime import timezone as _tz
-    from core.paths import get_animas_dir, get_shared_dir, get_data_dir
+    from core.paths import get_animas_dir, get_data_dir, get_shared_dir
 
     description = tool_input.get("description", "Background task")
     prompt = tool_input.get("prompt", description)
@@ -357,15 +361,11 @@ def _intercept_task_to_delegation(
     dm_result = ""
     try:
         from core.messenger import Messenger
+
         messenger = Messenger(get_shared_dir(), my_name)
         messenger.send(
             to=target_name,
-            content=(
-                f"タスクを委譲します。\n\n"
-                f"指示: {prompt[:500]}\n"
-                f"期限: 2h\n"
-                f"task_id: {sub_entry.task_id}"
-            ),
+            content=(f"タスクを委譲します。\n\n指示: {prompt[:500]}\n期限: 2h\ntask_id: {sub_entry.task_id}"),
             intent="delegation",
         )
         dm_result = "DM sent"
@@ -405,13 +405,18 @@ def _intercept_task_to_delegation(
         logger.debug("Failed to write inbox wake file for %s", target_name, exc_info=True)
 
     _log_tool_use(
-        anima_dir, "Task", tool_input, tool_use_id=tool_use_id,
+        anima_dir,
+        "Task",
+        tool_input,
+        tool_use_id=tool_use_id,
         blocked=False,
     )
 
     logger.info(
         "Task tool intercepted → delegated to %s: sub_task=%s own_task=%s",
-        target_name, sub_entry.task_id, own_entry.task_id,
+        target_name,
+        sub_entry.task_id,
+        own_entry.task_id,
     )
 
     return {
@@ -427,6 +432,7 @@ def _intercept_task_to_delegation(
 
 
 # ── Hook factories ───────────────────────────────────────────
+
 
 def _build_pre_tool_hook(
     anima_dir: Path,
@@ -493,10 +499,14 @@ def _build_pre_tool_hook(
                 logger.info(
                     "Context approaching limit: estimated=%d remaining=%d "
                     "context_window=%d — SDK auto-compact will handle",
-                    estimated_tokens, remaining, context_window,
+                    estimated_tokens,
+                    remaining,
+                    context_window,
                 )
                 _log_tool_use(
-                    anima_dir, tool_name, tool_input,
+                    anima_dir,
+                    tool_name,
+                    tool_input,
                     tool_use_id=tool_use_id,
                     blocked=False,
                     block_reason=(
@@ -510,11 +520,8 @@ def _build_pre_tool_hook(
             # Resolve trust for SDK-native tools or MCP tools (mcp__aw__X)
             effective_name = tool_name
             if tool_name.startswith("mcp__aw__"):
-                effective_name = tool_name[len("mcp__aw__"):]
-            trust_str = (
-                _SDK_TOOL_TRUST.get(tool_name)
-                or TOOL_TRUST_LEVELS.get(effective_name, "untrusted")
-            )
+                effective_name = tool_name[len("mcp__aw__") :]
+            trust_str = _SDK_TOOL_TRUST.get(tool_name) or TOOL_TRUST_LEVELS.get(effective_name, "untrusted")
             rank = _trust_order.get(trust_str, 0)
             current_min = session_stats.get("min_trust_seen", 2)
             session_stats["min_trust_seen"] = min(current_min, rank)
@@ -536,7 +543,9 @@ def _build_pre_tool_hook(
                 # Supervisor path: delegate to subordinate, fallback to pending
                 try:
                     delegation_result = _intercept_task_to_delegation(
-                        anima_dir, tool_input, tool_use_id,
+                        anima_dir,
+                        tool_input,
+                        tool_use_id,
                     )
                     if delegation_result is not None:
                         intercepted_task_ids.add(delegation_result["task_id"])
@@ -557,14 +566,18 @@ def _build_pre_tool_hook(
 
             # Non-supervisor or supervisor fallback → state/pending/
             return _do_pending_intercept(
-                anima_dir, tool_input, tool_use_id, tool_name,
-                intercepted_task_ids, on_task_intercepted,
+                anima_dir,
+                tool_input,
+                tool_use_id,
+                tool_name,
+                intercepted_task_ids,
+                on_task_intercepted,
             )
 
         # plan_tasks intercept → DAG batch to pending
         if tool_name in ("plan_tasks", "mcp__aw__plan_tasks"):
-            from core.tooling.handler_skills import SkillsToolsMixin
             from core.tooling.handler_base import _error_result
+            from core.tooling.handler_skills import SkillsToolsMixin
 
             class _PlanTasksProxy(SkillsToolsMixin):
                 _anima_dir = anima_dir
@@ -578,16 +591,17 @@ def _build_pre_tool_hook(
                 result_str = _error_result("PlanTasksError", str(exc))
 
             _log_tool_use(
-                anima_dir, "plan_tasks", tool_input,
-                tool_use_id=tool_use_id, blocked=False,
+                anima_dir,
+                "plan_tasks",
+                tool_input,
+                tool_use_id=tool_use_id,
+                blocked=False,
             )
             return SyncHookJSONOutput(
                 hookSpecificOutput=PreToolUseHookSpecificOutput(
                     hookEventName="PreToolUse",
                     permissionDecision="deny",
-                    permissionDecisionReason=(
-                        f"INTERCEPT_OK: plan_tasks result: {result_str}"
-                    ),
+                    permissionDecisionReason=(f"INTERCEPT_OK: plan_tasks result: {result_str}"),
                 )
             )
 
@@ -619,14 +633,18 @@ def _build_pre_tool_hook(
         if tool_name in ("Write", "Edit"):
             file_path = tool_input.get("file_path", "")
             violation = _check_a1_file_access(
-                file_path, anima_dir, write=True,
+                file_path,
+                anima_dir,
+                write=True,
                 subordinate_activity_dirs=_sub_activity_dirs,
                 subordinate_management_files=_sub_mgmt_files,
                 peer_activity_dirs=_peer_activity_dirs,
                 superuser=superuser,
             )
             if violation:
-                _log_tool_use(anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation)
+                _log_tool_use(
+                    anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation
+                )
                 return SyncHookJSONOutput(
                     hookSpecificOutput=PreToolUseHookSpecificOutput(
                         hookEventName="PreToolUse",
@@ -639,14 +657,18 @@ def _build_pre_tool_hook(
         if tool_name == "Read":
             file_path = tool_input.get("file_path", "")
             violation = _check_a1_file_access(
-                file_path, anima_dir, write=False,
+                file_path,
+                anima_dir,
+                write=False,
                 subordinate_activity_dirs=_sub_activity_dirs,
                 subordinate_management_files=_sub_mgmt_files,
                 peer_activity_dirs=_peer_activity_dirs,
                 superuser=superuser,
             )
             if violation:
-                _log_tool_use(anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation)
+                _log_tool_use(
+                    anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation
+                )
                 return SyncHookJSONOutput(
                     hookSpecificOutput=PreToolUseHookSpecificOutput(
                         hookEventName="PreToolUse",
@@ -660,7 +682,9 @@ def _build_pre_tool_hook(
             command = tool_input.get("command", "")
             violation = _check_a1_bash_command(command, anima_dir, superuser=superuser)
             if violation:
-                _log_tool_use(anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation)
+                _log_tool_use(
+                    anima_dir, tool_name, tool_input, tool_use_id=tool_use_id, blocked=True, block_reason=violation
+                )
                 return SyncHookJSONOutput(
                     hookSpecificOutput=PreToolUseHookSpecificOutput(
                         hookEventName="PreToolUse",
@@ -710,6 +734,7 @@ def _build_pre_compact_hook(anima_dir: Path) -> Callable:
         )
         try:
             from core.memory.activity import ActivityLogger
+
             activity = ActivityLogger(anima_dir)
             activity.log(
                 event_type="tool_use",

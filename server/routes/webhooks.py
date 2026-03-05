@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -35,14 +36,17 @@ def create_webhooks_router() -> APIRouter:
     # ── Slack ──────────────────────────────────────────────
 
     def _verify_slack_signature(
-        body: bytes, timestamp: str, signature: str,
+        body: bytes,
+        timestamp: str,
+        signature: str,
         signing_secret: str | None = None,
     ) -> bool:
         """Verify Slack request signature using signing secret."""
         if signing_secret is None:
             try:
                 signing_secret = get_credential(
-                    "slack_signing", "slack_webhook",
+                    "slack_signing",
+                    "slack_webhook",
                     env_var="SLACK_SIGNING_SECRET",
                 )
             except ToolConfigError:
@@ -58,16 +62,19 @@ def create_webhooks_router() -> APIRouter:
             return False
 
         sig_basestring = f"v0:{timestamp}:{body.decode('utf-8')}"
-        expected = "v0=" + hmac.new(
-            signing_secret.encode("utf-8"),
-            sig_basestring.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
+        expected = (
+            "v0="
+            + hmac.new(
+                signing_secret.encode("utf-8"),
+                sig_basestring.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+        )
         return hmac.compare_digest(expected, signature)
 
     def _resolve_per_anima_signing_secret(anima_name: str) -> str | None:
         """Resolve per-Anima signing secret from vault/shared credentials."""
-        from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
+        from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
 
         key = f"SLACK_SIGNING_SECRET__{anima_name}"
         secret = _lookup_vault_credential(key)
@@ -146,8 +153,10 @@ def create_webhooks_router() -> APIRouter:
                     _token = None
                     if anima_from_app:
                         from server.slack_socket import SlackSocketModeManager
+
                         _token = SlackSocketModeManager._get_per_anima_credential(
-                            "SLACK_BOT_TOKEN", anima_from_app,
+                            "SLACK_BOT_TOKEN",
+                            anima_from_app,
                         )
                     if not _token:
                         _token = get_credential("slack", "slack_webhook", env_var="SLACK_BOT_TOKEN")
@@ -175,7 +184,10 @@ def create_webhooks_router() -> APIRouter:
             )
             logger.info(
                 "Slack message delivered: channel=%s user=%s -> anima=%s (intent=%s)",
-                channel_id, user_id, anima_name, intent or "none",
+                channel_id,
+                user_id,
+                anima_name,
+                intent or "none",
             )
 
         return {"ok": True}
@@ -191,7 +203,8 @@ def create_webhooks_router() -> APIRouter:
         """
         try:
             token = get_credential(
-                "chatwork_webhook", "chatwork_webhook",
+                "chatwork_webhook",
+                "chatwork_webhook",
                 env_var="CHATWORK_WEBHOOK_TOKEN",
             )
         except ToolConfigError:
@@ -251,7 +264,9 @@ def create_webhooks_router() -> APIRouter:
             )
             logger.info(
                 "Chatwork message delivered: room=%s account=%s -> anima=%s",
-                room_id, account_id, anima_name,
+                room_id,
+                account_id,
+                anima_name,
             )
 
         return {"ok": True}

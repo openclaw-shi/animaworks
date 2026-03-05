@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -33,7 +34,7 @@ logger = logging.getLogger("animaworks.background")
 # ── Data Models ──────────────────────────────────────────────
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(str, Enum):  # noqa: UP042
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -141,7 +142,7 @@ class BackgroundTaskManager:
         anima_name: str = "",
         profiles: dict[str, dict[str, dict[str, object]]] | None = None,
         config_eligible: dict[str, int] | None = None,
-    ) -> "BackgroundTaskManager":
+    ) -> BackgroundTaskManager:
         """Create a BackgroundTaskManager with eligible tools derived from EXECUTION_PROFILE.
 
         Merges three layers (later overrides earlier):
@@ -198,7 +199,9 @@ class BackgroundTaskManager:
 
         logger.info(
             "Background task submitted: id=%s tool=%s anima=%s",
-            task_id, tool_name, self._anima_name,
+            task_id,
+            tool_name,
+            self._anima_name,
         )
 
         # Schedule the async wrapper
@@ -232,7 +235,9 @@ class BackgroundTaskManager:
 
         logger.info(
             "Background task submitted (async): id=%s tool=%s anima=%s",
-            task_id, tool_name, self._anima_name,
+            task_id,
+            tool_name,
+            self._anima_name,
         )
 
         async_task = asyncio.create_task(
@@ -272,10 +277,7 @@ class BackgroundTaskManager:
 
     def active_count(self) -> int:
         """Return the number of currently running background tasks."""
-        return sum(
-            1 for t in self._tasks.values()
-            if t.status == TaskStatus.RUNNING
-        )
+        return sum(1 for t in self._tasks.values() if t.status == TaskStatus.RUNNING)
 
     # ── Internal execution ───────────────────────────────────
 
@@ -298,7 +300,8 @@ class BackgroundTaskManager:
             task.completed_at = time.time()
             logger.info(
                 "Background task completed: id=%s tool=%s",
-                task.task_id, task.tool_name,
+                task.task_id,
+                task.tool_name,
             )
         except Exception as e:
             task.status = TaskStatus.FAILED
@@ -306,7 +309,8 @@ class BackgroundTaskManager:
             task.completed_at = time.time()
             logger.exception(
                 "Background task failed: id=%s tool=%s",
-                task.task_id, task.tool_name,
+                task.task_id,
+                task.tool_name,
             )
         finally:
             self._save_task(task)
@@ -316,7 +320,8 @@ class BackgroundTaskManager:
                     await self.on_complete(task)
                 except Exception:
                     logger.exception(
-                        "on_complete callback failed for task %s", task.task_id,
+                        "on_complete callback failed for task %s",
+                        task.task_id,
                     )
 
     async def _run_task_async(
@@ -332,7 +337,8 @@ class BackgroundTaskManager:
             task.completed_at = time.time()
             logger.info(
                 "Background task completed (async): id=%s tool=%s",
-                task.task_id, task.tool_name,
+                task.task_id,
+                task.tool_name,
             )
         except Exception as e:
             task.status = TaskStatus.FAILED
@@ -340,7 +346,8 @@ class BackgroundTaskManager:
             task.completed_at = time.time()
             logger.exception(
                 "Background task failed (async): id=%s tool=%s",
-                task.task_id, task.tool_name,
+                task.task_id,
+                task.tool_name,
             )
         finally:
             self._save_task(task)
@@ -350,7 +357,8 @@ class BackgroundTaskManager:
                     await self.on_complete(task)
                 except Exception:
                     logger.exception(
-                        "on_complete callback failed for task %s", task.task_id,
+                        "on_complete callback failed for task %s",
+                        task.task_id,
                     )
 
     # ── Persistence ──────────────────────────────────────────
@@ -452,6 +460,7 @@ def _rotate_dm_logs_sync(
 ) -> dict[str, Any]:
     """Synchronous implementation of dm_log rotation."""
     from datetime import datetime, timedelta
+
     from core.time_utils import ensure_aware, now_jst
 
     dm_logs_dir = shared_dir / "dm_logs"
@@ -506,7 +515,9 @@ def _rotate_dm_logs_sync(
             }
             logger.info(
                 "dm_log rotated: %s — %d archived, %d kept",
-                path.name, len(archive_lines), len(recent_lines),
+                path.name,
+                len(archive_lines),
+                len(recent_lines),
             )
         except OSError:
             logger.exception("Failed to rotate dm_log: %s", path)

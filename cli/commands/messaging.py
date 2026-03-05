@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import sys
 
 logger = logging.getLogger("animaworks")
 
@@ -63,7 +62,10 @@ def _persist_replied_to_for_a1(to: str) -> None:
 
 
 def _notify_server_message_sent(
-    from_anima: str, to_anima: str, content: str, message_id: str = "",
+    from_anima: str,
+    to_anima: str,
+    content: str,
+    message_id: str = "",
 ) -> None:
     """Notify the running server about a CLI-sent message.
 
@@ -108,9 +110,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     else:
         from cli._gateway import gateway_request_or_none
 
-        data = gateway_request_or_none(
-            args, "GET", "/api/animas", timeout=10.0
-        )
+        data = gateway_request_or_none(args, "GET", "/api/animas", timeout=10.0)
         if data is None:
             print("Gateway not reachable, falling back to filesystem...")
             _list_local()

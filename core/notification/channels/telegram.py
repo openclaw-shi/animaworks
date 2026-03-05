@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -7,7 +8,6 @@ from __future__ import annotations
 
 import html
 import logging
-from typing import Any
 
 import httpx
 
@@ -35,7 +35,9 @@ class TelegramChannel(NotificationChannel):
         anima_name: str = "",
     ) -> str:
         token = self._resolve_credential_with_vault(
-            "bot_token_env", anima_name=anima_name, fallback_env="TELEGRAM_BOT_TOKEN",
+            "bot_token_env",
+            anima_name=anima_name,
+            fallback_env="TELEGRAM_BOT_TOKEN",
         )
         if not token:
             return "telegram: ERROR - bot_token_env not configured or env var not set"

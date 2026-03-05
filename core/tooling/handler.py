@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -28,6 +29,8 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from core.background import BackgroundTaskManager
+from core.exceptions import AnimaWorksError, ConfigError
+from core.i18n import t
 from core.memory import MemoryManager
 from core.memory.activity import ActivityLogger
 from core.messenger import Messenger
@@ -36,7 +39,6 @@ from core.tooling.dispatch import ExternalToolDispatcher
 
 # ── Re-export all handler_base symbols for backward compatibility ──
 from core.tooling.handler_base import (  # noqa: F401
-    OnMessageSentFn,
     _BLOCKED_CMD_PATTERNS,
     _EPISODE_FILENAME_RE,
     _INJECTION_RE,
@@ -50,6 +52,9 @@ from core.tooling.handler_base import (  # noqa: F401
     _READ_MAX_LINE_CHARS,
     _READ_MAX_LINES,
     _READ_MIN_LINES,
+    MemoryWriteError,
+    OnMessageSentFn,
+    ToolExecutionError,
     _error_result,
     _extract_first_heading,
     _is_protected_write,
@@ -59,11 +64,6 @@ from core.tooling.handler_base import (  # noqa: F401
     active_session_type,
     suppress_board_fanout,
 )
-from core.exceptions import AnimaWorksError, ConfigError
-from core.tooling.handler_base import (
-    MemoryWriteError,
-    ToolExecutionError,
-)
 
 # ── Import Mixins ──
 from core.tooling.handler_comms import CommsToolsMixin
@@ -72,8 +72,6 @@ from core.tooling.handler_memory import MemoryToolsMixin
 from core.tooling.handler_org import OrgToolsMixin
 from core.tooling.handler_perms import PermissionsMixin
 from core.tooling.handler_skills import SkillsToolsMixin
-
-from core.i18n import t
 
 logger = logging.getLogger("animaworks.tool_handler")
 
@@ -155,6 +153,7 @@ class ToolHandler(
         try:
             from core.config.models import load_config
             from core.paths import get_animas_dir
+
             _cfg = load_config()
             _animas_dir = get_animas_dir()
             _my_supervisor = None
@@ -212,14 +211,14 @@ class ToolHandler(
             "enable_subordinate": self._handle_enable_subordinate,
             "set_subordinate_model": self._handle_set_subordinate_model,
             "set_subordinate_background_model": self._handle_set_subordinate_background_model,
-            "restart_subordinate":   self._handle_restart_subordinate,
-            "org_dashboard":         self._handle_org_dashboard,
-            "ping_subordinate":      self._handle_ping_subordinate,
+            "restart_subordinate": self._handle_restart_subordinate,
+            "org_dashboard": self._handle_org_dashboard,
+            "ping_subordinate": self._handle_ping_subordinate,
             "read_subordinate_state": self._handle_read_subordinate_state,
-            "check_permissions":     self._handle_check_permissions,
-            "delegate_task":         self._handle_delegate_task,
-            "task_tracker":          self._handle_task_tracker,
-            "audit_subordinate":     self._handle_audit_subordinate,
+            "check_permissions": self._handle_check_permissions,
+            "delegate_task": self._handle_delegate_task,
+            "task_tracker": self._handle_task_tracker,
+            "audit_subordinate": self._handle_audit_subordinate,
             "refresh_tools": self._handle_refresh_tools,
             "share_tool": self._handle_share_tool,
             "report_procedure_outcome": self._handle_report_procedure_outcome,
@@ -381,13 +380,18 @@ class ToolHandler(
                 if self._background_manager and self._background_manager.is_eligible(name):
                     ext_args = {**args, "anima_dir": str(self._anima_dir)}
                     task_id = self._background_manager.submit(
-                        name, ext_args, self._external.dispatch,
+                        name,
+                        ext_args,
+                        self._external.dispatch,
                     )
-                    result = _json.dumps({
-                        "status": "background",
-                        "task_id": task_id,
-                        "message": t("handler.background_task_started", task_id=task_id),
-                    }, ensure_ascii=False)
+                    result = _json.dumps(
+                        {
+                            "status": "background",
+                            "task_id": task_id,
+                            "message": t("handler.background_task_started", task_id=task_id),
+                        },
+                        ensure_ascii=False,
+                    )
                 else:
                     ext_args = {**args, "anima_dir": str(self._anima_dir)}
                     result = self._external.dispatch(name, ext_args)
@@ -405,26 +409,22 @@ class ToolHandler(
             raise
         except Exception as e:
             logger.exception("Unhandled tool error in %s", name)
-            raise ToolExecutionError(
-                f"Tool execution failed: {name}: {e}"
-            ) from e
+            raise ToolExecutionError(f"Tool execution failed: {name}: {e}") from e
 
     def _truncate_output(self, output: str) -> str:
         """Truncate tool output if it exceeds the size limit."""
         size = len(output.encode("utf-8"))
         if size <= self._MAX_TOOL_OUTPUT_BYTES:
             return output
-        truncated = output[:self._MAX_TOOL_OUTPUT_BYTES]
+        truncated = output[: self._MAX_TOOL_OUTPUT_BYTES]
         while len(truncated.encode("utf-8")) > self._MAX_TOOL_OUTPUT_BYTES:
             truncated = truncated[:-1000]
         logger.warning(
             "Tool output truncated: original=%d bytes, limit=%d bytes",
-            size, self._MAX_TOOL_OUTPUT_BYTES,
+            size,
+            self._MAX_TOOL_OUTPUT_BYTES,
         )
-        return (
-            truncated
-            + "\n\n" + t("handler.output_truncated", size=size)
-        )
+        return truncated + "\n\n" + t("handler.output_truncated", size=size)
 
     # ── Activity logging ──────────────────────────────────────
 
@@ -446,13 +446,30 @@ class ToolHandler(
             if activity_type is None:
                 self._activity.log("tool_use", tool=name, summary=str(args)[:200], meta=meta or None)
             elif name == "post_channel":
-                self._activity.log(activity_type, content=args.get("text", "")[:200], channel=args.get("channel", ""), meta=meta or None)
+                self._activity.log(
+                    activity_type,
+                    content=args.get("text", "")[:200],
+                    channel=args.get("channel", ""),
+                    meta=meta or None,
+                )
             elif name == "read_channel":
-                self._activity.log(activity_type, channel=args.get("channel", ""), summary=t("handler.activity_recent_items", limit=args.get("limit", 20)), meta=meta or None)
+                self._activity.log(
+                    activity_type,
+                    channel=args.get("channel", ""),
+                    summary=t("handler.activity_recent_items", limit=args.get("limit", 20)),
+                    meta=meta or None,
+                )
             elif name == "read_dm_history":
-                self._activity.log(activity_type, channel=f"dm:{args.get('peer', '')}", summary=t("handler.activity_dm_history"), meta=meta or None)
+                self._activity.log(
+                    activity_type,
+                    channel=f"dm:{args.get('peer', '')}",
+                    summary=t("handler.activity_dm_history"),
+                    meta=meta or None,
+                )
             elif name == "call_human":
-                self._activity.log(activity_type, content=args.get("body", "")[:200], via="configured_channels", meta=meta or None)
+                self._activity.log(
+                    activity_type, content=args.get("body", "")[:200], via="configured_channels", meta=meta or None
+                )
         except Exception as e:
             logger.warning("Activity logging failed for tool '%s': %s", name, e)
 
@@ -496,6 +513,7 @@ class ToolHandler(
         Supports core tools (TOOL_MODULES), common tools, and personal tools.
         """
         import importlib
+
         from core.tools import TOOL_MODULES
 
         tool_name = args.get("tool_name", "")
@@ -517,8 +535,7 @@ class ToolHandler(
         if not is_core and not is_personal:
             return _error_result(
                 "PermissionDenied",
-                f"Tool '{tool_name}' is not permitted. "
-                f"Check permissions.md for allowed external tools.",
+                f"Tool '{tool_name}' is not permitted. Check permissions.md for allowed external tools.",
             )
 
         schema_name = f"{tool_name}_{action}"
@@ -527,19 +544,23 @@ class ToolHandler(
         try:
             if is_personal and tool_name not in TOOL_MODULES:
                 import importlib.util
+
                 spec = importlib.util.spec_from_file_location(
-                    f"animaworks_tool_{tool_name}", personal_tools[tool_name],
+                    f"animaworks_tool_{tool_name}",
+                    personal_tools[tool_name],
                 )
                 if spec is None or spec.loader is None:
                     return _error_result(
-                        "LoadError", f"Cannot load personal tool: {tool_name}",
+                        "LoadError",
+                        f"Cannot load personal tool: {tool_name}",
                     )
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)  # type: ignore[union-attr]
             else:
                 if tool_name not in TOOL_MODULES:
                     return _error_result(
-                        "InvalidArguments", f"Unknown tool module: {tool_name}",
+                        "InvalidArguments",
+                        f"Unknown tool module: {tool_name}",
                     )
                 mod = importlib.import_module(TOOL_MODULES[tool_name])
 
@@ -579,7 +600,8 @@ class ToolHandler(
         value = args.get("value", "")
         if not section or not key or not value:
             return _error_result(
-                "InvalidArguments", "section, key, and value are required",
+                "InvalidArguments",
+                "section, key, and value are required",
             )
 
         vault = get_vault_manager()
@@ -599,7 +621,8 @@ class ToolHandler(
         if section:
             keys = list(data.get(section, {}).keys())
             return _json.dumps(
-                {"section": section, "keys": keys}, ensure_ascii=False,
+                {"section": section, "keys": keys},
+                ensure_ascii=False,
             )
         sections = {s: list(v.keys()) for s, v in data.items()}
         return _json.dumps({"sections": sections}, ensure_ascii=False)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -74,8 +75,7 @@ def _check_model_change(base_dir: Path, full: bool) -> str:
 
         if previous_model and previous_model != current_model and not full:
             logger.error(
-                "Embedding model changed: %s → %s.  "
-                "Run 'animaworks index --full' to rebuild the index.",
+                "Embedding model changed: %s → %s.  Run 'animaworks index --full' to rebuild the index.",
                 previous_model,
                 current_model,
             )
@@ -185,9 +185,7 @@ def index_command(args: argparse.Namespace) -> None:
         from core.memory.rag import MemoryIndexer
         from core.memory.rag.store import ChromaVectorStore
     except ImportError:
-        logger.error(
-            "RAG dependencies not installed. Run: pip install 'animaworks[rag]'"
-        )
+        logger.error("RAG dependencies not installed. Run: pip install 'animaworks[rag]'")
         return
 
     base_dir = get_data_dir()
@@ -280,7 +278,9 @@ def index_command(args: argparse.Namespace) -> None:
                 logger.info("  Would index compressed_summary from conversation.json")
             else:
                 chunks = indexer.index_conversation_summary(
-                    state_dir, anima_name, force=args.full,
+                    state_dir,
+                    anima_name,
+                    force=args.full,
                 )
                 total_chunks += chunks
                 logger.info("  Indexed %d chunks from conversation_summary", chunks)
@@ -293,7 +293,10 @@ def index_command(args: argparse.Namespace) -> None:
             logger.info("Indexing shared collections (common_knowledge + common_skills)")
             logger.info("=" * 60)
             total_chunks += _index_shared_collections(
-                enabled_dirs, base_dir, full=args.full, dry_run=args.dry_run,
+                enabled_dirs,
+                base_dir,
+                full=args.full,
+                dry_run=args.dry_run,
             )
 
     # Index shared user memories
@@ -305,9 +308,7 @@ def index_command(args: argparse.Namespace) -> None:
 
         # Use shared vector store for user memories
         shared_store = ChromaVectorStore()  # defaults to ~/.animaworks/vectordb
-        indexer = MemoryIndexer(
-            shared_store, "shared", shared_users_dir.parent
-        )
+        indexer = MemoryIndexer(shared_store, "shared", shared_users_dir.parent)
 
         if args.dry_run:
             user_dirs = [d for d in shared_users_dir.iterdir() if d.is_dir()]

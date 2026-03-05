@@ -21,7 +21,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from core.config.models import load_config
-from core.schedule_parser import parse_cron_md, parse_schedule, parse_heartbeat_config
+from core.schedule_parser import parse_cron_md, parse_heartbeat_config, parse_schedule
 from core.schemas import CronTask
 
 if TYPE_CHECKING:
@@ -82,7 +82,8 @@ class SchedulerManager:
             job_count = len(self.scheduler.get_jobs())
             logger.info(
                 "Scheduler started for %s: %d jobs registered",
-                self._anima_name, job_count,
+                self._anima_name,
+                job_count,
             )
         except Exception:
             logger.exception("Failed to setup scheduler for %s", self._anima_name)
@@ -137,7 +138,11 @@ class SchedulerManager:
         )
         logger.info(
             "Heartbeat registered: %s minute=%s (offset=%d, interval=%dmin), %s",
-            self._anima_name, minute_spec, offset, interval, log_active,
+            self._anima_name,
+            minute_spec,
+            offset,
+            interval,
+            log_active,
         )
 
     def _setup_cron_tasks(self) -> None:
@@ -155,7 +160,8 @@ class SchedulerManager:
             if not trigger:
                 logger.warning(
                     "Could not parse schedule for cron task '%s': '%s'",
-                    task.name, task.schedule,
+                    task.name,
+                    task.schedule,
                 )
                 continue
 
@@ -171,7 +177,10 @@ class SchedulerManager:
             )
             logger.info(
                 "Cron registered: %s -> %s (%s) [%s]",
-                self._anima_name, task.name, task.schedule, task.type,
+                self._anima_name,
+                task.name,
+                task.schedule,
+                task.type,
             )
 
     # ── Tick Handlers ────────────────────────────────────────────
@@ -190,10 +199,13 @@ class SchedulerManager:
             logger.info("Scheduled heartbeat: %s", self._anima_name)
             result = await self._anima.run_heartbeat()
             # Notify parent for WebSocket broadcast
-            self._emit_event("anima.heartbeat", {
-                "name": self._anima_name,
-                "result": result.model_dump(),
-            })
+            self._emit_event(
+                "anima.heartbeat",
+                {
+                    "name": self._anima_name,
+                    "result": result.model_dump(),
+                },
+            )
         except Exception:
             logger.exception("Scheduled heartbeat failed: %s", self._anima_name)
         finally:
@@ -208,14 +220,16 @@ class SchedulerManager:
         if self._check_schedule_freshness():
             logger.info(
                 "Skipping stale cron '%s' for %s (schedule reloaded)",
-                task.name, self._anima_name,
+                task.name,
+                self._anima_name,
             )
             return
 
         if task.name in self._cron_running:
             logger.info(
                 "Scheduled cron SKIPPED (already running): %s -> %s",
-                self._anima_name, task.name,
+                self._anima_name,
+                task.name,
             )
             return
 
@@ -234,12 +248,15 @@ class SchedulerManager:
         try:
             if task.type == "llm":
                 result = await self._anima.run_cron_task(task.name, task.description)
-                self._emit_event("anima.cron", {
-                    "name": self._anima_name,
-                    "task": task.name,
-                    "task_type": "llm",
-                    "result": result.model_dump(),
-                })
+                self._emit_event(
+                    "anima.cron",
+                    {
+                        "name": self._anima_name,
+                        "task": task.name,
+                        "task_type": "llm",
+                        "result": result.model_dump(),
+                    },
+                )
             elif task.type == "command":
                 result = await self._anima.run_cron_command(
                     task.name,
@@ -247,12 +264,15 @@ class SchedulerManager:
                     tool=task.tool,
                     args=task.args,
                 )
-                self._emit_event("anima.cron", {
-                    "name": self._anima_name,
-                    "task": task.name,
-                    "task_type": "command",
-                    "result": result,
-                })
+                self._emit_event(
+                    "anima.cron",
+                    {
+                        "name": self._anima_name,
+                        "task": task.name,
+                        "task_type": "command",
+                        "result": result,
+                    },
+                )
                 # If command produced non-empty output, run a follow-up
                 # cron LLM session so the Anima can review and act on the
                 # results with full background context (heartbeat-equivalent).
@@ -261,9 +281,9 @@ class SchedulerManager:
                     # trigger_heartbeat=False means no follow-up analysis
                     if not task.trigger_heartbeat:
                         logger.info(
-                            "Cron command '%s' trigger_heartbeat=False, "
-                            "skipping cron LLM for %s",
-                            task.name, self._anima_name,
+                            "Cron command '%s' trigger_heartbeat=False, skipping cron LLM for %s",
+                            task.name,
+                            self._anima_name,
                         )
                         return
 
@@ -272,21 +292,23 @@ class SchedulerManager:
                         try:
                             if re.search(task.skip_pattern, stdout):
                                 logger.info(
-                                    "Cron command '%s' output matched skip_pattern, "
-                                    "suppressing cron LLM for %s",
-                                    task.name, self._anima_name,
+                                    "Cron command '%s' output matched skip_pattern, suppressing cron LLM for %s",
+                                    task.name,
+                                    self._anima_name,
                                 )
                                 return
                         except re.error as e:
                             logger.warning(
-                                "Invalid skip_pattern '%s' for task '%s': %s — "
-                                "continuing without skip",
-                                task.skip_pattern, task.name, e,
+                                "Invalid skip_pattern '%s' for task '%s': %s — continuing without skip",
+                                task.skip_pattern,
+                                task.name,
+                                e,
                             )
 
                     logger.info(
                         "Cron command '%s' produced output, running cron LLM for %s",
-                        task.name, self._anima_name,
+                        task.name,
+                        self._anima_name,
                     )
                     await self._anima.run_cron_task(
                         task.name,
@@ -321,7 +343,9 @@ class SchedulerManager:
         new_jobs = [j.id for j in self.scheduler.get_jobs()]
         logger.info(
             "Schedule reloaded for %s: removed=%d, new_jobs=%s",
-            self._anima_name, removed, new_jobs,
+            self._anima_name,
+            removed,
+            new_jobs,
         )
         return {"reloaded": name, "removed": removed, "new_jobs": new_jobs}
 
@@ -359,11 +383,12 @@ class SchedulerManager:
 
         if cron_mtime != self._cron_md_mtime or hb_mtime != self._heartbeat_md_mtime:
             logger.info(
-                "Schedule file changed for %s "
-                "(cron mtime %.0f->%.0f, hb mtime %.0f->%.0f), reloading",
+                "Schedule file changed for %s (cron mtime %.0f->%.0f, hb mtime %.0f->%.0f), reloading",
                 self._anima_name,
-                self._cron_md_mtime, cron_mtime,
-                self._heartbeat_md_mtime, hb_mtime,
+                self._cron_md_mtime,
+                cron_mtime,
+                self._heartbeat_md_mtime,
+                hb_mtime,
             )
             self.reload_schedule(self._anima_name)
             return True
@@ -377,5 +402,7 @@ class SchedulerManager:
             try:
                 self.scheduler.shutdown(wait=False)
             except Exception:
-                logger.debug("Scheduler shutdown failed for %s (may not have been started)", self._anima_name, exc_info=True)
+                logger.debug(
+                    "Scheduler shutdown failed for %s (may not have been started)", self._anima_name, exc_info=True
+                )
             logger.info("Scheduler stopped for %s", self._anima_name)

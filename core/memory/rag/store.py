@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -14,7 +15,6 @@ Provides persistent vector storage for memory embeddings with:
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -98,9 +98,7 @@ class VectorStore(ABC):
         """Delete specific documents by ID."""
 
     @abstractmethod
-    def update_metadata(
-        self, collection: str, ids: list[str], metadatas: list[dict[str, str | int | float]]
-    ) -> None:
+    def update_metadata(self, collection: str, ids: list[str], metadatas: list[dict[str, str | int | float]]) -> None:
         """Update metadata for existing documents without re-embedding."""
 
 
@@ -131,8 +129,7 @@ class ChromaVectorStore(VectorStore):
             persist_dir.mkdir(exist_ok=True)
         else:
             logger.warning(
-                "Parent directory does not exist for vectordb; "
-                "creating with parents: %s",
+                "Parent directory does not exist for vectordb; creating with parents: %s",
                 persist_dir,
             )
             persist_dir.mkdir(parents=True, exist_ok=True)
@@ -192,9 +189,7 @@ class ChromaVectorStore(VectorStore):
             metadatas=cast(Any, metadatas),
         )
 
-        logger.debug(
-            "Upserted %d documents to collection '%s'", len(documents), collection
-        )
+        logger.debug("Upserted %d documents to collection '%s'", len(documents), collection)
 
     def query(
         self,
@@ -227,9 +222,7 @@ class ChromaVectorStore(VectorStore):
         if results["ids"] and results["ids"][0]:
             for i, doc_id in enumerate(results["ids"][0]):
                 meta_raw = results["metadatas"][0][i] if results["metadatas"] else {}
-                meta_dict: dict[str, str | int | float | list[str]] = (
-                    cast(Any, dict(meta_raw)) if meta_raw else {}
-                )
+                meta_dict: dict[str, str | int | float | list[str]] = cast(Any, dict(meta_raw)) if meta_raw else {}
                 doc = Document(
                     id=doc_id,
                     content=results["documents"][0][i] if results["documents"] else "",
@@ -258,9 +251,7 @@ class ChromaVectorStore(VectorStore):
         except Exception as e:
             logger.warning("Failed to delete documents from '%s': %s", collection, e)
 
-    def update_metadata(
-        self, collection: str, ids: list[str], metadatas: list[dict[str, str | int | float]]
-    ) -> None:
+    def update_metadata(self, collection: str, ids: list[str], metadatas: list[dict[str, str | int | float]]) -> None:
         """Update metadata for existing documents."""
         if not ids:
             return
@@ -282,6 +273,7 @@ class ChromaVectorStore(VectorStore):
             if isinstance(value, list):
                 # ChromaDB doesn't support list values directly
                 import json
+
                 serialized[key] = json.dumps(value, ensure_ascii=False)
             else:
                 serialized[key] = value

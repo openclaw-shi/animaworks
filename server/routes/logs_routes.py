@@ -1,12 +1,12 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -54,14 +54,14 @@ def _collect_log_files() -> list[dict]:
                 continue
             seen.add(log_file.name)
             stat = log_file.stat()
-            files.append({
-                "name": log_file.name,
-                "path": str(log_file.relative_to(log_dir)),
-                "size_bytes": stat.st_size,
-                "modified": datetime.fromtimestamp(
-                    stat.st_mtime, tz=timezone.utc
-                ).isoformat(),
-            })
+            files.append(
+                {
+                    "name": log_file.name,
+                    "path": str(log_file.relative_to(log_dir)),
+                    "size_bytes": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                }
+            )
 
     # Sort by modification time descending
     files.sort(key=lambda f: f["modified"], reverse=True)
@@ -134,7 +134,7 @@ def create_logs_router() -> APIRouter:
 
         async def log_stream_generator():
             try:
-                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                with open(log_path, encoding="utf-8", errors="replace") as f:
                     # Seek to end
                     f.seek(0, 2)
                     while True:
@@ -162,16 +162,12 @@ def create_logs_router() -> APIRouter:
         _validate_filename(filename)
         log_path = _resolve_log_path(filename)
         if log_path is None:
-            raise HTTPException(
-                status_code=404, detail=f"Log file not found: {filename}"
-            )
+            raise HTTPException(status_code=404, detail=f"Log file not found: {filename}")
 
         try:
-            all_lines = log_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()
+            all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError as exc:
-            raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}")
+            raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}") from exc
 
         total_lines = len(all_lines)
         paginated = all_lines[offset : offset + limit]
@@ -198,11 +194,9 @@ def create_logs_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Log file not found: {file}")
 
         try:
-            all_lines = log_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()
+            all_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError as exc:
-            raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}")
+            raise HTTPException(status_code=500, detail=f"Failed to read log: {exc}") from exc
 
         total_lines = len(all_lines)
         paginated = all_lines[offset : offset + limit]

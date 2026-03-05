@@ -1,11 +1,11 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
 import logging
 from pathlib import Path
 from typing import Any
@@ -55,7 +55,7 @@ def build_skill_tool_description(
         "",
         "<available_skills>",
     ]
-    total = sum(len(l) for l in lines)
+    total = sum(len(line) for line in lines)
 
     for meta in skill_metas:
         entry = f"- {meta.name}: {meta.description}"
@@ -87,6 +87,7 @@ def build_skill_tool_description(
 
 # ── Skill loader ─────────────────────────────────────────
 
+
 def load_and_render_skill(
     skill_name: str,
     anima_dir: Path,
@@ -101,17 +102,10 @@ def load_and_render_skill(
     Personal skills take priority over common skills with the same name.
     """
     # Resolve skill file
-    path, skill_type = _resolve_skill_path(
-        skill_name, skills_dir, common_skills_dir, procedures_dir
-    )
+    path, skill_type = _resolve_skill_path(skill_name, skills_dir, common_skills_dir, procedures_dir)
     if path is None:
-        available = _list_available_names(
-            skills_dir, common_skills_dir, procedures_dir
-        )
-        return (
-            f"スキル '{skill_name}' が見つかりません。\n"
-            f"利用可能なスキル: {', '.join(available)}"
-        )
+        available = _list_available_names(skills_dir, common_skills_dir, procedures_dir)
+        return f"スキル '{skill_name}' が見つかりません。\n利用可能なスキル: {', '.join(available)}"
 
     # Read and strip frontmatter
     raw = path.read_text(encoding="utf-8")
@@ -141,6 +135,7 @@ def load_and_render_skill(
 
 
 # ── Internal helpers ─────────────────────────────────────
+
 
 def _resolve_skill_path(
     name: str,

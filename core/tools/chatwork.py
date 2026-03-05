@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -34,38 +33,39 @@ from core.tools._retry import retry_on_rate_limit
 # ── Execution Profile ─────────────────────────────────────
 
 EXECUTION_PROFILE: dict[str, dict[str, object]] = {
-    "rooms":    {"expected_seconds": 10, "background_eligible": False},
+    "rooms": {"expected_seconds": 10, "background_eligible": False},
     "messages": {"expected_seconds": 30, "background_eligible": False},
-    "send":     {"expected_seconds": 10, "background_eligible": False},
-    "search":   {"expected_seconds": 30, "background_eligible": False},
+    "send": {"expected_seconds": 10, "background_eligible": False},
+    "search": {"expected_seconds": 30, "background_eligible": False},
     "unreplied": {"expected_seconds": 60, "background_eligible": False},
-    "sync":     {"expected_seconds": 60, "background_eligible": True},
-    "me":       {"expected_seconds": 5,  "background_eligible": False},
-    "members":  {"expected_seconds": 10, "background_eligible": False},
+    "sync": {"expected_seconds": 60, "background_eligible": True},
+    "me": {"expected_seconds": 5, "background_eligible": False},
+    "members": {"expected_seconds": 10, "background_eligible": False},
     "contacts": {"expected_seconds": 10, "background_eligible": False},
-    "task":     {"expected_seconds": 10, "background_eligible": False},
-    "mytasks":  {"expected_seconds": 10, "background_eligible": False},
-    "tasks":    {"expected_seconds": 10, "background_eligible": False},
+    "task": {"expected_seconds": 10, "background_eligible": False},
+    "mytasks": {"expected_seconds": 10, "background_eligible": False},
+    "tasks": {"expected_seconds": 10, "background_eligible": False},
     "mentions": {"expected_seconds": 60, "background_eligible": False},
-    "stats":    {"expected_seconds": 5,  "background_eligible": False},
-    "files":    {"expected_seconds": 10, "background_eligible": False},
+    "stats": {"expected_seconds": 5, "background_eligible": False},
+    "files": {"expected_seconds": 10, "background_eligible": False},
     "download": {"expected_seconds": 60, "background_eligible": True},
-    "delete":   {"expected_seconds": 10, "background_eligible": False},
+    "delete": {"expected_seconds": 10, "background_eligible": False},
 }
 
 requests = None
+
 
 def _require_requests():
     global requests
     if requests is None:
         try:
             import requests as _req
+
             requests = _req
         except ImportError:
-            raise ImportError(
-                "chatwork tool requires 'requests'. Install with: pip install animaworks[communication]"
-            )
+            raise ImportError("chatwork tool requires 'requests'. Install with: pip install animaworks[communication]") from None
     return requests
+
 
 # ============================================================
 # Constants
@@ -91,6 +91,7 @@ def _load_chatwork_tool_config() -> dict:
 # Text utility
 # ============================================================
 
+
 def clean_chatwork_tags(text: str) -> str:
     """Remove Chatwork special tags to make text more readable."""
     text = re.sub(r"\[To:\d+\][^\n]*\n?", "", text)
@@ -108,6 +109,7 @@ def _format_timestamp(unix_ts: int) -> str:
 # Chatwork API Client
 # ============================================================
 
+
 class ChatworkClient:
     """HTTP client for the Chatwork v2 API with rate-limit retry."""
 
@@ -117,10 +119,12 @@ class ChatworkClient:
             api_token = get_credential("chatwork", "chatwork", env_var="CHATWORK_API_TOKEN")
         self.api_token = api_token
         self.session = req.Session()
-        self.session.headers.update({
-            "X-ChatWorkToken": api_token,
-            "Accept": "application/json",
-        })
+        self.session.headers.update(
+            {
+                "X-ChatWorkToken": api_token,
+                "Accept": "application/json",
+            }
+        )
 
     def _request(self, method: str, path: str, **kwargs) -> dict | list | None:
         """Send an HTTP request with rate-limit retry."""
@@ -136,9 +140,7 @@ class ChatworkClient:
         def _do_request() -> dict | list | None:
             resp = self.session.request(method, url, **kwargs)
             if resp.status_code == 429:
-                retry_after = int(
-                    resp.headers.get("Retry-After", RATE_LIMIT_WAIT_DEFAULT)
-                )
+                retry_after = int(resp.headers.get("Retry-After", RATE_LIMIT_WAIT_DEFAULT))
                 raise _RateLimitError(retry_after)
             if resp.status_code == 204:
                 return None
@@ -161,9 +163,7 @@ class ChatworkClient:
             retry_on=(_RateLimitError,),
         )
 
-    async def _arequest(
-        self, method: str, path: str, **kwargs
-    ) -> dict | list | None:
+    async def _arequest(self, method: str, path: str, **kwargs) -> dict | list | None:
         """Async wrapper around :meth:`_request` using a thread-pool executor."""
         return await run_sync(self._request, method, path, **kwargs)
 
@@ -210,9 +210,7 @@ class ChatworkClient:
 
     def post_message(self, room_id: str, body: str) -> dict:
         if len(body) > 10000:
-            raise ValueError(
-                f"Message exceeds 10,000 characters ({len(body)} chars)"
-            )
+            raise ValueError(f"Message exceeds 10,000 characters ({len(body)} chars)")
         return self.post(f"/rooms/{room_id}/messages", data={"body": body})
 
     def my_tasks(self, status: str = "open") -> list[dict]:
@@ -231,12 +229,15 @@ class ChatworkClient:
         limit: int = 0,
         limit_type: str = "time",
     ) -> dict:
-        return self.post(f"/rooms/{room_id}/tasks", data={
-            "body": body,
-            "to_ids": to_ids,
-            "limit": limit,
-            "limit_type": limit_type,
-        })
+        return self.post(
+            f"/rooms/{room_id}/tasks",
+            data={
+                "body": body,
+                "to_ids": to_ids,
+                "limit": limit,
+                "limit_type": limit_type,
+            },
+        )
 
     def get_files(self, room_id: str, account_id: str | None = None) -> list[dict]:
         """List files uploaded to a room."""
@@ -245,9 +246,7 @@ class ChatworkClient:
             params["account_id"] = account_id
         return self.get(f"/rooms/{room_id}/files", params=params) or []
 
-    def get_file(
-        self, room_id: str, file_id: str, create_download_url: bool = True
-    ) -> dict:
+    def get_file(self, room_id: str, file_id: str, create_download_url: bool = True) -> dict:
         """Get file details, optionally with a one-time download URL."""
         params = {"create_download_url": 1 if create_download_url else 0}
         return self.get(f"/rooms/{room_id}/files/{file_id}", params=params)
@@ -336,8 +335,7 @@ class MessageCache(BaseMessageCache):
     def upsert_room(self, room: dict):
         self.conn.execute(
             "INSERT OR REPLACE INTO rooms (room_id, name, type, updated_at) VALUES (?,?,?,?)",
-            (str(room["room_id"]), room["name"], room.get("type", ""),
-             datetime.now(JST).isoformat()),
+            (str(room["room_id"]), room["name"], room.get("type", ""), datetime.now(JST).isoformat()),
         )
         self.conn.commit()
 
@@ -350,12 +348,15 @@ class MessageCache(BaseMessageCache):
                 """INSERT OR REPLACE INTO messages
                    (message_id, room_id, account_id, account_name, body, send_time, send_time_jst)
                    VALUES (?,?,?,?,?,?,?)""",
-                (str(m["message_id"]), str(room_id),
-                 str(account.get("account_id", "")),
-                 account.get("name", ""),
-                 m.get("body", ""),
-                 send_time,
-                 dt.strftime("%Y-%m-%d %H:%M:%S")),
+                (
+                    str(m["message_id"]),
+                    str(room_id),
+                    str(account.get("account_id", "")),
+                    account.get("name", ""),
+                    m.get("body", ""),
+                    send_time,
+                    dt.strftime("%Y-%m-%d %H:%M:%S"),
+                ),
             )
         self.conn.commit()
 
@@ -399,9 +400,7 @@ class MessageCache(BaseMessageCache):
         return [dict(r) for r in rows]
 
     def get_room_name(self, room_id: str) -> str:
-        row = self.conn.execute(
-            "SELECT name FROM rooms WHERE room_id = ?", (room_id,)
-        ).fetchone()
+        row = self.conn.execute("SELECT name FROM rooms WHERE room_id = ?", (room_id,)).fetchone()
         return row["name"] if row else room_id
 
     def _get_personal_room_ids(self, config: dict) -> set[str]:
@@ -411,9 +410,7 @@ class MessageCache(BaseMessageCache):
 
         # type=direct rooms from DB
         if unreplied_cfg.get("include_direct_messages", True):
-            rows = self.conn.execute(
-                "SELECT room_id FROM rooms WHERE type = 'direct'"
-            ).fetchall()
+            rows = self.conn.execute("SELECT room_id FROM rooms WHERE type = 'direct'").fetchall()
             personal.update(str(r["room_id"]) for r in rows)
 
         # Explicitly watched rooms
@@ -495,9 +492,7 @@ class MessageCache(BaseMessageCache):
         config: dict | None = None,
     ) -> list[dict]:
         """Find messages addressed to me that I haven't replied to."""
-        mentions = self.find_mentions(
-            my_account_id, exclude_toall, limit, config=config
-        )
+        mentions = self.find_mentions(my_account_id, exclude_toall, limit, config=config)
         unreplied = []
         for m in mentions:
             # Check if I have sent any message in this room after this one
@@ -555,6 +550,7 @@ def _sync_rooms(
 # Tool schemas (Anthropic tool_use format)
 # ============================================================
 
+
 def get_tool_schemas() -> list[dict]:
     """Return Anthropic tool_use schemas for Chatwork tools."""
     return []
@@ -611,27 +607,19 @@ def cli_main(argv: list[str] | None = None) -> None:
     # messages
     p = sub.add_parser("messages", help="Get recent messages")
     p.add_argument("room", help="Room name or ID")
-    p.add_argument(
-        "-n", "--num", type=int, default=20, help="Number of messages (default 20)"
-    )
+    p.add_argument("-n", "--num", type=int, default=20, help="Number of messages (default 20)")
 
     # search
     p = sub.add_parser("search", help="Search cached messages")
     p.add_argument("keyword", nargs="+", help="Search keyword")
     p.add_argument("-r", "--room", help="Filter by room name or ID")
-    p.add_argument(
-        "-n", "--num", type=int, default=50, help="Max results (default 50)"
-    )
+    p.add_argument("-n", "--num", type=int, default=50, help="Max results (default 50)")
 
     # unreplied
     p = sub.add_parser("unreplied", help="Show unreplied messages addressed to me")
     p.add_argument("--sync", action="store_true", help="Sync before checking")
-    p.add_argument(
-        "--sync-limit", type=int, default=50, help="Rooms to sync (default 50)"
-    )
-    p.add_argument(
-        "--include-toall", action="store_true", help="Include @all mentions"
-    )
+    p.add_argument("--sync-limit", type=int, default=50, help="Rooms to sync (default 50)")
+    p.add_argument("--include-toall", action="store_true", help="Include @all mentions")
     p.add_argument("--json", action="store_true", help="Output as JSON")
 
     # rooms
@@ -641,7 +629,10 @@ def cli_main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("sync", help="Sync room metadata and messages to local cache")
     p.add_argument("room", nargs="?", help="Specific room name or ID to sync")
     p.add_argument(
-        "-l", "--limit", type=int, default=30,
+        "-l",
+        "--limit",
+        type=int,
+        default=30,
         help="Number of rooms to sync messages for (default 30)",
     )
 
@@ -673,30 +664,23 @@ def cli_main(argv: list[str] | None = None) -> None:
     # mentions
     p = sub.add_parser("mentions", help="Show messages addressed to me")
     p.add_argument("--sync", action="store_true", help="Sync before checking")
-    p.add_argument(
-        "--sync-limit", type=int, default=50, help="Rooms to sync (default 50)"
-    )
-    p.add_argument(
-        "--include-toall", action="store_true", help="Include @all mentions"
-    )
-    p.add_argument(
-        "-n", "--num", type=int, default=200, help="Max mentions (default 200)"
-    )
+    p.add_argument("--sync-limit", type=int, default=50, help="Rooms to sync (default 50)")
+    p.add_argument("--include-toall", action="store_true", help="Include @all mentions")
+    p.add_argument("-n", "--num", type=int, default=200, help="Max mentions (default 200)")
     p.add_argument("--json", action="store_true", help="Output as JSON")
 
     # files
     p = sub.add_parser("files", help="List files in a room")
     p.add_argument("room", help="Room name or ID")
-    p.add_argument(
-        "--account-id", help="Filter by uploader account ID"
-    )
+    p.add_argument("--account-id", help="Filter by uploader account ID")
 
     # download
     p = sub.add_parser("download", help="Download a file from a room")
     p.add_argument("room", help="Room name or ID")
     p.add_argument("file_id", help="File ID")
     p.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         help="Output file path (default: original filename in current directory)",
     )
 
@@ -716,9 +700,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     if args.command == "send":
-        write_token = get_credential(
-            "chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE"
-        )
+        write_token = get_credential("chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE")
         write_client = ChatworkClient(api_token=write_token)
         room_id = client.resolve_room_id(args.room)
         message = " ".join(args.message)
@@ -729,9 +711,7 @@ def cli_main(argv: list[str] | None = None) -> None:
             print(f"Result: {result}")
 
     elif args.command == "delete":
-        write_token = get_credential(
-            "chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE"
-        )
+        write_token = get_credential("chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE")
         write_client = ChatworkClient(api_token=write_token)
         room_id = client.resolve_room_id(args.room)
         message_id = args.message_id
@@ -818,22 +798,25 @@ def cli_main(argv: list[str] | None = None) -> None:
                 print("Sync complete.\n", file=sys.stderr)
             cli_config = _load_chatwork_tool_config()
             unreplied = cache.find_unreplied(
-                my_id, exclude_toall=(not args.include_toall),
+                my_id,
+                exclude_toall=(not args.include_toall),
                 config=cli_config,
             )
             if getattr(args, "json", False):
                 output = []
                 for m in unreplied:
-                    output.append({
-                        "message_id": m.get("message_id", ""),
-                        "room_id": m.get("room_id", ""),
-                        "room_name": m.get("room_name", m.get("room_id", "")),
-                        "account_id": m.get("account_id", ""),
-                        "account_name": m.get("account_name", ""),
-                        "body": m.get("body", "").strip(),
-                        "send_time": m.get("send_time", 0),
-                        "send_time_jst": m.get("send_time_jst", ""),
-                    })
+                    output.append(
+                        {
+                            "message_id": m.get("message_id", ""),
+                            "room_id": m.get("room_id", ""),
+                            "room_name": m.get("room_name", m.get("room_id", "")),
+                            "account_id": m.get("account_id", ""),
+                            "account_name": m.get("account_name", ""),
+                            "body": m.get("body", "").strip(),
+                            "send_time": m.get("send_time", 0),
+                            "send_time_jst": m.get("send_time_jst", ""),
+                        }
+                    )
                 print(json.dumps(output, ensure_ascii=False, indent=2))
             elif not unreplied:
                 print(f"No unreplied messages ({my_name} / ID:{my_id})")
@@ -844,9 +827,7 @@ def cli_main(argv: list[str] | None = None) -> None:
                     name = m.get("account_name", "?")
                     room_name = m.get("room_name", m.get("room_id", ""))
                     body = m.get("body", "").strip()
-                    body_clean = re.sub(
-                        r"\[To:\d+\][^\n]*\n?", "", body
-                    ).strip()
+                    body_clean = re.sub(r"\[To:\d+\][^\n]*\n?", "", body).strip()
                     body_preview = body_clean.replace("\n", " ")[:120]
                     if len(body_clean) > 120:
                         body_preview += "..."
@@ -863,9 +844,7 @@ def cli_main(argv: list[str] | None = None) -> None:
             rooms_data = client.rooms()
             for room in rooms_data:
                 cache.upsert_room(room)
-            rooms_data.sort(
-                key=lambda r: r.get("last_update_time", 0), reverse=True
-            )
+            rooms_data.sort(key=lambda r: r.get("last_update_time", 0), reverse=True)
             print(f"{'ID':>12}  {'Updated':19}  {'Name'}")
             print("-" * 70)
             for r in rooms_data:
@@ -897,14 +876,9 @@ def cli_main(argv: list[str] | None = None) -> None:
                 rooms_data = client.rooms()
                 for room in rooms_data:
                     cache.upsert_room(room)
-                rooms_data.sort(
-                    key=lambda r: r.get("last_update_time", 0), reverse=True
-                )
+                rooms_data.sort(key=lambda r: r.get("last_update_time", 0), reverse=True)
                 rooms_to_sync = rooms_data[: args.limit]
-                print(
-                    f"Syncing {len(rooms_to_sync)} rooms "
-                    f"(metadata: {len(rooms_data)} rooms saved)...\n"
-                )
+                print(f"Syncing {len(rooms_to_sync)} rooms (metadata: {len(rooms_data)} rooms saved)...\n")
                 total_msgs = 0
                 for i, room in enumerate(rooms_to_sync, 1):
                     rid = str(room["room_id"])
@@ -928,10 +902,7 @@ def cli_main(argv: list[str] | None = None) -> None:
                     time.sleep(0.5)
                 stats = cache.get_stats()
                 print(f"\nSync complete: {total_msgs} messages fetched")
-                print(
-                    f"Cache total: {stats['rooms']} rooms / "
-                    f"{stats['messages']} messages"
-                )
+                print(f"Cache total: {stats['rooms']} rooms / {stats['messages']} messages")
         finally:
             cache.close()
 
@@ -948,9 +919,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         print(f"{'Account ID':>12}  {'Role':10}  {'Name'}")
         print("-" * 50)
         for m in members:
-            print(
-                f"{m['account_id']:>12}  {m.get('role', ''):10}  {m['name']}"
-            )
+            print(f"{m['account_id']:>12}  {m.get('role', ''):10}  {m['name']}")
 
     elif args.command == "contacts":
         contacts = client.contacts()
@@ -1029,27 +998,28 @@ def cli_main(argv: list[str] | None = None) -> None:
             unreplied_set: set[tuple[str, str]] = set()
             if mentions:
                 unreplied_list = cache.find_unreplied(
-                    my_id, exclude_toall=(not args.include_toall),
+                    my_id,
+                    exclude_toall=(not args.include_toall),
                     config=cli_config,
                 )
-                unreplied_set = {
-                    (m["room_id"], m["message_id"]) for m in unreplied_list
-                }
+                unreplied_set = {(m["room_id"], m["message_id"]) for m in unreplied_list}
             if getattr(args, "json", False):
                 output = []
                 for m in mentions:
                     is_unreplied = (m["room_id"], m["message_id"]) in unreplied_set
-                    output.append({
-                        "message_id": m.get("message_id", ""),
-                        "room_id": m.get("room_id", ""),
-                        "room_name": m.get("room_name", m.get("room_id", "")),
-                        "account_id": m.get("account_id", ""),
-                        "account_name": m.get("account_name", ""),
-                        "body": m.get("body", "").strip(),
-                        "send_time": m.get("send_time", 0),
-                        "send_time_jst": m.get("send_time_jst", ""),
-                        "unreplied": is_unreplied,
-                    })
+                    output.append(
+                        {
+                            "message_id": m.get("message_id", ""),
+                            "room_id": m.get("room_id", ""),
+                            "room_name": m.get("room_name", m.get("room_id", "")),
+                            "account_id": m.get("account_id", ""),
+                            "account_name": m.get("account_name", ""),
+                            "body": m.get("body", "").strip(),
+                            "send_time": m.get("send_time", 0),
+                            "send_time_jst": m.get("send_time_jst", ""),
+                            "unreplied": is_unreplied,
+                        }
+                    )
                 print(json.dumps(output, ensure_ascii=False, indent=2))
             elif not mentions:
                 print("No mentions found.")
@@ -1063,9 +1033,7 @@ def cli_main(argv: list[str] | None = None) -> None:
                     is_unreplied = (m["room_id"], m["message_id"]) in unreplied_set
                     status = "[UNREPLIED] " if is_unreplied else "[replied]   "
                     body = m.get("body", "").strip()
-                    body_clean = re.sub(
-                        r"\[To:\d+\][^\n]*\n?", "", body
-                    ).strip()
+                    body_clean = re.sub(r"\[To:\d+\][^\n]*\n?", "", body).strip()
                     body_preview = body_clean.replace("\n", " ")[:100]
                     if len(body_clean) > 100:
                         body_preview += "..."
@@ -1117,6 +1085,7 @@ def cli_main(argv: list[str] | None = None) -> None:
 
 # ── Per-Anima credential resolution ──────────────────
 
+
 def _resolve_write_token(args: dict[str, Any]) -> str:
     """Resolve the Chatwork write token for the calling Anima.
 
@@ -1133,16 +1102,20 @@ def _resolve_write_token(args: dict[str, Any]) -> str:
         token = _lookup_shared_credentials(per_anima_key)
         if token:
             logger.debug(
-                "Using per-Anima Chatwork write token for '%s'", anima_name,
+                "Using per-Anima Chatwork write token for '%s'",
+                anima_name,
             )
             return token
 
     return get_credential(
-        "chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE",
+        "chatwork_write",
+        "chatwork",
+        env_var="CHATWORK_API_TOKEN_WRITE",
     )
 
 
 # ── Dispatch ──────────────────────────────────────────
+
 
 def dispatch(name: str, args: dict[str, Any]) -> Any:
     """Dispatch a tool call by schema name."""
@@ -1172,7 +1145,9 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
             if args.get("room"):
                 room_id = client.resolve_room_id(args["room"])
             return cache.search(
-                args["keyword"], room_id=room_id, limit=args.get("limit", 50),
+                args["keyword"],
+                room_id=room_id,
+                limit=args.get("limit", 50),
             )
         finally:
             cache.close()
@@ -1184,7 +1159,8 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
             my_id = str(my_info["account_id"])
             cli_config = _load_chatwork_tool_config()
             return cache.find_unreplied(
-                my_id, exclude_toall=not args.get("include_toall", False),
+                my_id,
+                exclude_toall=not args.get("include_toall", False),
                 config=cli_config,
             )
         finally:
@@ -1207,7 +1183,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
                 f"not by you (account_id={my_account_id}). "
                 f"You can only delete your own messages."
             )
-        result = write_client.delete_message(room_id, message_id)
+        _result = write_client.delete_message(room_id, message_id)
         return {"deleted": True, "message_id": message_id, "room_id": room_id}
     if name == "chatwork_rooms":
         client = ChatworkClient()
@@ -1216,9 +1192,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
         client = ChatworkClient()
         cache = MessageCache()
         try:
-            return _sync_rooms(
-                client, cache, sync_limit=args.get("limit", 30)
-            )
+            return _sync_rooms(client, cache, sync_limit=args.get("limit", 30))
         finally:
             cache.close()
     if name == "chatwork_mentions":

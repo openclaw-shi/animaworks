@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -101,7 +102,7 @@ class ForgettingEngine:
         """
         if metadata.get("importance") == "important":
             return True
-        if int(metadata.get("success_count", 0)) >= 2:
+        if int(metadata.get("success_count", 0)) >= 2:  # noqa: SIM103
             return True
         return False
 
@@ -117,7 +118,7 @@ class ForgettingEngine:
             return True
         if metadata.get("protected") is True:
             return True
-        if metadata.get("version", 1) >= 3:
+        if metadata.get("version", 1) >= 3:  # noqa: SIM103
             return True
         return False
 
@@ -172,6 +173,7 @@ class ForgettingEngine:
     def _get_vector_store(self):
         """Get vector store singleton."""
         from core.memory.rag.singleton import get_vector_store
+
         return get_vector_store(self.anima_name)
 
     def _get_all_chunks(self, collection_name: str) -> list[dict]:
@@ -183,11 +185,13 @@ class ForgettingEngine:
             chunks = []
             if result["ids"]:
                 for i, doc_id in enumerate(result["ids"]):
-                    chunks.append({
-                        "id": doc_id,
-                        "metadata": result["metadatas"][i] if result["metadatas"] else {},
-                        "content": result["documents"][i] if result["documents"] else "",
-                    })
+                    chunks.append(
+                        {
+                            "id": doc_id,
+                            "metadata": result["metadatas"][i] if result["metadatas"] else {},
+                            "content": result["documents"][i] if result["documents"] else "",
+                        }
+                    )
             return chunks
         except Exception as e:
             logger.warning("Failed to get chunks from %s: %s", collection_name, e)
@@ -233,10 +237,12 @@ class ForgettingEngine:
                 if meta.get("memory_type") == "procedures":
                     if self._should_downscale_procedure(meta, now):
                         ids_to_mark.append(chunk["id"])
-                        metas_to_mark.append({
-                            "activation_level": "low",
-                            "low_activation_since": now_iso_str,
-                        })
+                        metas_to_mark.append(
+                            {
+                                "activation_level": "low",
+                                "low_activation_since": now_iso_str,
+                            }
+                        )
                     continue
 
                 # Check access recency
@@ -264,10 +270,12 @@ class ForgettingEngine:
                 # Apply threshold
                 if days_since > DOWNSCALING_DAYS_THRESHOLD and access_count < DOWNSCALING_ACCESS_THRESHOLD:
                     ids_to_mark.append(chunk["id"])
-                    metas_to_mark.append({
-                        "activation_level": "low",
-                        "low_activation_since": now_iso_str,
-                    })
+                    metas_to_mark.append(
+                        {
+                            "activation_level": "low",
+                            "low_activation_since": now_iso_str,
+                        }
+                    )
 
             # Batch update
             if ids_to_mark:
@@ -276,11 +284,14 @@ class ForgettingEngine:
                     total_marked += len(ids_to_mark)
                     logger.info(
                         "Marked %d chunks as low-activation in %s",
-                        len(ids_to_mark), collection_name,
+                        len(ids_to_mark),
+                        collection_name,
                     )
                 except Exception as e:
                     logger.warning(
-                        "Failed to mark chunks in %s: %s", collection_name, e,
+                        "Failed to mark chunks in %s: %s",
+                        collection_name,
+                        e,
                     )
 
         result = {
@@ -289,7 +300,9 @@ class ForgettingEngine:
         }
         logger.info(
             "Synaptic downscaling complete for anima=%s: scanned=%d, marked=%d",
-            self.anima_name, total_scanned, total_marked,
+            self.anima_name,
+            total_scanned,
+            total_marked,
         )
         return result
 
@@ -306,6 +319,7 @@ class ForgettingEngine:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         logger.info("Starting neurogenesis reorganization for anima=%s", self.anima_name)
         store = self._get_vector_store()
@@ -318,9 +332,9 @@ class ForgettingEngine:
 
             # Filter low-activation chunks
             low_chunks = [
-                c for c in chunks
-                if c["metadata"].get("activation_level") == "low"
-                and not self._is_protected(c["metadata"])
+                c
+                for c in chunks
+                if c["metadata"].get("activation_level") == "low" and not self._is_protected(c["metadata"])
             ]
 
             if len(low_chunks) < 2:
@@ -328,7 +342,9 @@ class ForgettingEngine:
 
             # Find similar pairs using vector similarity
             similar_pairs = self._find_similar_pairs(
-                low_chunks, collection_name, store,
+                low_chunks,
+                collection_name,
+                store,
             )
 
             if not similar_pairs:
@@ -338,30 +354,38 @@ class ForgettingEngine:
             for chunk_a, chunk_b, similarity in similar_pairs:
                 try:
                     merged_content = await self._merge_chunks_llm(
-                        chunk_a, chunk_b, similarity, model,
+                        chunk_a,
+                        chunk_b,
+                        similarity,
+                        model,
                     )
                     if merged_content:
                         # Delete originals
                         store.delete_documents(
-                            collection_name, [chunk_a["id"], chunk_b["id"]],
+                            collection_name,
+                            [chunk_a["id"], chunk_b["id"]],
                         )
                         # Index merged content
                         self._index_merged_chunk(
-                            merged_content, chunk_a, memory_type,
+                            merged_content,
+                            chunk_a,
+                            memory_type,
                         )
                         # Sync source files on disk so next RAG re-index
                         # reflects the merge instead of restoring originals
                         self._sync_merged_source_files(
-                            chunk_a, chunk_b, merged_content,
+                            chunk_a,
+                            chunk_b,
+                            merged_content,
                         )
                         total_merged += 1
-                        merged_pairs.append(
-                            f"{chunk_a['id']} + {chunk_b['id']}"
-                        )
+                        merged_pairs.append(f"{chunk_a['id']} + {chunk_b['id']}")
                 except Exception as e:
                     logger.warning(
                         "Failed to merge chunks %s and %s: %s",
-                        chunk_a["id"], chunk_b["id"], e,
+                        chunk_a["id"],
+                        chunk_b["id"],
+                        e,
                     )
 
         result = {
@@ -370,7 +394,8 @@ class ForgettingEngine:
         }
         logger.info(
             "Neurogenesis reorganization complete for anima=%s: merged=%d",
-            self.anima_name, total_merged,
+            self.anima_name,
+            total_merged,
         )
         return result
 
@@ -388,7 +413,7 @@ class ForgettingEngine:
 
         try:
             embedding_model = get_embedding_model()
-            for i, chunk_a in enumerate(chunks):
+            for _, chunk_a in enumerate(chunks):
                 if chunk_a["id"] in processed_ids:
                     continue
 
@@ -413,7 +438,8 @@ class ForgettingEngine:
 
                     # Check if the other chunk is also low-activation
                     other_chunk = next(
-                        (c for c in chunks if c["id"] == other_id), None,
+                        (c for c in chunks if c["id"] == other_id),
+                        None,
                     )
                     if other_chunk is None:
                         continue
@@ -449,11 +475,14 @@ class ForgettingEngine:
         try:
             import litellm
 
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=1024,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1024,
+                ),
+            )
             return response.choices[0].message.content or None
         except Exception as e:
             logger.warning("LLM merge failed: %s", e)
@@ -635,11 +664,14 @@ class ForgettingEngine:
                     total_forgotten += len(ids_to_delete)
                     logger.info(
                         "Deleted %d forgotten chunks from %s",
-                        len(ids_to_delete), collection_name,
+                        len(ids_to_delete),
+                        collection_name,
                     )
                 except Exception as e:
                     logger.warning(
-                        "Failed to delete chunks from %s: %s", collection_name, e,
+                        "Failed to delete chunks from %s: %s",
+                        collection_name,
+                        e,
                     )
                     continue  # Skip archiving if vector deletion failed
 
@@ -654,7 +686,9 @@ class ForgettingEngine:
         }
         logger.info(
             "Complete forgetting done for anima=%s: forgotten=%d, archived=%d files",
-            self.anima_name, total_forgotten, len(archived_files),
+            self.anima_name,
+            total_forgotten,
+            len(archived_files),
         )
         return result
 
@@ -711,7 +745,7 @@ class ForgettingEngine:
         deleted_count = 0
         kept_count = 0
 
-        for stem, files in stem_files.items():
+        for _, files in stem_files.items():
             # Sort by modification time descending (newest first)
             files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
@@ -730,7 +764,9 @@ class ForgettingEngine:
         if deleted_count > 0:
             logger.info(
                 "Procedure archive cleanup for anima=%s: deleted=%d, kept=%d",
-                self.anima_name, deleted_count, kept_count,
+                self.anima_name,
+                deleted_count,
+                kept_count,
             )
 
         return {"deleted_count": deleted_count, "kept_count": kept_count}

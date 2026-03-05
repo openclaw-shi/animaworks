@@ -5,17 +5,18 @@
 from __future__ import annotations
 
 import argparse
-
-from core.i18n import t
 import json
 import logging
 import os
 import re
 
+from core.i18n import t
+
 logger = logging.getLogger("animaworks")
 
 
 # ── Board Read ────────────────────────────────────────────
+
 
 def cmd_board_read(args: argparse.Namespace) -> None:
     """Read recent messages from a shared channel."""
@@ -38,6 +39,7 @@ def cmd_board_read(args: argparse.Namespace) -> None:
 
 # ── Board Post ────────────────────────────────────────────
 
+
 def cmd_board_post(args: argparse.Namespace) -> None:
     """Post a message to a shared channel."""
     from core.init import ensure_runtime_dir
@@ -58,6 +60,7 @@ def cmd_board_post(args: argparse.Namespace) -> None:
 
 # ── Board DM History ──────────────────────────────────────
 
+
 def cmd_board_dm_history(args: argparse.Namespace) -> None:
     """Read DM history with a specific peer."""
     from core.init import ensure_runtime_dir
@@ -75,8 +78,12 @@ def cmd_board_dm_history(args: argparse.Namespace) -> None:
 
 # ── Mention Fanout ────────────────────────────────────────
 
+
 def _fanout_board_mentions(
-    messenger: Messenger, from_anima: str, channel: str, text: str,
+    messenger: Messenger,  # noqa: F821
+    from_anima: str,
+    channel: str,
+    text: str,
 ) -> None:
     """Send DM notifications to mentioned Animas.
 
@@ -108,9 +115,8 @@ def _fanout_board_mentions(
     if not targets:
         return
 
-    fanout_content = (
-        f"[board_reply:channel={channel},from={from_anima}]\n"
-        + t("handler.board_mention_content", from_name=from_anima, channel=channel, text=text)
+    fanout_content = f"[board_reply:channel={channel},from={from_anima}]\n" + t(
+        "handler.board_mention_content", from_name=from_anima, channel=channel, text=text
     )
 
     for target in sorted(targets):
@@ -122,18 +128,25 @@ def _fanout_board_mentions(
             )
             logger.info(
                 "board_mention fanout: %s -> %s (channel=%s)",
-                from_anima, target, channel,
+                from_anima,
+                target,
+                channel,
             )
         except Exception:
             logger.warning(
-                "Failed to fanout board_mention to %s", target, exc_info=True,
+                "Failed to fanout board_mention to %s",
+                target,
+                exc_info=True,
             )
 
 
 # ── Server Notification ───────────────────────────────────
 
+
 def _notify_server_board_posted(
-    from_anima: str, channel: str, text: str,
+    from_anima: str,
+    channel: str,
+    text: str,
 ) -> None:
     """Notify the running server about a CLI board post.
 

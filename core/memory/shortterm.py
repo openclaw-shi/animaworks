@@ -239,7 +239,8 @@ class ShortTermMemory:
                     legacy_file.rename(dest)
                     logger.info(
                         "Migrated legacy shortterm file: %s -> %s",
-                        legacy_file, dest,
+                        legacy_file,
+                        dest,
                     )
         # Migrate archive directory
         legacy_archive = legacy_dir / "archive"

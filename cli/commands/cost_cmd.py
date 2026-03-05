@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -8,14 +9,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
 from pathlib import Path
 
 
 def cmd_cost(args: argparse.Namespace) -> None:
     """Show token usage and estimated cost."""
-    from core.paths import get_data_dir
     from core.memory.token_usage import TokenUsageLogger
+    from core.paths import get_data_dir
 
     data_dir = get_data_dir()
     animas_dir = data_dir / "animas"
@@ -29,10 +29,7 @@ def cmd_cost(args: argparse.Namespace) -> None:
             sys.exit(1)
         _show_anima_cost(args.anima, anima_dir, days, args.json_output)
     else:
-        anima_dirs = sorted(
-            p for p in animas_dir.iterdir()
-            if p.is_dir() and (p / "token_usage").is_dir()
-        )
+        anima_dirs = sorted(p for p in animas_dir.iterdir() if p.is_dir() and (p / "token_usage").is_dir())
         if not anima_dirs:
             print("No token usage data found. Start the server and send some messages.")
             return
@@ -62,10 +59,12 @@ def cmd_cost(args: argparse.Namespace) -> None:
 
             if grand_total_sessions > 0:
                 print("=" * 60)
-                print(f"{'TOTAL':>20s}  {grand_total_sessions:>6d} sessions  "
-                      f"in:{_fmt_tokens(grand_total_input):>10s}  "
-                      f"out:{_fmt_tokens(grand_total_output):>10s}  "
-                      f"${grand_total_cost:.4f}")
+                print(
+                    f"{'TOTAL':>20s}  {grand_total_sessions:>6d} sessions  "
+                    f"in:{_fmt_tokens(grand_total_input):>10s}  "
+                    f"out:{_fmt_tokens(grand_total_output):>10s}  "
+                    f"${grand_total_cost:.4f}"
+                )
                 print()
 
 
@@ -90,10 +89,12 @@ def _show_anima_cost(name: str, anima_dir: Path, days: int, json_output: bool) -
         print(f"  {'Model':<35s} {'Sessions':>8s} {'Input':>10s} {'Output':>10s} {'Cost':>10s}")
         print(f"  {'-' * 35} {'-' * 8} {'-' * 10} {'-' * 10} {'-' * 10}")
         for model, data in sorted(by_model.items()):
-            print(f"  {model:<35s} {data['sessions']:>8d} "
-                  f"{_fmt_tokens(data['input_tokens']):>10s} "
-                  f"{_fmt_tokens(data['output_tokens']):>10s} "
-                  f"${data['cost_usd']:.4f}")
+            print(
+                f"  {model:<35s} {data['sessions']:>8d} "
+                f"{_fmt_tokens(data['input_tokens']):>10s} "
+                f"{_fmt_tokens(data['output_tokens']):>10s} "
+                f"${data['cost_usd']:.4f}"
+            )
         print()
 
     by_trigger = summary.get("by_trigger", {})
@@ -101,10 +102,12 @@ def _show_anima_cost(name: str, anima_dir: Path, days: int, json_output: bool) -
         print(f"  {'Trigger':<20s} {'Sessions':>8s} {'Input':>10s} {'Output':>10s} {'Cost':>10s}")
         print(f"  {'-' * 20} {'-' * 8} {'-' * 10} {'-' * 10} {'-' * 10}")
         for trigger, data in sorted(by_trigger.items()):
-            print(f"  {trigger:<20s} {data['sessions']:>8d} "
-                  f"{_fmt_tokens(data['input_tokens']):>10s} "
-                  f"{_fmt_tokens(data['output_tokens']):>10s} "
-                  f"${data['cost_usd']:.4f}")
+            print(
+                f"  {trigger:<20s} {data['sessions']:>8d} "
+                f"{_fmt_tokens(data['input_tokens']):>10s} "
+                f"{_fmt_tokens(data['output_tokens']):>10s} "
+                f"${data['cost_usd']:.4f}"
+            )
         print()
 
     by_date = summary.get("by_date", {})
@@ -112,20 +115,24 @@ def _show_anima_cost(name: str, anima_dir: Path, days: int, json_output: bool) -
         print(f"  {'Date':<12s} {'Sessions':>8s} {'Input':>10s} {'Output':>10s} {'Cost':>10s}")
         print(f"  {'-' * 12} {'-' * 8} {'-' * 10} {'-' * 10} {'-' * 10}")
         for day, data in sorted(by_date.items()):
-            print(f"  {day:<12s} {data['sessions']:>8d} "
-                  f"{_fmt_tokens(data['input_tokens']):>10s} "
-                  f"{_fmt_tokens(data['output_tokens']):>10s} "
-                  f"${data['cost_usd']:.4f}")
+            print(
+                f"  {day:<12s} {data['sessions']:>8d} "
+                f"{_fmt_tokens(data['input_tokens']):>10s} "
+                f"{_fmt_tokens(data['output_tokens']):>10s} "
+                f"${data['cost_usd']:.4f}"
+            )
         print()
 
 
 def _print_anima_summary(name: str, summary: dict) -> None:
     print(f"\n  {name}")
     print(f"  {'─' * 56}")
-    print(f"  Sessions: {summary['total_sessions']:,d}   "
-          f"Input: {_fmt_tokens(summary['total_input_tokens'])}   "
-          f"Output: {_fmt_tokens(summary['total_output_tokens'])}   "
-          f"Total: {_fmt_tokens(summary['total_tokens'])}")
+    print(
+        f"  Sessions: {summary['total_sessions']:,d}   "
+        f"Input: {_fmt_tokens(summary['total_input_tokens'])}   "
+        f"Output: {_fmt_tokens(summary['total_output_tokens'])}   "
+        f"Total: {_fmt_tokens(summary['total_tokens'])}"
+    )
     print(f"  Estimated cost: ${summary['total_estimated_cost_usd']:.4f}")
 
 

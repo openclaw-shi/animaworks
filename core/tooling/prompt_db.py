@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -387,8 +388,7 @@ DEFAULT_DESCRIPTIONS: dict[str, dict[str, str]] = {
             "heartbeat時の進捗確認やタスク割り当て時に使う。"
         ),
         "en": (
-            "List tasks in the task queue. Filter by status. "
-            "Use during heartbeat for progress and task assignment."
+            "List tasks in the task queue. Filter by status. Use during heartbeat for progress and task assignment."
         ),
     },
 }
@@ -413,6 +413,7 @@ def get_default_guide(key: str, locale: str | None = None) -> str:
     loc = locale or _get_locale()
     entry = DEFAULT_GUIDES.get(key, {})
     return entry.get(loc) or entry.get("en") or entry.get("ja", "")
+
 
 # ── Default guides ──────────────────────────────────────────
 #
@@ -803,8 +804,7 @@ class ToolPromptStore:
         """Return all tool descriptions as dicts."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT name, description, updated_at FROM tool_descriptions "
-                "ORDER BY name",
+                "SELECT name, description, updated_at FROM tool_descriptions ORDER BY name",
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -842,8 +842,7 @@ class ToolPromptStore:
         """Return all tool guides as dicts."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT key, content, updated_at FROM tool_guides "
-                "ORDER BY key",
+                "SELECT key, content, updated_at FROM tool_guides ORDER BY key",
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -858,9 +857,7 @@ class ToolPromptStore:
             ).fetchone()
         return row["content"] if row else None
 
-    def get_section_with_condition(
-        self, key: str
-    ) -> tuple[str, str | None] | None:
+    def get_section_with_condition(self, key: str) -> tuple[str, str | None] | None:
         """Return ``(content, condition)`` for *key*, or ``None``."""
         with self._connect() as conn:
             row = conn.execute(
@@ -896,8 +893,7 @@ class ToolPromptStore:
         """Return all system sections as dicts."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT key, content, condition, updated_at "
-                "FROM system_sections ORDER BY key",
+                "SELECT key, content, condition, updated_at FROM system_sections ORDER BY key",
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -925,8 +921,7 @@ class ToolPromptStore:
                     else:
                         flat[k] = v
                 conn.executemany(
-                    "INSERT OR IGNORE INTO tool_descriptions "
-                    "(name, description, updated_at) VALUES (?, ?, ?)",
+                    "INSERT OR IGNORE INTO tool_descriptions (name, description, updated_at) VALUES (?, ?, ?)",
                     [(k, v, ts) for k, v in flat.items()],
                 )
             if guides:
@@ -937,18 +932,13 @@ class ToolPromptStore:
                     else:
                         flat_g[k] = v
                 conn.executemany(
-                    "INSERT OR IGNORE INTO tool_guides "
-                    "(key, content, updated_at) VALUES (?, ?, ?)",
+                    "INSERT OR IGNORE INTO tool_guides (key, content, updated_at) VALUES (?, ?, ?)",
                     [(k, v, ts) for k, v in flat_g.items()],
                 )
             if sections:
                 conn.executemany(
-                    "INSERT OR IGNORE INTO system_sections "
-                    "(key, content, condition, updated_at) VALUES (?, ?, ?, ?)",
-                    [
-                        (k, content, cond, ts)
-                        for k, (content, cond) in sections.items()
-                    ],
+                    "INSERT OR IGNORE INTO system_sections (key, content, condition, updated_at) VALUES (?, ?, ?, ?)",
+                    [(k, content, cond, ts) for k, (content, cond) in sections.items()],
                 )
 
 
@@ -977,8 +967,7 @@ def get_prompt_store() -> ToolPromptStore | None:
         db_path = get_data_dir() / "tool_prompts.sqlite3"
         if not db_path.parent.exists():
             logger.warning(
-                "Data directory does not exist: %s — "
-                "tool prompt DB unavailable. Run 'animaworks init'.",
+                "Data directory does not exist: %s — tool prompt DB unavailable. Run 'animaworks init'.",
                 db_path.parent,
             )
             return None

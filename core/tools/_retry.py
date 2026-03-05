@@ -6,13 +6,14 @@
 # See LICENSE for the full license text.
 
 """Shared retry/backoff utility for AnimaWorks tools."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable
-from typing import Any, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ def retry_with_backoff(
             last_exc = exc
             if attempt >= max_retries:
                 break
-            wait = min(base_delay * (2 ** attempt), max_delay)
+            wait = min(base_delay * (2**attempt), max_delay)
             if on_retry is not None:
                 on_retry(exc, attempt + 1, wait)
             else:
@@ -151,9 +152,14 @@ def retry_on_rate_limit(
 # ── Async Public API ──────────────────────────────────────
 
 
-_RETRY_PARAM_NAMES = frozenset({
-    "max_retries", "base_delay", "max_delay", "retry_on",
-})
+_RETRY_PARAM_NAMES = frozenset(
+    {
+        "max_retries",
+        "base_delay",
+        "max_delay",
+        "retry_on",
+    }
+)
 
 
 async def async_retry_with_backoff(
@@ -195,7 +201,7 @@ async def async_retry_with_backoff(
             last_exc = exc
             if attempt >= max_retries:
                 break
-            wait = min(base_delay * (2 ** attempt), max_delay)
+            wait = min(base_delay * (2**attempt), max_delay)
             logger.warning(
                 "Async retry %d/%d after %.1fs – %s: %s",
                 attempt + 1,

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -17,21 +18,20 @@ from collections.abc import AsyncGenerator
 from datetime import date
 from typing import Any
 
-from core.time_utils import now_jst
-
-from core.execution._sanitize import ORIGIN_HUMAN, ORIGIN_SYSTEM
-from core.memory.conversation import ConversationMemory, ToolRecord
-from core.memory.streaming_journal import StreamingJournal
-from core.paths import load_prompt
-from core.image_artifacts import extract_image_artifacts_from_tool_records
-from core.i18n import t
 from core.exceptions import (
     ExecutionError,
     LLMAPIError,
-    ToolError,
     MemoryIOError,
+    ToolError,
 )
-from core.schemas import CycleResult, ImageData, VALID_EMOTIONS
+from core.execution._sanitize import ORIGIN_HUMAN, ORIGIN_SYSTEM
+from core.i18n import t
+from core.image_artifacts import extract_image_artifacts_from_tool_records
+from core.memory.conversation import ConversationMemory, ToolRecord
+from core.memory.streaming_journal import StreamingJournal
+from core.paths import load_prompt
+from core.schemas import VALID_EMOTIONS, CycleResult, ImageData
+from core.time_utils import now_jst
 
 logger = logging.getLogger("animaworks.anima")
 
@@ -53,10 +53,7 @@ class MessagingMixin:
         if from_person in ("system", "") or from_person == self.name:
             return
         try:
-            shared_dir = (
-                self.anima_dir.parent.parent
-                / "shared" / "users" / from_person / "conversations"
-            )
+            shared_dir = self.anima_dir.parent.parent / "shared" / "users" / from_person / "conversations"
             shared_dir.mkdir(parents=True, exist_ok=True)
 
             today = date.today().isoformat()
@@ -72,7 +69,9 @@ class MessagingMixin:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception:
             logger.warning(
-                "[%s] Failed to log human conversation", self.name, exc_info=True,
+                "[%s] Failed to log human conversation",
+                self.name,
+                exc_info=True,
             )
 
     async def run_bootstrap(self) -> CycleResult:
@@ -94,6 +93,7 @@ class MessagingMixin:
 
         logger.info("[%s] run_bootstrap START", self.name)
         from core.tooling.handler import active_session_type
+
         try:
             async with self._get_thread_lock("default"):
                 self._status_slots["conversation:default"] = "bootstrapping"
@@ -108,14 +108,13 @@ class MessagingMixin:
                 )
 
                 try:
-                    result = await self.agent.run_cycle(
-                        prompt, trigger="bootstrap"
-                    )
+                    result = await self.agent.run_cycle(prompt, trigger="bootstrap")
                     self._last_activity = now_jst()
 
                     logger.info(
                         "[%s] run_bootstrap END duration_ms=%d",
-                        self.name, result.duration_ms,
+                        self.name,
+                        result.duration_ms,
                     )
                     return result
                 except Exception:
@@ -148,13 +147,18 @@ class MessagingMixin:
                 evt.set()
                 logger.info(
                     "[%s] Auto-interrupting running session for new message from=%s",
-                    self.name, from_person,
+                    self.name,
+                    from_person,
                 )
         logger.info(
             "[%s] process_message WAITING from=%s content_len=%d images=%d",
-            self.name, from_person, len(content), len(images or []),
+            self.name,
+            from_person,
+            len(content),
+            len(images or []),
         )
         from core.tooling.handler import active_session_type
+
         try:
             async with lock:
                 # Clear interrupt event for OUR session (after lock acquired)
@@ -162,7 +166,8 @@ class MessagingMixin:
                 self.agent.set_interrupt_event(self._get_interrupt_event(thread_id))
                 logger.info(
                     "[%s] process_message START (lock acquired) from=%s",
-                    self.name, from_person,
+                    self.name,
+                    from_person,
                 )
                 _conv_key = f"conversation:{thread_id}"
                 self._status_slots[_conv_key] = "thinking"
@@ -184,20 +189,25 @@ class MessagingMixin:
                     prompt = content
                 elif mode == "b":
                     prompt = conv_memory.build_chat_prompt(
-                        content, from_person, max_history_chars=2000,
+                        content,
+                        from_person,
+                        max_history_chars=2000,
                     )
                 else:
                     prompt = conv_memory.build_chat_prompt(content, from_person)
 
                 # Pre-save: persist user input before agent execution
                 conv_memory.append_turn(
-                    "human", content, attachments=attachment_paths or [],
+                    "human",
+                    content,
+                    attachments=attachment_paths or [],
                 )
                 conv_memory.save()
 
                 # Transcript: record human message
                 conv_memory.write_transcript(
-                    "human", content,
+                    "human",
+                    content,
                     from_person=from_person,
                     thread_id=thread_id,
                     attachments=attachment_paths or None,
@@ -219,7 +229,8 @@ class MessagingMixin:
 
                 try:
                     result = await self.agent.run_cycle(
-                        prompt, trigger=f"message:{from_person}",
+                        prompt,
+                        trigger=f"message:{from_person}",
                         message_intent=intent,
                         images=images,
                         prior_messages=prior_messages,
@@ -228,37 +239,37 @@ class MessagingMixin:
                     self._last_activity = now_jst()
 
                     # Record assistant response with tool records
-                    tool_records = [
-                        ToolRecord.from_dict(r)
-                        for r in result.tool_call_records
-                    ]
+                    tool_records = [ToolRecord.from_dict(r) for r in result.tool_call_records]
                     conv_memory.append_turn(
-                        "assistant", result.summary,
+                        "assistant",
+                        result.summary,
                         tool_records=tool_records,
                     )
                     conv_memory.save()
 
                     # Transcript: record assistant response
                     conv_memory.write_transcript(
-                        "assistant", result.summary,
+                        "assistant",
+                        result.summary,
                         thread_id=thread_id,
                         tool_names=[r.tool_name for r in tool_records if r.tool_name] or None,
                     )
 
                     # Activity log: response sent (with thinking text if present)
-                    response_artifacts = extract_image_artifacts_from_tool_records(
-                        result.tool_call_records
-                    )
+                    response_artifacts = extract_image_artifacts_from_tool_records(result.tool_call_records)
                     resp_meta: dict[str, Any] = {"thread_id": thread_id}
                     if result.thinking_text:
                         resp_meta["thinking_text"] = result.thinking_text
                     if response_artifacts:
                         resp_meta["images"] = response_artifacts
-                    self._activity.log("response_sent", content=result.summary, to_person=from_person, channel="chat", meta=resp_meta)
+                    self._activity.log(
+                        "response_sent", content=result.summary, to_person=from_person, channel="chat", meta=resp_meta
+                    )
 
                     logger.info(
                         "[%s] process_message END duration_ms=%d",
-                        self.name, result.duration_ms,
+                        self.name,
+                        result.duration_ms,
                     )
                     result.images = response_artifacts
                     if include_cycle_result:
@@ -273,9 +284,7 @@ class MessagingMixin:
                         meta={"phase": "process_message", "error": str(exc)[:200], "thread_id": thread_id},
                     )
                     # Save error marker so the failed exchange is visible
-                    conv_memory.append_turn(
-                        "assistant", t("anima.agent_error")
-                    )
+                    conv_memory.append_turn("assistant", t("anima.agent_error"))
                     conv_memory.save()
                     raise
                 finally:
@@ -307,7 +316,8 @@ class MessagingMixin:
         if self.needs_bootstrap and lock.locked():
             logger.info(
                 "[%s] process_message_stream REJECTED (bootstrapping) from=%s",
-                self.name, from_person,
+                self.name,
+                from_person,
             )
             yield {
                 "type": "bootstrap_busy",
@@ -323,14 +333,19 @@ class MessagingMixin:
                 evt.set()
                 logger.info(
                     "[%s] Auto-interrupting running session for new message from=%s",
-                    self.name, from_person,
+                    self.name,
+                    from_person,
                 )
 
         logger.info(
             "[%s] process_message_stream WAITING from=%s content_len=%d images=%d",
-            self.name, from_person, len(content), len(images or []),
+            self.name,
+            from_person,
+            len(content),
+            len(images or []),
         )
         from core.tooling.handler import active_session_type
+
         try:
             async with lock:
                 # Clear interrupt event for OUR session (after lock acquired)
@@ -338,7 +353,8 @@ class MessagingMixin:
                 self.agent.set_interrupt_event(self._get_interrupt_event(thread_id))
                 logger.info(
                     "[%s] process_message_stream START (lock acquired) from=%s",
-                    self.name, from_person,
+                    self.name,
+                    from_person,
                 )
                 _conv_key = f"conversation:{thread_id}"
                 self._status_slots[_conv_key] = "thinking"
@@ -363,20 +379,25 @@ class MessagingMixin:
                     prompt = content
                 elif mode == "b":
                     prompt = conv_memory.build_chat_prompt(
-                        content, from_person, max_history_chars=2000,
+                        content,
+                        from_person,
+                        max_history_chars=2000,
                     )
                 else:
                     prompt = conv_memory.build_chat_prompt(content, from_person)
 
                 # Pre-save: persist user input before agent execution
                 conv_memory.append_turn(
-                    "human", content, attachments=attachment_paths or [],
+                    "human",
+                    content,
+                    attachments=attachment_paths or [],
                 )
                 conv_memory.save()
 
                 # Transcript: record human message
                 conv_memory.write_transcript(
-                    "human", content,
+                    "human",
+                    content,
                     from_person=from_person,
                     thread_id=thread_id,
                     attachments=attachment_paths or None,
@@ -408,7 +429,8 @@ class MessagingMixin:
 
                 try:
                     async for chunk in self.agent.run_cycle_streaming(
-                        prompt, trigger=f"message:{from_person}",
+                        prompt,
+                        trigger=f"message:{from_person}",
                         message_intent=intent,
                         images=images,
                         prior_messages=prior_messages,
@@ -441,19 +463,18 @@ class MessagingMixin:
                             )
                             if response_artifacts:
                                 cycle_result["images"] = response_artifacts
-                            tool_records = [
-                                ToolRecord.from_dict(r)
-                                for r in cycle_result.get("tool_call_records", [])
-                            ]
+                            tool_records = [ToolRecord.from_dict(r) for r in cycle_result.get("tool_call_records", [])]
                             conv_memory.append_turn(
-                                "assistant", summary,
+                                "assistant",
+                                summary,
                                 tool_records=tool_records,
                             )
                             conv_memory.save()
 
                             # Transcript: record assistant response
                             conv_memory.write_transcript(
-                                "assistant", summary,
+                                "assistant",
+                                summary,
                                 thread_id=thread_id,
                                 tool_names=[r.tool_name for r in tool_records if r.tool_name] or None,
                             )
@@ -465,7 +486,9 @@ class MessagingMixin:
                                 resp_meta["thinking_text"] = thinking_text
                             if response_artifacts:
                                 resp_meta["images"] = response_artifacts
-                            self._activity.log("response_sent", content=summary, to_person=from_person, channel="chat", meta=resp_meta)
+                            self._activity.log(
+                                "response_sent", content=summary, to_person=from_person, channel="chat", meta=resp_meta
+                            )
 
                             # Finalize streaming journal (deletes the file)
                             journal.finalize(summary=summary[:500])
@@ -493,7 +516,12 @@ class MessagingMixin:
                     self._activity.log(
                         "error",
                         summary=t("anima.process_stream_error", exc=type(exc).__name__),
-                        meta={"phase": "process_message_stream", "error_code": error_code, "error": str(exc)[:200], "thread_id": thread_id},
+                        meta={
+                            "phase": "process_message_stream",
+                            "error_code": error_code,
+                            "error": str(exc)[:200],
+                            "thread_id": thread_id,
+                        },
                     )
                     yield {
                         "type": "error",
@@ -542,7 +570,8 @@ class MessagingMixin:
         ):
             logger.info(
                 "[%s] process_greet CACHED (%.0fs since last)",
-                self.name, now - self._last_greet_at,
+                self.name,
+                now - self._last_greet_at,
             )
             return {
                 "response": self._last_greet_text,
@@ -552,6 +581,7 @@ class MessagingMixin:
 
         logger.info("[%s] process_greet START", self.name)
         from core.tooling.handler import active_session_type
+
         async with self._get_thread_lock("default"):
             prev_status = self._status_slots.get("conversation:default", "idle")
             prev_task = self._task_slots.get("conversation:default", "")
@@ -561,7 +591,9 @@ class MessagingMixin:
             status_text = self.primary_status if self.primary_status != "idle" else t("anima.status_idle")
             task_text = self.primary_task if self.primary_task else t("anima.task_none")
             prompt = load_prompt(
-                "greet", status=status_text, current_task=task_text,
+                "greet",
+                status=status_text,
+                current_task=task_text,
             )
 
             self._status_slots["conversation:default"] = "greeting"
@@ -576,12 +608,13 @@ class MessagingMixin:
 
             try:
                 result = await self.agent.run_cycle(
-                    prompt, trigger="greet:user",
+                    prompt,
+                    trigger="greet:user",
                 )
                 self._last_activity = now_jst()
 
                 # Extract emotion from response
-                _em_pat = re.compile(r'<!--\s*emotion:\s*(\{.*?\})\s*-->', re.DOTALL)
+                _em_pat = re.compile(r"<!--\s*emotion:\s*(\{.*?\})\s*-->", re.DOTALL)
                 _em_match = _em_pat.search(result.summary)
                 if _em_match:
                     clean_text = _em_pat.sub("", result.summary).rstrip()
@@ -607,7 +640,8 @@ class MessagingMixin:
 
                 logger.info(
                     "[%s] process_greet END duration_ms=%d",
-                    self.name, result.duration_ms,
+                    self.name,
+                    result.duration_ms,
                 )
                 return {
                     "response": clean_text,
@@ -617,9 +651,7 @@ class MessagingMixin:
             except Exception:
                 logger.exception("[%s] process_greet FAILED", self.name)
                 # Save error marker in conversation memory
-                conv_memory.append_turn(
-                    "assistant", t("anima.greeting_error")
-                )
+                conv_memory.append_turn("assistant", t("anima.greeting_error"))
                 conv_memory.save()
                 raise
             finally:

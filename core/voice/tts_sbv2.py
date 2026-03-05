@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -35,9 +36,7 @@ class StyleBertVits2TTS(BaseTTSProvider):
         base = sbv2.get("base_url") if isinstance(sbv2, dict) else getattr(sbv2, "base_url", None)
         self._base_url = (base or DEFAULT_BASE_URL).rstrip("/")
 
-    async def synthesize(
-        self, text: str, config: TTSConfig
-    ) -> AsyncIterator[bytes]:
+    async def synthesize(self, text: str, config: TTSConfig) -> AsyncIterator[bytes]:
         """Stream TTS audio chunks. SBV2 returns full WAV; yield as single chunk."""
         audio = await self.synthesize_full(text, config)
         yield audio

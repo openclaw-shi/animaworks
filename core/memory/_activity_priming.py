@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -11,7 +12,6 @@ from __future__ import annotations
 Internal module — import from :mod:`core.memory.activity` instead.
 """
 
-from typing import Any
 
 from core.i18n import t
 from core.memory._activity_models import (
@@ -90,9 +90,9 @@ class PrimingMixin:
                 trim_window.rfind(". "),
             )
             if last_boundary > content_trim * 0.5:
-                text = trim_window[:last_boundary + 1] + pointer
+                text = trim_window[: last_boundary + 1] + pointer
             else:
-                text = trim_window[:max(1, content_trim - 20)] + "..." + pointer
+                text = trim_window[: max(1, content_trim - 20)] + "..." + pointer
 
         type_map: dict[str, str] = {
             "message_received": "MSG<",
@@ -228,11 +228,7 @@ class PrimingMixin:
 
             if entry_type == "cron_executed":
                 task_name = entry.meta.get("task_name", "")
-                if (
-                    current_group
-                    and current_group.type == "cron"
-                    and get_task_name(current_group) == task_name
-                ):
+                if current_group and current_group.type == "cron" and get_task_name(current_group) == task_name:
                     current_group.entries.append(entry)
                     current_group.end_ts = entry.ts
                     continue
@@ -274,14 +270,16 @@ class PrimingMixin:
             if current_group:
                 groups.append(current_group)
                 current_group = None
-            groups.append(EntryGroup(
-                type="single",
-                start_ts=entry.ts,
-                end_ts=entry.ts,
-                entries=[entry],
-                label="",
-                source_lines="",
-            ))
+            groups.append(
+                EntryGroup(
+                    type="single",
+                    start_ts=entry.ts,
+                    end_ts=entry.ts,
+                    entries=[entry],
+                    label="",
+                    source_lines="",
+                )
+            )
 
         if current_group:
             groups.append(current_group)
@@ -297,11 +295,7 @@ class PrimingMixin:
         start_time = group.start_ts[11:16] if len(group.start_ts) >= 16 else group.start_ts
         end_time = group.end_ts[11:16] if len(group.end_ts) >= 16 else group.end_ts
 
-        time_range = (
-            f"[{start_time}-{end_time}]"
-            if start_time != end_time
-            else f"[{start_time}]"
-        )
+        time_range = f"[{start_time}-{end_time}]" if start_time != end_time else f"[{start_time}]"
 
         if group.type == "dm":
             peer = get_peer(group)

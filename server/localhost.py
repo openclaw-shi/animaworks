@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -79,7 +80,7 @@ def _is_safe_localhost_request(request: Request) -> bool:
     # (reverse proxy rewrites Host to the external LAN address)
     host = request.headers.get("host", "")
     host_name = _extract_host(host)
-    if host_name not in _LOCALHOST_HOSTS and not _is_private_network(host_name):
+    if host_name not in _LOCALHOST_HOSTS and not _is_private_network(host_name):  # noqa: SIM103
         return False
 
     return True

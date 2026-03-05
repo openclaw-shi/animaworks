@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 from fastapi import APIRouter
 
+from server.routes.animas import create_animas_router
 from server.routes.assets import create_assets_router
 from server.routes.auth import create_auth_router
 from server.routes.channels import create_channels_router
@@ -14,7 +15,6 @@ from server.routes.config_routes import create_config_router
 from server.routes.internal import create_internal_router
 from server.routes.logs_routes import create_logs_router
 from server.routes.memory_routes import create_memory_router
-from server.routes.animas import create_animas_router
 from server.routes.sessions import create_sessions_router
 from server.routes.system import create_system_router
 from server.routes.tool_prompts import create_tool_prompts_router

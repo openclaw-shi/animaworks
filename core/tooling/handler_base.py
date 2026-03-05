@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -26,12 +27,14 @@ logger = logging.getLogger("animaworks.tool_handler")
 
 # ── Board fanout suppression (context-scoped for background tasks) ──
 suppress_board_fanout: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "suppress_board_fanout", default=False,
+    "suppress_board_fanout",
+    default=False,
 )
 
 # ── Active session type (context-scoped for concurrent HB+conversation) ──
 active_session_type: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "active_session_type", default="chat",
+    "active_session_type",
+    default="chat",
 )
 
 # Type alias for the message-sent callback (from, to, content).
@@ -41,53 +44,43 @@ OnMessageSentFn = Callable[[str, str, str], None]
 _INJECTION_RE = re.compile(r"[;\n`]|\$\(|\$\{|\$[A-Za-z_]")
 
 _BLOCKED_CMD_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\brm\s+(-[^\s]*)*\s*-r", re.IGNORECASE),
-     "Recursive delete (rm -r) is blocked"),
-    (re.compile(r"\brm\s+-rf\b", re.IGNORECASE),
-     "rm -rf is blocked"),
-    (re.compile(r"\bmkfs\b"),
-     "Filesystem creation is blocked"),
-    (re.compile(r"\bdd\b.*\bof\s*=\s*/dev/"),
-     "Direct disk write is blocked"),
-    (re.compile(r">\s*/dev/sd|>\s*/dev/nvme|>\s*/etc/"),
-     "Redirect to device/system files is blocked"),
-    (re.compile(r"(curl|wget)\b.*\|\s*(ba)?sh\b"),
-     "Remote code execution (curl/wget|sh) is blocked"),
-    (re.compile(r"\|\s*(ba)?sh\b"),
-     "Piping to sh/bash is blocked for security"),
-    (re.compile(r"\|\s*(python[23]?|perl|ruby|node)\b"),
-     "Piping to interpreter (python/perl/ruby/node) is blocked for security"),
-    (re.compile(r"\bchmod\s+[0-7]*7[0-7]*\b"),
-     "World-writable chmod is blocked"),
-    (re.compile(r"\bshutdown\b|\breboot\b|\binit\s+[06]\b"),
-     "System shutdown/reboot is blocked"),
-    (re.compile(r"(?:^|[|;&]\s*)nc\b"),
-     "nc (netcat) is blocked for security"),
-    (re.compile(r"(?:^|[|;&]\s*)ncat\b"),
-     "ncat is blocked for security"),
-    (re.compile(r"(?:^|[|;&]\s*)socat\b"),
-     "socat is blocked for security"),
-    (re.compile(r"(?:^|[|;&]\s*)telnet\b"),
-     "telnet is blocked for security"),
-    (re.compile(r"curl\s+.*-[dFT]\b"),
-     "curl data upload (-d/-F/-T) is blocked for security"),
-    (re.compile(r"curl\s+.*--data\b"),
-     "curl --data is blocked for security"),
-    (re.compile(r"wget\s+.*--post\b"),
-     "wget --post is blocked for security"),
+    (re.compile(r"\brm\s+(-[^\s]*)*\s*-r", re.IGNORECASE), "Recursive delete (rm -r) is blocked"),
+    (re.compile(r"\brm\s+-rf\b", re.IGNORECASE), "rm -rf is blocked"),
+    (re.compile(r"\bmkfs\b"), "Filesystem creation is blocked"),
+    (re.compile(r"\bdd\b.*\bof\s*=\s*/dev/"), "Direct disk write is blocked"),
+    (re.compile(r">\s*/dev/sd|>\s*/dev/nvme|>\s*/etc/"), "Redirect to device/system files is blocked"),
+    (re.compile(r"(curl|wget)\b.*\|\s*(ba)?sh\b"), "Remote code execution (curl/wget|sh) is blocked"),
+    (re.compile(r"\|\s*(ba)?sh\b"), "Piping to sh/bash is blocked for security"),
+    (
+        re.compile(r"\|\s*(python[23]?|perl|ruby|node)\b"),
+        "Piping to interpreter (python/perl/ruby/node) is blocked for security",
+    ),
+    (re.compile(r"\bchmod\s+[0-7]*7[0-7]*\b"), "World-writable chmod is blocked"),
+    (re.compile(r"\bshutdown\b|\breboot\b|\binit\s+[06]\b"), "System shutdown/reboot is blocked"),
+    (re.compile(r"(?:^|[|;&]\s*)nc\b"), "nc (netcat) is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)ncat\b"), "ncat is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)socat\b"), "socat is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)telnet\b"), "telnet is blocked for security"),
+    (re.compile(r"curl\s+.*-[dFT]\b"), "curl data upload (-d/-F/-T) is blocked for security"),
+    (re.compile(r"curl\s+.*--data\b"), "curl --data is blocked for security"),
+    (re.compile(r"wget\s+.*--post\b"), "wget --post is blocked for security"),
 ]
 
 _NEEDS_SHELL_RE = re.compile(r"\||\&\&|\|\||>>?|<<?")
 
-_PROTECTED_FILES = frozenset({
-    "permissions.md",
-    "identity.md",
-    "bootstrap.md",
-})
+_PROTECTED_FILES = frozenset(
+    {
+        "permissions.md",
+        "identity.md",
+        "bootstrap.md",
+    }
+)
 
-_PROTECTED_DIRS = frozenset({
-    "activity_log",
-})
+_PROTECTED_DIRS = frozenset(
+    {
+        "activity_log",
+    }
+)
 
 _EPISODE_FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(_.+)?\.md$")
 
@@ -118,7 +111,7 @@ def build_outgoing_origin_chain(
     Appends the session origin and ORIGIN_ANIMA to the chain,
     deduplicating and truncating to MAX_ORIGIN_CHAIN_LENGTH.
     """
-    from core.execution._sanitize import ORIGIN_ANIMA, MAX_ORIGIN_CHAIN_LENGTH
+    from core.execution._sanitize import MAX_ORIGIN_CHAIN_LENGTH, ORIGIN_ANIMA
 
     chain = list(session_origin_chain)
     if session_origin and session_origin not in chain:
@@ -137,6 +130,7 @@ def _error_result(
 ) -> str:
     """Build a structured error response for LLM consumption."""
     import json as _json
+
     result: dict[str, Any] = {
         "status": "error",
         "error_type": error_type,
@@ -192,6 +186,7 @@ def _validate_skill_format(content: str) -> str:
     frontmatter_raw = content[3:end_idx].strip()
     try:
         import yaml
+
         frontmatter = yaml.safe_load(frontmatter_raw)
         if not isinstance(frontmatter, dict):
             frontmatter = {}
@@ -212,7 +207,7 @@ def _validate_skill_format(content: str) -> str:
     if desc and ("「" not in desc or "」" not in desc):
         messages.append(t("handler.description_keyword_warning"))
 
-    body = content[end_idx + 3:]
+    body = content[end_idx + 3 :]
     if "## 概要" in body or "## 発動条件" in body:
         messages.append(t("handler.legacy_skill_sections"))
 
@@ -239,6 +234,7 @@ def _validate_procedure_format(content: str) -> str:
     frontmatter_raw = content[3:end_idx].strip()
     try:
         import yaml
+
         frontmatter = yaml.safe_load(frontmatter_raw)
         if not isinstance(frontmatter, dict):
             frontmatter = {}

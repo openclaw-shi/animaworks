@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -30,7 +31,9 @@ def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None
 
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(
-        dir=path.parent, suffix=".tmp", prefix=f".{path.name}.",
+        dir=path.parent,
+        suffix=".tmp",
+        prefix=f".{path.name}.",
     )
     try:
         with os.fdopen(fd, "w", encoding=encoding) as f:

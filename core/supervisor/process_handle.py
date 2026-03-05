@@ -19,33 +19,34 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-
-from core.time_utils import ensure_aware, now_jst
-from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 
 from core.exceptions import IPCConnectionError as IPCConnectionErr  # noqa: F401
 from core.supervisor.ipc import IPCClient, IPCRequest, IPCResponse
+from core.time_utils import ensure_aware, now_jst
 
 logger = logging.getLogger(__name__)
 
 
 # ── Process State ──────────────────────────────────────────────────
 
+
 class ProcessState(Enum):
     """State of a child process."""
-    STARTING = "starting"       # Process spawned, waiting for socket
-    RUNNING = "running"          # Process running, socket connected
-    STOPPING = "stopping"        # Shutdown requested
-    STOPPED = "stopped"          # Process exited normally
-    FAILED = "failed"            # Process crashed or killed
-    RESTARTING = "restarting"    # Auto-restart in progress
+
+    STARTING = "starting"  # Process spawned, waiting for socket
+    RUNNING = "running"  # Process running, socket connected
+    STOPPING = "stopping"  # Shutdown requested
+    STOPPED = "stopped"  # Process exited normally
+    FAILED = "failed"  # Process crashed or killed
+    RESTARTING = "restarting"  # Auto-restart in progress
 
 
 @dataclass
 class ProcessStats:
     """Process statistics."""
+
     started_at: datetime
     stopped_at: datetime | None = None
     restart_count: int = 0
@@ -57,6 +58,7 @@ class ProcessStats:
 
 # ── Process Handle ──────────────────────────────────────────────────
 
+
 class ProcessHandle:
     """
     Handle for a child Anima process.
@@ -66,12 +68,7 @@ class ProcessHandle:
     """
 
     def __init__(
-        self,
-        anima_name: str,
-        socket_path: Path,
-        animas_dir: Path,
-        shared_dir: Path,
-        log_dir: Path | None = None
+        self, anima_name: str, socket_path: Path, animas_dir: Path, shared_dir: Path, log_dir: Path | None = None
     ):
         self.anima_name = anima_name
         self.socket_path = socket_path
@@ -114,12 +111,18 @@ class ProcessHandle:
         # Spawn child process
         cmd = [
             sys.executable,
-            "-m", "core.supervisor.runner",
-            "--anima-name", self.anima_name,
-            "--socket-path", str(self.socket_path),
-            "--animas-dir", str(self.animas_dir),
-            "--shared-dir", str(self.shared_dir),
-            "--log-dir", str(self.log_dir) if self.log_dir else "/tmp"
+            "-m",
+            "core.supervisor.runner",
+            "--anima-name",
+            self.anima_name,
+            "--socket-path",
+            str(self.socket_path),
+            "--animas-dir",
+            str(self.animas_dir),
+            "--shared-dir",
+            str(self.shared_dir),
+            "--log-dir",
+            str(self.log_dir) if self.log_dir else "/tmp",
         ]
 
         logger.info("Starting process: %s", self.anima_name)
@@ -197,8 +200,7 @@ class ProcessHandle:
             # Check if the subprocess exited early (crash before socket)
             if self.process and self.process.poll() is not None:
                 raise RuntimeError(
-                    f"Process '{self.anima_name}' exited with code "
-                    f"{self.process.returncode} before creating socket"
+                    f"Process '{self.anima_name}' exited with code {self.process.returncode} before creating socket"
                 )
             await asyncio.sleep(0.1)
 
@@ -218,16 +220,11 @@ class ProcessHandle:
             # Check if the subprocess exited unexpectedly
             if self.process and self.process.poll() is not None:
                 raise RuntimeError(
-                    f"Process '{self.anima_name}' exited with code "
-                    f"{self.process.returncode} during initialization"
+                    f"Process '{self.anima_name}' exited with code {self.process.returncode} during initialization"
                 )
 
             try:
-                request = IPCRequest(
-                    id=f"ping_{uuid.uuid4().hex[:8]}",
-                    method="ping",
-                    params={}
-                )
+                request = IPCRequest(id=f"ping_{uuid.uuid4().hex[:8]}", method="ping", params={})
                 if not self.ipc_client:
                     raise RuntimeError(f"IPC client not initialized for {self.anima_name}")
                 response = await self.ipc_client.send_request(request, timeout=5.0)
@@ -249,16 +246,9 @@ class ProcessHandle:
 
             await asyncio.sleep(1.0)
 
-        raise TimeoutError(
-            f"Anima '{self.anima_name}' not ready within {timeout}s"
-        )
+        raise TimeoutError(f"Anima '{self.anima_name}' not ready within {timeout}s")
 
-    async def send_request(
-        self,
-        method: str,
-        params: dict,
-        timeout: float = 60.0
-    ) -> IPCResponse:
+    async def send_request(self, method: str, params: dict, timeout: float = 60.0) -> IPCResponse:
         """
         Send IPC request to child process.
 
@@ -282,11 +272,7 @@ class ProcessHandle:
         if not self.ipc_client:
             raise RuntimeError("IPC client not connected")
 
-        request = IPCRequest(
-            id=f"req_{uuid.uuid4().hex[:8]}",
-            method=method,
-            params=params
-        )
+        request = IPCRequest(id=f"req_{uuid.uuid4().hex[:8]}", method=method, params=params)
 
         try:
             return await self.ipc_client.send_request(request, timeout=timeout)
@@ -324,46 +310,56 @@ class ProcessHandle:
         if not self.ipc_client:
             raise RuntimeError("IPC client not connected")
 
-        request = IPCRequest(
-            id=f"req_{uuid.uuid4().hex[:8]}",
-            method=method,
-            params=params
-        )
+        request = IPCRequest(id=f"req_{uuid.uuid4().hex[:8]}", method=method, params=params)
 
         async with self._streaming_lock:
             self._streaming = True
             self._streaming_started_at = now_jst()
         logger.info(
             "[PH-STREAM] start anima=%s method=%s req_id=%s state=%s pid=%s",
-            self.anima_name, method, request.id, self.state.value,
+            self.anima_name,
+            method,
+            request.id,
+            self.state.value,
             self.process.pid if self.process else "N/A",
         )
         chunk_count = 0
         try:
-            async for response in self.ipc_client.send_request_stream(
-                request, timeout=timeout
-            ):
+            async for response in self.ipc_client.send_request_stream(request, timeout=timeout):
                 chunk_count += 1
                 yield response
         except RuntimeError as e:
             logger.info(
                 "[PH-STREAM] FAILED anima=%s method=%s chunks=%d error=%s",
-                self.anima_name, method, chunk_count, e,
+                self.anima_name,
+                method,
+                chunk_count,
+                e,
             )
             self.state = ProcessState.FAILED
             raise
         finally:
             async with self._streaming_lock:
-                elapsed = (now_jst() - ensure_aware(self._streaming_started_at)).total_seconds() if self._streaming_started_at else 0
+                elapsed = (
+                    (now_jst() - ensure_aware(self._streaming_started_at)).total_seconds()
+                    if self._streaming_started_at
+                    else 0
+                )
                 self._streaming = False
                 self._streaming_started_at = None
             logger.info(
                 "[PH-STREAM] end anima=%s method=%s chunks=%d elapsed=%.1fs",
-                self.anima_name, method, chunk_count, elapsed,
+                self.anima_name,
+                method,
+                chunk_count,
+                elapsed,
             )
 
     async def ping(
-        self, timeout: float = 5.0, *, return_details: bool = False,
+        self,
+        timeout: float = 5.0,
+        *,
+        return_details: bool = False,
     ) -> bool | dict[str, Any]:
         """
         Send ping to check if process is alive.
@@ -390,7 +386,7 @@ class ProcessHandle:
                 return {"success": True, "is_busy": is_busy}
             return True
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Ping timeout for %s", self.anima_name)
             self.stats.missed_pings += 1
             return {"success": False, "is_busy": False} if return_details else False
@@ -415,7 +411,9 @@ class ProcessHandle:
             if self.process and self.process.poll() is None:
                 logger.warning(
                     "Process %s in %s state but still alive (PID %s), forcing stop",
-                    self.anima_name, self.state.value, self.process.pid,
+                    self.anima_name,
+                    self.state.value,
+                    self.process.pid,
                 )
             else:
                 logger.debug("Process already stopped: %s", self.anima_name)
@@ -451,7 +449,7 @@ class ProcessHandle:
             self.stats.exit_code = self.process.returncode
             logger.info("Process exited gracefully: %s (code=%s)", self.anima_name, self.stats.exit_code)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Step 3: Send SIGTERM to process session group
             logger.warning("Process did not exit gracefully, sending SIGTERM: %s", self.anima_name)
             try:
@@ -466,7 +464,7 @@ class ProcessHandle:
                 self.stats.exit_code = self.process.returncode
                 logger.info("Process terminated: %s (code=%s)", self.anima_name, self.stats.exit_code)
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Step 4: Force SIGKILL
                 logger.error("Process did not respond to SIGTERM, sending SIGKILL: %s", self.anima_name)
                 await self.kill()
@@ -496,7 +494,8 @@ class ProcessHandle:
         if self.process and self.process.poll() is None:
             logger.warning(
                 "Killing orphaned subprocess: %s (PID %s)",
-                self.anima_name, self.process.pid,
+                self.anima_name,
+                self.process.pid,
             )
             try:
                 os.killpg(os.getpgid(self.process.pid), _signal.SIGTERM)
@@ -533,7 +532,7 @@ class ProcessHandle:
         """Check if process is alive."""
         if not self.process:
             return False
-        if self.process.poll() is not None:
+        if self.process.poll() is not None:  # noqa: SIM103
             return False
         return True
 

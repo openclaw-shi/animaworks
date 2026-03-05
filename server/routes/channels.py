@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -118,7 +119,7 @@ def create_channels_router() -> APIRouter:
             all_lines = channel_file.read_text(encoding="utf-8").strip().splitlines()
         except OSError:
             all_lines = []
-        all_lines = [l for l in all_lines if l.strip()]
+        all_lines = [line for line in all_lines if line.strip()]
 
         # Parse messages in range
         all_messages: list[dict] = []
@@ -172,7 +173,10 @@ def create_channels_router() -> APIRouter:
 
         messenger = _get_messenger(shared_dir)
         messenger.post_channel(
-            name, body.text, source="human", from_name=body.from_name,
+            name,
+            body.text,
+            source="human",
+            from_name=body.from_name,
         )
 
         # Broadcast WebSocket event
@@ -230,6 +234,7 @@ def create_channels_router() -> APIRouter:
         valid_names: set[str] = set()
         try:
             from core.config.models import load_config
+
             valid_names = set(load_config().animas.keys())
         except Exception:
             logger.debug("load_config unavailable for DM pair filter", exc_info=True)
@@ -242,7 +247,8 @@ def create_channels_router() -> APIRouter:
                 try:
                     activity = ActivityLogger(anima_dir)
                     entries = activity.recent(
-                        days=30, limit=500,
+                        days=30,
+                        limit=500,
                         types=["message_sent", "message_received"],
                     )
                     for e in entries:
@@ -259,7 +265,8 @@ def create_channels_router() -> APIRouter:
                 except Exception:
                     logger.debug(
                         "Failed to read activity_log for %s",
-                        anima_dir.name, exc_info=True,
+                        anima_dir.name,
+                        exc_info=True,
                     )
 
         # ── Fallback: legacy dm_logs/ ─────────────────────────
@@ -298,12 +305,14 @@ def create_channels_router() -> APIRouter:
                 continue
             if valid_names and not (parts[0] in valid_names and parts[1] in valid_names):
                 continue
-            pairs.append({
-                "pair": pair_key,
-                "participants": parts,
-                "message_count": info["count"],
-                "last_message_ts": info["last_ts"],
-            })
+            pairs.append(
+                {
+                    "pair": pair_key,
+                    "participants": parts,
+                    "message_count": info["count"],
+                    "last_message_ts": info["last_ts"],
+                }
+            )
 
         pairs.sort(key=lambda p: p["last_message_ts"], reverse=True)
         return pairs
@@ -344,21 +353,25 @@ def create_channels_router() -> APIRouter:
             try:
                 activity = ActivityLogger(anima_dir)
                 entries = activity.recent(
-                    days=30, limit=limit * 2,
+                    days=30,
+                    limit=limit * 2,
                     types=["message_sent"],
                     involving=other,
                 )
                 for e in entries:
-                    messages.append({
-                        "ts": e.ts,
-                        "from": e.from_person or name,
-                        "text": e.content,
-                        "source": "activity_log",
-                    })
+                    messages.append(
+                        {
+                            "ts": e.ts,
+                            "from": e.from_person or name,
+                            "text": e.content,
+                            "source": "activity_log",
+                        }
+                    )
             except Exception:
                 logger.debug(
                     "Failed to read DM activity_log for %s",
-                    name, exc_info=True,
+                    name,
+                    exc_info=True,
                 )
 
         # Track activity_log messages for legacy dedup

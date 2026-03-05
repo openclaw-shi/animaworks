@@ -14,12 +14,12 @@ Also provides cron.md migration from Japanese text schedules to standard
 from __future__ import annotations
 
 import json
-
-from core.i18n import t
 import logging
 import os
 import re
 from pathlib import Path
+
+from core.i18n import t
 
 logger = logging.getLogger("animaworks.config_migrate")
 
@@ -80,9 +80,9 @@ def migrate_to_config_json(data_dir: Path) -> None:
     and writes a unified config.json.
     """
     from core.config.models import (
+        AnimaModelConfig,
         AnimaWorksConfig,
         CredentialConfig,
-        AnimaModelConfig,
         save_config,
     )
 
@@ -289,7 +289,9 @@ def migrate_cron_format(anima_dir: Path) -> bool:
                 output_lines.append(bline)
             logger.warning(
                 "Could not auto-convert schedule '%s' for task '%s' in %s",
-                section_schedule, section_title, anima_dir.name,
+                section_schedule,
+                section_title,
+                anima_dir.name,
             )
         else:
             # No schedule at all — keep as-is
@@ -385,9 +387,9 @@ _OLD_DEFAULTS_KEY = "person_defaults"
 _NEW_DEFAULTS_KEY = "anima_defaults"
 _OLD_COLLECTION_KEY = "persons"
 _NEW_COLLECTION_KEY = "animas"
-_OLD_TOOL_NAME = "create_" + "person"  # noqa: intentionally split
+_OLD_TOOL_NAME = "create_" + "person"  # noqa: SIM118 — intentionally split
 _NEW_TOOL_NAME = "create_anima"
-_OLD_ENV_VAR = "ANIMAWORKS_" + "PERSON_DIR"  # noqa: intentionally split
+_OLD_ENV_VAR = "ANIMAWORKS_" + "PERSON_DIR"  # noqa: SIM118 — intentionally split
 _NEW_ENV_VAR = "ANIMAWORKS_ANIMA_DIR"
 
 
@@ -573,9 +575,7 @@ def migrate_person_to_anima(data_dir: Path) -> None:
             old_dir.rename(new_dir)
             logger.info("Renamed directory: %s -> %s", old_dir, new_dir)
         except OSError as exc:
-            logger.warning(
-                "Failed to rename %s -> %s: %s", old_dir, new_dir, exc
-            )
+            logger.warning("Failed to rename %s -> %s: %s", old_dir, new_dir, exc)
 
     # Step 2: Rename logs/old -> logs/new
     log_old_dir = data_dir / "logs" / _OLD_DIR_NAME
@@ -625,11 +625,21 @@ def migrate_person_to_anima(data_dir: Path) -> None:
 # ── Model Config SSoT migration ──────────────────────────
 
 # Fields that move from config.json animas to status.json
-_MODEL_FIELDS_TO_MIGRATE = frozenset({
-    "model", "fallback_model", "max_tokens", "max_turns", "credential",
-    "context_threshold", "max_chains", "conversation_history_threshold",
-    "execution_mode", "thinking", "llm_timeout",
-})
+_MODEL_FIELDS_TO_MIGRATE = frozenset(
+    {
+        "model",
+        "fallback_model",
+        "max_tokens",
+        "max_turns",
+        "credential",
+        "context_threshold",
+        "max_chains",
+        "conversation_history_threshold",
+        "execution_mode",
+        "thinking",
+        "llm_timeout",
+    }
+)
 
 
 def migrate_model_config_to_status(data_dir: Path, *, dry_run: bool = False) -> dict[str, list[str]]:
@@ -674,10 +684,7 @@ def migrate_model_config_to_status(data_dir: Path, *, dry_run: bool = False) -> 
         anima_dir = data_dir / "animas" / anima_name
         status_path = anima_dir / "status.json"
 
-        fields_to_migrate = {
-            k: v for k, v in anima_cfg.items()
-            if k in _MODEL_FIELDS_TO_MIGRATE and v is not None
-        }
+        fields_to_migrate = {k: v for k, v in anima_cfg.items() if k in _MODEL_FIELDS_TO_MIGRATE and v is not None}
         if not fields_to_migrate:
             continue
 
@@ -701,7 +708,10 @@ def migrate_model_config_to_status(data_dir: Path, *, dry_run: bool = False) -> 
                 conflicts.append(field)
                 logger.warning(
                     "Conflict for %s.%s: config.json=%r, status.json=%r — keeping status.json",
-                    anima_name, field, config_val, status_val,
+                    anima_name,
+                    field,
+                    config_val,
+                    status_val,
                 )
 
         if migrated:
@@ -717,10 +727,7 @@ def migrate_model_config_to_status(data_dir: Path, *, dry_run: bool = False) -> 
             results.setdefault(anima_name, [])
 
         # Clean config.json animas entry: remove model fields, keep supervisor/speciality
-        cleaned = {
-            k: v for k, v in anima_cfg.items()
-            if k not in _MODEL_FIELDS_TO_MIGRATE
-        }
+        cleaned = {k: v for k, v in anima_cfg.items() if k not in _MODEL_FIELDS_TO_MIGRATE}
         if cleaned != anima_cfg:
             animas_section[anima_name] = cleaned
             config_changed = True

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -45,9 +46,7 @@ class ElevenLabsTTS(BaseTTSProvider):
     def _get_api_key(self) -> str | None:
         return os.environ.get(self._api_key_env)
 
-    async def synthesize(
-        self, text: str, config: TTSConfig
-    ) -> AsyncIterator[bytes]:
+    async def synthesize(self, text: str, config: TTSConfig) -> AsyncIterator[bytes]:
         """Stream TTS audio chunks via ElevenLabs streaming endpoint.
 
         Raises:
@@ -55,9 +54,7 @@ class ElevenLabsTTS(BaseTTSProvider):
         """
         api_key = self._get_api_key()
         if not api_key:
-            raise TTSSynthesisError(
-                f"ElevenLabs: API key not configured (env: {self._api_key_env})"
-            )
+            raise TTSSynthesisError(f"ElevenLabs: API key not configured (env: {self._api_key_env})")
         voice_id = await self._resolve_voice_id(config)
         model_id = config.extra.get("model_id") or self._default_model_id
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
@@ -105,10 +102,7 @@ class ElevenLabsTTS(BaseTTSProvider):
                 )
                 r.raise_for_status()
                 data = r.json()
-                return [
-                    {"id": v.get("voice_id", ""), "name": v.get("name", "")}
-                    for v in data.get("voices", [])
-                ]
+                return [{"id": v.get("voice_id", ""), "name": v.get("name", "")} for v in data.get("voices", [])]
             except httpx.HTTPError:
                 return []
 

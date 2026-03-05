@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -19,11 +20,17 @@ from core.memory._activity_models import ActivityEntry, find_tool_result_fallbac
 class TimelineMixin:
     """Mixin providing trigger-based grouping for timeline UI."""
 
-    _TRIGGER_TYPES = frozenset({
-        "heartbeat_start", "message_received", "cron_executed",
-        "task_created", "task_updated",
-        "inbox_processing_start", "task_exec_start",
-    })
+    _TRIGGER_TYPES = frozenset(
+        {
+            "heartbeat_start",
+            "message_received",
+            "cron_executed",
+            "task_created",
+            "task_updated",
+            "inbox_processing_start",
+            "task_exec_start",
+        }
+    )
 
     _CLOSE_MAP: dict[str, frozenset[str]] = {
         "heartbeat": frozenset({"heartbeat_end"}),
@@ -83,7 +90,9 @@ class TimelineMixin:
                     del current_by_anima[anima]
                     continue
                 retrogrp = _TM._find_recent_group(
-                    groups, anima, "heartbeat",
+                    groups,
+                    anima,
+                    "heartbeat",
                 )
                 if retrogrp is not None:
                     retrogrp["events"].append(evt_dict)

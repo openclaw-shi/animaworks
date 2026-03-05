@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -85,6 +86,7 @@ class ProceduralDistiller:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
 
         result = {
@@ -107,11 +109,14 @@ class ProceduralDistiller:
         try:
             import litellm
 
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=3072,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=3072,
+                ),
+            )
             text = response.choices[0].message.content or ""
             text = self._strip_code_fence(text)
             result["raw_response"] = text
@@ -125,12 +130,15 @@ class ProceduralDistiller:
 
             logger.info(
                 "LLM classification for anima=%s: knowledge=%d procedures=%d",
-                self.anima_name, len(knowledge_items), len(procedure_items),
+                self.anima_name,
+                len(knowledge_items),
+                len(procedure_items),
             )
 
         except Exception:
             logger.exception(
-                "LLM classification failed for anima=%s", self.anima_name,
+                "LLM classification failed for anima=%s",
+                self.anima_name,
             )
 
         return result
@@ -157,12 +165,14 @@ class ProceduralDistiller:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         if not procedural_episodes.strip():
             return []
 
         classification = await self.classify_and_distill(
-            procedural_episodes, model=model,
+            procedural_episodes,
+            model=model,
         )
 
         # Convert procedure_items to the legacy format expected by callers
@@ -173,16 +183,19 @@ class ProceduralDistiller:
             title = filename.replace("procedures/", "").replace(".md", "")
             if not title:
                 continue
-            procedures.append({
-                "title": title,
-                "description": item.get("description", ""),
-                "tags": item.get("tags", []),
-                "content": item.get("content", ""),
-            })
+            procedures.append(
+                {
+                    "title": title,
+                    "description": item.get("description", ""),
+                    "tags": item.get("tags", []),
+                    "content": item.get("content", ""),
+                }
+            )
 
         logger.info(
             "Distilled %d procedures from episodes for anima=%s",
-            len(procedures), self.anima_name,
+            len(procedures),
+            self.anima_name,
         )
         return procedures
 
@@ -223,6 +236,7 @@ class ProceduralDistiller:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
 
         # 1. Load activity entries
@@ -236,10 +250,15 @@ class ProceduralDistiller:
 
         # 2. Filter for relevant event types
         relevant = [
-            e for e in entries
-            if e.get("type") in (
-                "tool_use", "response_sent", "cron_executed",
-                "memory_write", "issue_resolved",
+            e
+            for e in entries
+            if e.get("type")
+            in (
+                "tool_use",
+                "response_sent",
+                "cron_executed",
+                "memory_write",
+                "issue_resolved",
             )
         ]
         if not relevant:
@@ -271,11 +290,14 @@ class ProceduralDistiller:
         try:
             import litellm
 
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2048,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2048,
+                ),
+            )
             text = response.choices[0].message.content or "[]"
             procedures = self._parse_procedures(text)
 
@@ -287,7 +309,8 @@ class ProceduralDistiller:
                 saved_paths.append(str(path))
                 logger.info(
                     "Weekly pattern distill: saved procedure '%s' for anima=%s",
-                    path.name, self.anima_name,
+                    path.name,
+                    self.anima_name,
                 )
 
             return {
@@ -297,7 +320,8 @@ class ProceduralDistiller:
 
         except Exception:
             logger.exception(
-                "Weekly pattern distill failed for anima=%s", self.anima_name,
+                "Weekly pattern distill failed for anima=%s",
+                self.anima_name,
             )
             return {"procedures_created": [], "patterns_detected": 0}
 
@@ -379,10 +403,7 @@ class ProceduralDistiller:
             groups.setdefault(key, []).append(entry)
 
         # Filter to clusters with enough entries
-        return [
-            cluster for cluster in groups.values()
-            if len(cluster) >= min_cluster_size
-        ]
+        return [cluster for cluster in groups.values() if len(cluster) >= min_cluster_size]
 
     def _cluster_activities_vector(
         self,
@@ -565,12 +586,14 @@ class ProceduralDistiller:
             tags = [t.strip() for t in tags_str.split(",") if t.strip()]
 
             if filename and content:
-                items.append({
-                    "filename": filename,
-                    "description": description,
-                    "tags": tags,
-                    "content": content,
-                })
+                items.append(
+                    {
+                        "filename": filename,
+                        "description": description,
+                        "tags": tags,
+                        "content": content,
+                    }
+                )
 
         return items
 
@@ -592,12 +615,7 @@ class ProceduralDistiller:
         try:
             items = json.loads(text)
             if isinstance(items, list):
-                return [
-                    i for i in items
-                    if isinstance(i, dict)
-                    and "title" in i
-                    and "content" in i
-                ]
+                return [i for i in items if isinstance(i, dict) and "title" in i and "content" in i]
         except json.JSONDecodeError:
             logger.warning(
                 "Failed to parse LLM procedure output for anima=%s",
@@ -659,7 +677,9 @@ class ProceduralDistiller:
         return meta
 
     def _check_rag_duplicate(
-        self, content: str, threshold: float = RAG_DUPLICATE_THRESHOLD,
+        self,
+        content: str,
+        threshold: float = RAG_DUPLICATE_THRESHOLD,
     ) -> str | None:
         """Check if a similar procedure or skill already exists via RAG.
 
@@ -682,10 +702,14 @@ class ProceduralDistiller:
 
             vector_store = get_vector_store(self.anima_name)
             indexer = MemoryIndexer(
-                vector_store, self.anima_name, self.anima_dir,
+                vector_store,
+                self.anima_name,
+                self.anima_dir,
             )
             retriever = MemoryRetriever(
-                vector_store, indexer, self.knowledge_dir,
+                vector_store,
+                indexer,
+                self.knowledge_dir,
             )
 
             for memory_type in ("procedures", "skills"):
@@ -700,7 +724,8 @@ class ProceduralDistiller:
                         return str(r.metadata.get("source_file", "unknown"))
         except Exception as e:
             logger.warning(
-                "RAG duplicate check failed (proceeding with save): %s", e,
+                "RAG duplicate check failed (proceeding with save): %s",
+                e,
             )
         return None
 
@@ -730,7 +755,8 @@ class ProceduralDistiller:
         if existing:
             logger.info(
                 "Skipping duplicate procedure '%s' (similar to %s)",
-                item["title"], existing,
+                item["title"],
+                existing,
             )
             return None
 

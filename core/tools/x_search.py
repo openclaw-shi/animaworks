@@ -10,17 +10,17 @@
 Migrated from ~/bin/x-search.
 Uses httpx instead of urllib.request.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from core.tools._base import ToolConfigError, get_credential, logger
+from core.tools._base import get_credential
 
 # ── Execution Profile ─────────────────────────────────────
 
@@ -33,15 +33,14 @@ EXECUTION_PROFILE: dict[str, dict[str, object]] = {
 # X API v2 client
 # ---------------------------------------------------------------------------
 
+
 class XSearchClient:
     """X (Twitter) API v2 client."""
 
     BASE_URL = "https://api.twitter.com/2"
 
     def __init__(self, bearer_token: str | None = None) -> None:
-        self.bearer_token = bearer_token or get_credential(
-            "x_twitter", "x_search", env_var="TWITTER_BEARER_TOKEN"
-        )
+        self.bearer_token = bearer_token or get_credential("x_twitter", "x_search", env_var="TWITTER_BEARER_TOKEN")
 
     # -- internal helpers ---------------------------------------------------
 
@@ -73,28 +72,27 @@ class XSearchClient:
         """Normalize API response into a flat list of tweet dicts."""
         tweets: list[dict] = []
         data = result.get("data", [])
-        users = {
-            u["id"]: u
-            for u in result.get("includes", {}).get("users", [])
-        }
+        users = {u["id"]: u for u in result.get("includes", {}).get("users", [])}
 
         for tweet in data:
             author_id = tweet.get("author_id", "")
             author = users.get(author_id, {})
             metrics = tweet.get("public_metrics", {})
 
-            tweets.append({
-                "id": tweet.get("id"),
-                "text": tweet.get("text", ""),
-                "created_at": tweet.get("created_at", ""),
-                "username": author.get("username", ""),
-                "author_name": author.get("name", ""),
-                "verified": author.get("verified", False),
-                "likes": metrics.get("like_count", 0),
-                "retweets": metrics.get("retweet_count", 0),
-                "replies": metrics.get("reply_count", 0),
-                "impressions": metrics.get("impression_count", 0),
-            })
+            tweets.append(
+                {
+                    "id": tweet.get("id"),
+                    "text": tweet.get("text", ""),
+                    "created_at": tweet.get("created_at", ""),
+                    "username": author.get("username", ""),
+                    "author_name": author.get("name", ""),
+                    "verified": author.get("verified", False),
+                    "likes": metrics.get("like_count", 0),
+                    "retweets": metrics.get("retweet_count", 0),
+                    "replies": metrics.get("reply_count", 0),
+                    "impressions": metrics.get("impression_count", 0),
+                }
+            )
 
         return tweets
 
@@ -116,7 +114,7 @@ class XSearchClient:
         Returns:
             List of tweet dicts.
         """
-        start_time = datetime.now(timezone.utc) - timedelta(days=days)
+        start_time = datetime.now(UTC) - timedelta(days=days)
 
         params: dict[str, Any] = {
             "query": query,
@@ -156,7 +154,7 @@ class XSearchClient:
         # Calculate optional time window
         start_time: datetime | None = None
         if days is not None:
-            start_time = datetime.now(timezone.utc) - timedelta(days=days)
+            start_time = datetime.now(UTC) - timedelta(days=days)
 
         # Paginate through results
         all_tweets: list[dict] = []
@@ -201,6 +199,7 @@ class XSearchClient:
 # Text formatting
 # ---------------------------------------------------------------------------
 
+
 def _format_tweet_text(tweet: dict, verbose: bool = False) -> str:
     """Format a single tweet as human-readable text."""
     lines: list[str] = []
@@ -212,11 +211,7 @@ def _format_tweet_text(tweet: dict, verbose: bool = False) -> str:
     lines.append(f"  {text}")
 
     if verbose:
-        lines.append(
-            f"  [Likes: {tweet['likes']:,} | "
-            f"RTs: {tweet['retweets']:,} | "
-            f"Replies: {tweet['replies']:,}]"
-        )
+        lines.append(f"  [Likes: {tweet['likes']:,} | RTs: {tweet['retweets']:,} | Replies: {tweet['replies']:,}]")
 
     return "\n".join(lines)
 
@@ -225,12 +220,14 @@ def _format_tweet_text(tweet: dict, verbose: bool = False) -> str:
 # Anthropic tool_use schemas
 # ---------------------------------------------------------------------------
 
+
 def get_tool_schemas() -> list[dict]:
     """Return Anthropic tool_use schemas for X search tools."""
     return []
 
 
 # ── Dispatch ──────────────────────────────────────────
+
 
 def dispatch(name: str, args: dict[str, Any]) -> Any:
     """Dispatch a tool call by schema name."""
@@ -255,6 +252,7 @@ def dispatch(name: str, args: dict[str, Any]) -> Any:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def cli_main(argv: list[str] | None = None) -> None:
     """Thin CLI entry point for x_search.
 
@@ -270,12 +268,14 @@ def cli_main(argv: list[str] | None = None) -> None:
         help="Search query (X search syntax supported)",
     )
     parser.add_argument(
-        "-u", "--user",
+        "-u",
+        "--user",
         type=str,
         help="Get tweets from a specific user (without @)",
     )
     parser.add_argument(
-        "-n", "--count",
+        "-n",
+        "--count",
         type=int,
         default=10,
         help="Number of tweets (default: 10)",
@@ -287,12 +287,14 @@ def cli_main(argv: list[str] | None = None) -> None:
         help="Search tweets from last N days (default: 7)",
     )
     parser.add_argument(
-        "-j", "--json",
+        "-j",
+        "--json",
         action="store_true",
         help="Output as JSON",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show tweet metrics",
     )

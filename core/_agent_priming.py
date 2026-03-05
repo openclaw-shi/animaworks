@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -10,14 +11,14 @@ are resolved at runtime via MRO when mixed into ``AgentCore``.
 """
 
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from core.memory.conversation import ConversationMemory
 
-from core._agent_prompt_log import _PROMPT_SOFT_LIMIT_BYTES, _PROMPT_HARD_LIMIT_BYTES
-from core.prompt.builder import build_system_prompt
+from core._agent_prompt_log import _PROMPT_HARD_LIMIT_BYTES, _PROMPT_SOFT_LIMIT_BYTES
 from core.i18n import t
+from core.prompt.builder import build_system_prompt
 
 logger = logging.getLogger("animaworks.agent")
 
@@ -74,6 +75,7 @@ class PrimingMixin:
             if not hasattr(self, "_priming_engine"):
                 from core.paths import get_shared_dir
                 from core.prompt.context import resolve_context_window as _rcw_priming
+
                 ctx_window = _rcw_priming(
                     self.model_config.model,
                     overrides=self._load_context_window_overrides(),
@@ -85,14 +87,8 @@ class PrimingMixin:
                 )
                 # Inject callback for active parallel tasks (DAG scheduler)
                 if hasattr(self, "_active_parallel_tasks_getter"):
-                    self._priming_engine._get_active_parallel_tasks = (
-                        self._active_parallel_tasks_getter
-                    )
-            channel = (
-                "heartbeat" if trigger == "heartbeat"
-                else "cron" if trigger.startswith("cron")
-                else "chat"
-            )
+                    self._priming_engine._get_active_parallel_tasks = self._active_parallel_tasks_getter
+            channel = "heartbeat" if trigger == "heartbeat" else "cron" if trigger.startswith("cron") else "chat"
 
             result = await self._priming_engine.prime_memories(
                 message,
@@ -117,7 +113,8 @@ class PrimingMixin:
             formatted = format_priming_section(result, sender_name)
             logger.info(
                 "Priming: Retrieved %d tokens of memories (tier=%s)",
-                result.estimated_tokens(), prompt_tier,
+                result.estimated_tokens(),
+                prompt_tier,
             )
 
             # T2 Standard: truncate to ~1000 tokens (≈4000 chars)
@@ -165,6 +162,7 @@ class PrimingMixin:
         """Load model_context_windows from config.json."""
         try:
             from core.config import load_config
+
             config = load_config()
             return config.model_context_windows
         except Exception:
@@ -177,6 +175,7 @@ class PrimingMixin:
         """Load stream retry settings from config.json server section."""
         try:
             from core.config import load_config
+
             config = load_config()
             return {
                 "checkpoint_enabled": config.server.stream_checkpoint_enabled,
@@ -215,16 +214,16 @@ class PrimingMixin:
         Returns the (possibly rebuilt) system prompt.
         """
         from core.prompt.builder import (
-            TIER_FULL, TIER_STANDARD, TIER_LIGHT, TIER_MINIMAL,
+            TIER_FULL,
+            TIER_LIGHT,
+            TIER_MINIMAL,
+            TIER_STANDARD,
             resolve_prompt_tier,
         )
 
         sys_bytes = len(system_prompt.encode("utf-8"))
         prompt_bytes = len(prompt.encode("utf-8"))
-        estimated_tokens = (
-            (sys_bytes + prompt_bytes) // self._BYTES_PER_TOKEN_ESTIMATE
-            + self._TOOL_OVERHEAD_TOKENS
-        )
+        estimated_tokens = (sys_bytes + prompt_bytes) // self._BYTES_PER_TOKEN_ESTIMATE + self._TOOL_OVERHEAD_TOKENS
         max_input_tokens = int(context_window * 0.80)
 
         if estimated_tokens <= max_input_tokens:
@@ -234,7 +233,10 @@ class PrimingMixin:
         logger.warning(
             "Estimated prompt %d tokens exceeds context limit %d "
             "(tier=%s, context_window=%d); attempting tier downgrade",
-            estimated_tokens, max_input_tokens, current_tier, context_window,
+            estimated_tokens,
+            max_input_tokens,
+            current_tier,
+            context_window,
         )
 
         tier_order = [TIER_FULL, TIER_STANDARD, TIER_LIGHT, TIER_MINIMAL]
@@ -247,7 +249,7 @@ class PrimingMixin:
         }
 
         best_prompt = system_prompt
-        for target_tier in tier_order[current_idx + 1:]:
+        for target_tier in tier_order[current_idx + 1 :]:
             force_cw = tier_force_cw.get(target_tier)
             if force_cw is None:
                 continue
@@ -266,32 +268,33 @@ class PrimingMixin:
             best_prompt = build_result.system_prompt
             new_sys_bytes = len(best_prompt.encode("utf-8"))
             new_estimated = (
-                (new_sys_bytes + prompt_bytes) // self._BYTES_PER_TOKEN_ESTIMATE
-                + self._TOOL_OVERHEAD_TOKENS
-            )
+                new_sys_bytes + prompt_bytes
+            ) // self._BYTES_PER_TOKEN_ESTIMATE + self._TOOL_OVERHEAD_TOKENS
             if new_estimated <= max_input_tokens:
                 logger.warning(
-                    "Prompt tier downgraded: %s -> %s "
-                    "(estimated %d -> %d tokens, limit %d)",
-                    current_tier, target_tier,
-                    estimated_tokens, new_estimated, max_input_tokens,
+                    "Prompt tier downgraded: %s -> %s (estimated %d -> %d tokens, limit %d)",
+                    current_tier,
+                    target_tier,
+                    estimated_tokens,
+                    new_estimated,
+                    max_input_tokens,
                 )
                 return best_prompt
 
         max_sys_bytes = max(
-            (max_input_tokens - self._TOOL_OVERHEAD_TOKENS)
-            * self._BYTES_PER_TOKEN_ESTIMATE
-            - prompt_bytes,
+            (max_input_tokens - self._TOOL_OVERHEAD_TOKENS) * self._BYTES_PER_TOKEN_ESTIMATE - prompt_bytes,
             2000,
         )
         if len(best_prompt.encode("utf-8")) > max_sys_bytes:
             logger.error(
-                "Hard-truncating system prompt from %d to %d bytes "
-                "to fit context window %d",
-                len(best_prompt.encode("utf-8")), max_sys_bytes, context_window,
+                "Hard-truncating system prompt from %d to %d bytes to fit context window %d",
+                len(best_prompt.encode("utf-8")),
+                max_sys_bytes,
+                context_window,
             )
             best_prompt = best_prompt.encode("utf-8")[:max_sys_bytes].decode(
-                "utf-8", errors="ignore",
+                "utf-8",
+                errors="ignore",
             )
 
         return best_prompt
@@ -302,7 +305,7 @@ class PrimingMixin:
         self,
         system_prompt: str,
         prompt: str,
-        conv_memory: "ConversationMemory | None",
+        conv_memory: ConversationMemory | None,
         *,
         priming_section: str,
         mode: str,
@@ -328,7 +331,8 @@ class PrimingMixin:
         # ── Stage 1: Force conversation compression ──────────
         logger.warning(
             "Prompt size %d exceeds soft limit %d; forcing conversation compression",
-            total, _PROMPT_SOFT_LIMIT_BYTES,
+            total,
+            _PROMPT_SOFT_LIMIT_BYTES,
         )
         if conv_memory is not None:
             try:
@@ -357,6 +361,7 @@ class PrimingMixin:
         # ── Stage 2: Fall back to Anthropic SDK (no JSON buffer limit) ──
         logger.warning(
             "Prompt size %d still exceeds hard limit %d; switching to S Fallback",
-            total, _PROMPT_HARD_LIMIT_BYTES,
+            total,
+            _PROMPT_HARD_LIMIT_BYTES,
         )
         return system_prompt, prompt, True

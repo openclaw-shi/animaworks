@@ -1,14 +1,14 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 from typing import Any
 
 from fastapi import Request
 
-
 # ── WebSocket Event Helper ────────────────────────────────────
+
 
 async def emit(request: Request, event_type: str, data: dict[str, Any]) -> None:
     """Broadcast a WebSocket event if the manager is available."""
@@ -29,7 +29,9 @@ async def emit_notification(request: Request, data: dict[str, Any]) -> None:
 
 
 async def emit_direct(
-    ws_manager: Any, event_type: str, data: dict[str, Any],
+    ws_manager: Any,
+    event_type: str,
+    data: dict[str, Any],
 ) -> None:
     """Broadcast a WebSocket event using ws_manager directly.
 
@@ -42,7 +44,8 @@ async def emit_direct(
 
 
 async def emit_notification_direct(
-    ws_manager: Any, data: dict[str, Any],
+    ws_manager: Any,
+    data: dict[str, Any],
 ) -> None:
     """Broadcast a notification using ws_manager directly.
 

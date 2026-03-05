@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -35,7 +36,8 @@ class ExecutorFactoryMixin:
     def _discover_personal_tools(self) -> dict[str, str]:
         """Discover common and personal tool modules."""
         try:
-            from core.tools import discover_personal_tools, discover_common_tools
+            from core.tools import discover_common_tools, discover_personal_tools
+
             common = discover_common_tools()
             personal = discover_personal_tools(self.anima_dir)
             # Personal overrides common (higher priority)
@@ -65,6 +67,7 @@ class ExecutorFactoryMixin:
             # ── Try Agent SDK first ──────────────────────────
             try:
                 from core.execution.agent_sdk import AgentSDKExecutor
+
                 return AgentSDKExecutor(
                     model_config=self.model_config,
                     anima_dir=self.anima_dir,
@@ -74,13 +77,13 @@ class ExecutorFactoryMixin:
                 )
             except ImportError:
                 logger.warning(
-                    "AgentSDKExecutor unavailable (claude_agent_sdk not installed), "
-                    "trying AnthropicFallbackExecutor"
+                    "AgentSDKExecutor unavailable (claude_agent_sdk not installed), trying AnthropicFallbackExecutor"
                 )
 
             # ── Try Anthropic SDK fallback ────────────────────
             try:
                 import anthropic  # noqa: F401
+
                 logger.info("Using AnthropicFallbackExecutor for Claude model")
                 return AnthropicFallbackExecutor(
                     model_config=self.model_config,
@@ -114,6 +117,7 @@ class ExecutorFactoryMixin:
                     CodexSDKExecutor,
                     is_codex_sdk_available,
                 )
+
                 if not is_codex_sdk_available():
                     raise ImportError("openai_codex_sdk not installed")
                 return CodexSDKExecutor(
@@ -125,8 +129,7 @@ class ExecutorFactoryMixin:
                 )
             except ImportError:
                 logger.warning(
-                    "CodexSDKExecutor unavailable (openai-codex-sdk not installed), "
-                    "falling back to LiteLLM (Mode A)"
+                    "CodexSDKExecutor unavailable (openai-codex-sdk not installed), falling back to LiteLLM (Mode A)"
                 )
                 fallback_model_config = self.model_config.model_copy(deep=True)
                 fallback_model: str | None = fallback_model_config.fallback_model
@@ -135,10 +138,9 @@ class ExecutorFactoryMixin:
                 # provider/model based on available credentials.
                 if not fallback_model:
                     model_name = fallback_model_config.model
-                    uses_anthropic_key = (
-                        bool(fallback_model_config.api_key and fallback_model_config.api_key.startswith("sk-ant-"))
-                        or fallback_model_config.api_key_env.upper().startswith("ANTHROPIC")
-                    )
+                    uses_anthropic_key = bool(
+                        fallback_model_config.api_key and fallback_model_config.api_key.startswith("sk-ant-")
+                    ) or fallback_model_config.api_key_env.upper().startswith("ANTHROPIC")
                     if model_name.startswith("codex/"):
                         if uses_anthropic_key:
                             fallback_model = "anthropic/claude-sonnet-4-6"
@@ -189,6 +191,7 @@ class ExecutorFactoryMixin:
     def _resolve_api_key(self) -> str | None:
         """Resolve the actual API key (direct value from config.json, then env var)."""
         import os
+
         if self.model_config.api_key:
             return self.model_config.api_key
         return os.environ.get(self.model_config.api_key_env)
@@ -207,6 +210,7 @@ class ExecutorFactoryMixin:
     def _create_fallback_executor(self):
         """Create an AnthropicFallbackExecutor for when S mode SDK can't handle the prompt."""
         from core.execution import AnthropicFallbackExecutor
+
         logger.info("Creating AnthropicFallbackExecutor for oversized prompt")
         return AnthropicFallbackExecutor(
             model_config=self.model_config,

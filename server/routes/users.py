@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -74,7 +75,9 @@ def create_users_router() -> APIRouter:
         # Validate username format
         if not _USERNAME_RE.match(body.username):
             return JSONResponse(
-                {"error": "Invalid username format. Use alphanumeric and underscore, 2-31 chars, starting with a letter."},
+                {
+                    "error": "Invalid username format. Use alphanumeric and underscore, 2-31 chars, starting with a letter."
+                },
                 status_code=400,
             )
 
@@ -170,9 +173,7 @@ def create_users_router() -> APIRouter:
         auth_config.users = [u for u in auth_config.users if u.username != username]
 
         # Revoke all sessions for deleted user
-        auth_config.sessions = {
-            t: s for t, s in auth_config.sessions.items() if s.username != username
-        }
+        auth_config.sessions = {t: s for t, s in auth_config.sessions.items() if s.username != username}
 
         save_auth(auth_config)
         logger.info("Deleted user '%s'", username)

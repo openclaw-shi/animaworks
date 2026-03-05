@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import json
 import logging
 import os
@@ -26,9 +26,7 @@ def _mask_secrets(obj: object) -> object:
 
 def _mask_value(key: str, value: object) -> object:
     """Mask a value if its key suggests it contains a secret."""
-    if isinstance(value, str) and any(
-        kw in key.lower() for kw in ("key", "token", "secret", "password")
-    ):
+    if isinstance(value, str) and any(kw in key.lower() for kw in ("key", "token", "secret", "password")):
         if len(value) > 8:
             return value[:3] + "..." + value[-4:]
         return "***"
@@ -50,9 +48,7 @@ def create_config_router() -> APIRouter:
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            raise HTTPException(
-                status_code=500, detail=f"Invalid config JSON: {exc}"
-            )
+            raise HTTPException(status_code=500, detail=f"Invalid config JSON: {exc}") from exc
 
         return _mask_secrets(config)
 
@@ -82,8 +78,11 @@ def create_config_router() -> APIRouter:
         return {
             "checks": [
                 {"label": t("config.config_file"), "ok": config_exists},
-                {"label": t("config.anima_registration"), "ok": animas_count > 0,
-                 "detail": t("config.anima_count_detail", count=animas_count)},
+                {
+                    "label": t("config.anima_registration"),
+                    "ok": animas_count > 0,
+                    "detail": t("config.anima_count_detail", count=animas_count),
+                },
                 {"label": t("config.shared_dir"), "ok": shared_dir.exists()},
                 {"label": t("config.anthropic_api_key"), "ok": has_anthropic},
                 {"label": t("config.openai_api_key"), "ok": has_openai},

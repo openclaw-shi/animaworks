@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import json
 import logging
 
@@ -40,12 +40,8 @@ def create_sessions_router() -> APIRouter:
                 "exists": True,
                 "turn_count": len(conv_state.turns),
                 "total_turn_count": conv_state.total_turn_count,
-                "last_timestamp": (
-                    conv_state.turns[-1].timestamp if conv_state.turns else ""
-                ),
-                "first_timestamp": (
-                    conv_state.turns[0].timestamp if conv_state.turns else ""
-                ),
+                "last_timestamp": (conv_state.turns[-1].timestamp if conv_state.turns else ""),
+                "first_timestamp": (conv_state.turns[0].timestamp if conv_state.turns else ""),
                 "has_summary": bool(conv_state.compressed_summary),
             }
 
@@ -57,13 +53,15 @@ def create_sessions_router() -> APIRouter:
                 try:
                     data = json.loads(conv_file.read_text(encoding="utf-8"))
                     turns = data.get("turns", [])
-                    threads.append({
-                        "thread_id": conv_file.stem,
-                        "turn_count": len(turns),
-                        "total_turn_count": len(turns) + data.get("compressed_turn_count", 0),
-                        "last_timestamp": turns[-1].get("timestamp", "") if turns else "",
-                        "has_summary": bool(data.get("compressed_summary", "")),
-                    })
+                    threads.append(
+                        {
+                            "thread_id": conv_file.stem,
+                            "turn_count": len(turns),
+                            "total_turn_count": len(turns) + data.get("compressed_turn_count", 0),
+                            "last_timestamp": turns[-1].get("timestamp", "") if turns else "",
+                            "has_summary": bool(data.get("compressed_summary", "")),
+                        }
+                    )
                 except (json.JSONDecodeError, TypeError):
                     pass
 
@@ -83,14 +81,14 @@ def create_sessions_router() -> APIRouter:
                             "trigger": data.get("trigger", ""),
                             "turn_count": data.get("turn_count", 0),
                             "context_usage_ratio": data.get(
-                                "context_usage_ratio", 0,
+                                "context_usage_ratio",
+                                0,
                             ),
                             "original_prompt_preview": data.get(
-                                "original_prompt", "",
+                                "original_prompt",
+                                "",
                             )[:200],
-                            "has_markdown": (
-                                archive_dir / f"{ts_str}.md"
-                            ).exists(),
+                            "has_markdown": (archive_dir / f"{ts_str}.md").exists(),
                         }
                     )
                 except (json.JSONDecodeError, TypeError):
@@ -112,13 +110,8 @@ def create_sessions_router() -> APIRouter:
         transcript_dir = anima_dir / "transcripts"
         if transcript_dir.exists():
             for tf in sorted(transcript_dir.glob("*.jsonl"), reverse=True):
-                line_count = sum(
-                    1 for line in tf.read_text(encoding="utf-8").splitlines()
-                    if line.strip()
-                )
-                transcripts.append(
-                    {"date": tf.stem, "message_count": line_count}
-                )
+                line_count = sum(1 for line in tf.read_text(encoding="utf-8").splitlines() if line.strip())
+                transcripts.append({"date": tf.stem, "message_count": line_count})
 
         return {
             "anima": name,
@@ -161,7 +154,9 @@ def create_sessions_router() -> APIRouter:
 
     @router.get("/animas/{name}/sessions/{session_id}")
     async def get_session_detail(
-        name: str, session_id: str, request: Request,
+        name: str,
+        session_id: str,
+        request: Request,
     ):
         """Get archived session detail."""
         animas_dir = request.app.state.animas_dir
@@ -180,7 +175,7 @@ def create_sessions_router() -> APIRouter:
         try:
             data = json.loads(json_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, TypeError):
-            raise HTTPException(status_code=500, detail="Session data corrupted")
+            raise HTTPException(status_code=500, detail="Session data corrupted") from None
 
         markdown = ""
         if md_path.exists():
@@ -202,6 +197,7 @@ def create_sessions_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
 
         from core.config.models import load_model_config
+
         model_config = load_model_config(anima_dir)
 
         conv = ConversationMemory(anima_dir, model_config)

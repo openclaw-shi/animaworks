@@ -1,10 +1,10 @@
 """CLI commands for model information and management."""
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-
 
 # ── Mode label mapping ────────────────────────────────────
 _MODE_LABELS: dict[str, str] = {
@@ -25,6 +25,7 @@ def _fmt_context(value: int | None) -> str:
 
 
 # ── models list ───────────────────────────────────────────
+
 
 def cmd_models_list(args: argparse.Namespace) -> None:
     """List known models with execution mode and context window."""
@@ -48,12 +49,14 @@ def cmd_models_list(args: argparse.Namespace) -> None:
         if cw is None:
             overrides = config.model_context_windows or {}
             cw = resolve_cw_fallback(name, overrides)
-        rows.append({
-            "name": name,
-            "mode": mode,
-            "context": _fmt_context(cw),
-            "note": m.get("note", ""),
-        })
+        rows.append(
+            {
+                "name": name,
+                "mode": mode,
+                "context": _fmt_context(cw),
+                "note": m.get("note", ""),
+            }
+        )
 
     if getattr(args, "json_output", False):
         print(json.dumps(rows, ensure_ascii=False, indent=2))
@@ -73,6 +76,7 @@ def cmd_models_list(args: argparse.Namespace) -> None:
         print(f"{r['name']:<{name_w}}  {mode_label:<16}  {r['context']:<10}  {r['note']}")
 
     from core.config.models import _load_models_json
+
     mj = _load_models_json()
     print(f"\nKnown models: {len(rows)}")
     if mj:
@@ -81,17 +85,19 @@ def cmd_models_list(args: argparse.Namespace) -> None:
 
 # ── models info ───────────────────────────────────────────
 
+
 def cmd_models_info(args: argparse.Namespace) -> None:
     """Show resolved execution mode and context window for a model."""
     from core.config.models import (
         KNOWN_MODELS,
-        _load_models_json,
         load_config,
         resolve_context_window,
         resolve_execution_mode,
     )
     from core.prompt.context import (
         resolve_context_threshold,
+    )
+    from core.prompt.context import (
         resolve_context_window as resolve_context_window_fallback,
     )
 
@@ -131,6 +137,7 @@ def _resolve_source(model_name: str) -> str:
 
 
 # ── models show ───────────────────────────────────────────
+
 
 def cmd_models_show(args: argparse.Namespace) -> None:
     """Show current models.json contents."""
@@ -173,6 +180,7 @@ def cmd_models_show(args: argparse.Namespace) -> None:
 
 # ── Registration ──────────────────────────────────────────
 
+
 def register_models_command(subparsers: argparse._SubParsersAction) -> None:
     """Register the 'models' subcommand group."""
     p_models = subparsers.add_parser("models", help="Model information and catalog")
@@ -181,28 +189,36 @@ def register_models_command(subparsers: argparse._SubParsersAction) -> None:
     # models list
     p_list = models_sub.add_parser("list", help="List known models")
     p_list.add_argument(
-        "--mode", default=None, choices=["S", "A", "B", "C", "s", "a", "b", "c"],
+        "--mode",
+        default=None,
+        choices=["S", "A", "B", "C", "s", "a", "b", "c"],
         help="Filter by execution mode",
     )
     p_list.add_argument(
-        "--json", action="store_true", dest="json_output",
+        "--json",
+        action="store_true",
+        dest="json_output",
         help="Output as JSON",
     )
     p_list.set_defaults(func=cmd_models_list)
 
     # models info
     p_info = models_sub.add_parser(
-        "info", help="Show resolved mode and context for a model",
+        "info",
+        help="Show resolved mode and context for a model",
     )
     p_info.add_argument("model", help="Model name (e.g. claude-sonnet-4-6)")
     p_info.set_defaults(func=cmd_models_info)
 
     # models show
     p_show = models_sub.add_parser(
-        "show", help="Show current models.json contents",
+        "show",
+        help="Show current models.json contents",
     )
     p_show.add_argument(
-        "--json", action="store_true", dest="json_output",
+        "--json",
+        action="store_true",
+        dest="json_output",
         help="Output raw JSON",
     )
     p_show.set_defaults(func=cmd_models_show)

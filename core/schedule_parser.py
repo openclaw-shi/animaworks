@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -14,7 +15,6 @@ dependency on LifecycleManager or APScheduler internals.
 
 import logging
 import re
-from typing import Any
 
 import yaml
 from apscheduler.triggers.cron import CronTrigger
@@ -131,7 +131,7 @@ def _parse_section(name: str, lines: list[str]) -> CronTask:
         stripped = line.strip()
 
         if stripped.startswith("schedule:"):
-            schedule = stripped[len("schedule:"):].strip()
+            schedule = stripped[len("schedule:") :].strip()
         elif stripped.startswith("type:"):
             task_type = stripped[5:].strip()
         elif stripped.startswith("command:"):
@@ -139,7 +139,7 @@ def _parse_section(name: str, lines: list[str]) -> CronTask:
         elif stripped.startswith("tool:"):
             tool = stripped[5:].strip()
         elif stripped.startswith("skip_pattern:"):
-            val = stripped[len("skip_pattern:"):].strip()
+            val = stripped[len("skip_pattern:") :].strip()
             if val:
                 try:
                     re.compile(val)

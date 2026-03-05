@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -22,7 +23,7 @@ import fcntl
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,7 @@ def save_notification_mapping(
                 data[ts] = {
                     "anima": anima_name,
                     "channel": channel,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 }
                 _prune_old_entries_inplace(data)
 
@@ -134,12 +135,8 @@ def _prune_old_entries_inplace(
     max_age_days: int = _MAX_AGE_DAYS,
 ) -> None:
     """Remove stale entries from *data* dict in-place."""
-    now = datetime.now(timezone.utc)
-    stale = [
-        ts
-        for ts, entry in data.items()
-        if _age_days(entry.get("created_at", ""), now) > max_age_days
-    ]
+    now = datetime.now(UTC)
+    stale = [ts for ts, entry in data.items() if _age_days(entry.get("created_at", ""), now) > max_age_days]
     for ts in stale:
         del data[ts]
 
@@ -148,7 +145,7 @@ def _age_days(iso_str: str, now: datetime) -> float:
     try:
         created = datetime.fromisoformat(iso_str)
         if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
+            created = created.replace(tzinfo=UTC)
         return (now - created).total_seconds() / 86400
     except (ValueError, TypeError):
         return float("inf")

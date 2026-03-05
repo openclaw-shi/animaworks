@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -23,15 +24,13 @@ import json
 import logging
 import re
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from core.i18n import t
 from core.paths import load_prompt
 from core.time_utils import now_iso
-
-from typing import Any, cast
 
 if TYPE_CHECKING:
     from core.memory.activity import ActivityLogger
@@ -124,7 +123,8 @@ class ContradictionDetector:
     # ── Candidate pair generation ───────────────────────────────
 
     def _find_candidate_pairs(
-        self, target_file: Path | None = None,
+        self,
+        target_file: Path | None = None,
     ) -> list[tuple[Path, str, Path, str]]:
         """Find candidate contradiction pairs using RAG vector similarity.
 
@@ -160,8 +160,7 @@ class ContradictionDetector:
         if target_file is not None:
             # Compare target against all other knowledge files
             other_files = [
-                f for f in sorted(self.knowledge_dir.glob("*.md"))
-                if f != target_file and f not in file_contents
+                f for f in sorted(self.knowledge_dir.glob("*.md")) if f != target_file and f not in file_contents
             ]
             for f in other_files:
                 content = mm.read_knowledge_content(f)
@@ -195,7 +194,9 @@ class ContradictionDetector:
             vector_store = get_vector_store(self.anima_name)
             indexer = MemoryIndexer(vector_store, self.anima_name, self.anima_dir)
             retriever = MemoryRetriever(
-                vector_store, indexer, self.knowledge_dir,
+                vector_store,
+                indexer,
+                self.knowledge_dir,
             )
         except (ImportError, Exception) as e:
             logger.debug("RAG not available for candidate search: %s", e)
@@ -205,10 +206,7 @@ class ContradictionDetector:
         seen_pairs: set[tuple[str, str]] = set()
 
         # Determine which files to use as queries
-        query_files = (
-            [target_file] if target_file is not None
-            else list(file_contents.keys())
-        )
+        query_files = [target_file] if target_file is not None else list(file_contents.keys())
 
         for query_path in query_files:
             query_text = file_contents.get(query_path, "")
@@ -251,9 +249,7 @@ class ContradictionDetector:
                     if not match_text.strip():
                         continue
 
-                candidates.append(
-                    (query_path, query_text, match_path, match_text)
-                )
+                candidates.append((query_path, query_text, match_path, match_text))
 
         return candidates
 
@@ -275,13 +271,11 @@ class ContradictionDetector:
         candidates: list[tuple[Path, str, Path, str]] = []
 
         for i, file_a in enumerate(all_files):
-            for file_b in all_files[i + 1:]:
+            for file_b in all_files[i + 1 :]:
                 if target_file is not None:
                     if file_a != target_file and file_b != target_file:
                         continue
-                candidates.append(
-                    (file_a, file_contents[file_a], file_b, file_contents[file_b])
-                )
+                candidates.append((file_a, file_contents[file_a], file_b, file_contents[file_b]))
 
         return candidates
 
@@ -290,7 +284,9 @@ class ContradictionDetector:
     NLI_ENTAILMENT_THRESHOLD = 0.70
 
     async def _check_contradiction_nli(
-        self, text_a: str, text_b: str,
+        self,
+        text_a: str,
+        text_b: str,
     ) -> tuple[bool, float, bool]:
         """Check for contradiction using NLI model.
 
@@ -313,11 +309,13 @@ class ContradictionDetector:
 
         # NLI check: text_a as premise, text_b as hypothesis
         label_ab, score_ab = validator._nli_check(
-            text_b[:2000], text_a[:2000],
+            text_b[:2000],
+            text_a[:2000],
         )
         # Also check the reverse direction
         label_ba, score_ba = validator._nli_check(
-            text_a[:2000], text_b[:2000],
+            text_a[:2000],
+            text_b[:2000],
         )
 
         # If either direction shows contradiction above threshold, flag it
@@ -334,9 +332,8 @@ class ContradictionDetector:
         # Check if either direction shows clear entailment
         is_entailment = False
         if not is_contradiction:
-            if (
-                (label_ab == "entailment" and score_ab >= self.NLI_ENTAILMENT_THRESHOLD)
-                or (label_ba == "entailment" and score_ba >= self.NLI_ENTAILMENT_THRESHOLD)
+            if (label_ab == "entailment" and score_ab >= self.NLI_ENTAILMENT_THRESHOLD) or (
+                label_ba == "entailment" and score_ba >= self.NLI_ENTAILMENT_THRESHOLD
             ):
                 is_entailment = True
 
@@ -373,11 +370,14 @@ class ContradictionDetector:
         )
 
         try:
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2048,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2048,
+                ),
+            )
             text = response.choices[0].message.content or ""
 
             # Extract JSON from response
@@ -393,7 +393,9 @@ class ContradictionDetector:
         except Exception as e:
             logger.warning(
                 "LLM contradiction check failed for %s vs %s: %s",
-                file_a, file_b, e,
+                file_a,
+                file_b,
+                e,
             )
 
         # On failure, conservatively assume no contradiction
@@ -426,6 +428,7 @@ class ContradictionDetector:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         logger.info(
             "Starting contradiction scan for anima=%s target=%s",
@@ -440,7 +443,8 @@ class ContradictionDetector:
             return []
 
         logger.info(
-            "Found %d candidate pairs for contradiction check", len(candidates),
+            "Found %d candidate pairs for contradiction check",
+            len(candidates),
         )
 
         # Step 2: Check each candidate pair
@@ -448,31 +452,36 @@ class ContradictionDetector:
 
         for file_a, text_a, file_b, text_b in candidates:
             # Stage 2a: NLI check (fast, local)
-            is_nli_contradiction, nli_score, is_entailment = (
-                await self._check_contradiction_nli(text_a, text_b)
-            )
+            is_nli_contradiction, nli_score, is_entailment = await self._check_contradiction_nli(text_a, text_b)
 
             if is_nli_contradiction:
                 # NLI detected contradiction - use LLM for resolution
                 llm_result = await self._check_contradiction_llm(
-                    text_a, text_b, file_a.name, file_b.name, model,
+                    text_a,
+                    text_b,
+                    file_a.name,
+                    file_b.name,
+                    model,
                 )
 
                 if llm_result.is_contradiction:
-                    contradictions.append(ContradictionPair(
-                        file_a=file_a,
-                        file_b=file_b,
-                        text_a=text_a,
-                        text_b=text_b,
-                        confidence=nli_score,
-                        resolution=llm_result.resolution,
-                        reason=llm_result.reason,
-                        merged_content=llm_result.merged_content,
-                    ))
+                    contradictions.append(
+                        ContradictionPair(
+                            file_a=file_a,
+                            file_b=file_b,
+                            text_a=text_a,
+                            text_b=text_b,
+                            confidence=nli_score,
+                            resolution=llm_result.resolution,
+                            reason=llm_result.reason,
+                            merged_content=llm_result.merged_content,
+                        )
+                    )
                     logger.info(
-                        "Contradiction detected: %s vs %s (confidence=%.2f, "
-                        "resolution=%s)",
-                        file_a.name, file_b.name, nli_score,
+                        "Contradiction detected: %s vs %s (confidence=%.2f, resolution=%s)",
+                        file_a.name,
+                        file_b.name,
+                        nli_score,
                         llm_result.resolution,
                     )
             elif is_entailment:
@@ -480,35 +489,44 @@ class ContradictionDetector:
                 # skip costly LLM check
                 logger.debug(
                     "NLI entailment detected, skipping LLM: %s vs %s",
-                    file_a.name, file_b.name,
+                    file_a.name,
+                    file_b.name,
                 )
             else:
                 # NLI neutral / uncertain — fall through to LLM as fallback
                 # for cases where NLI may miss semantic contradictions
                 llm_result = await self._check_contradiction_llm(
-                    text_a, text_b, file_a.name, file_b.name, model,
+                    text_a,
+                    text_b,
+                    file_a.name,
+                    file_b.name,
+                    model,
                 )
 
                 if llm_result.is_contradiction:
-                    contradictions.append(ContradictionPair(
-                        file_a=file_a,
-                        file_b=file_b,
-                        text_a=text_a,
-                        text_b=text_b,
-                        confidence=0.5,  # Lower confidence without NLI backing
-                        resolution=llm_result.resolution,
-                        reason=llm_result.reason,
-                        merged_content=llm_result.merged_content,
-                    ))
+                    contradictions.append(
+                        ContradictionPair(
+                            file_a=file_a,
+                            file_b=file_b,
+                            text_a=text_a,
+                            text_b=text_b,
+                            confidence=0.5,  # Lower confidence without NLI backing
+                            resolution=llm_result.resolution,
+                            reason=llm_result.reason,
+                            merged_content=llm_result.merged_content,
+                        )
+                    )
                     logger.info(
-                        "Contradiction detected (LLM-only): %s vs %s "
-                        "(resolution=%s)",
-                        file_a.name, file_b.name, llm_result.resolution,
+                        "Contradiction detected (LLM-only): %s vs %s (resolution=%s)",
+                        file_a.name,
+                        file_b.name,
+                        llm_result.resolution,
                     )
 
         logger.info(
             "Contradiction scan complete for anima=%s: %d contradictions found",
-            self.anima_name, len(contradictions),
+            self.anima_name,
+            len(contradictions),
         )
 
         return contradictions
@@ -536,6 +554,7 @@ class ContradictionDetector:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         results = {"superseded": 0, "merged": 0, "coexisted": 0, "errors": 0}
 
@@ -565,7 +584,9 @@ class ContradictionDetector:
                 else:
                     logger.warning(
                         "Unknown resolution type '%s' for %s vs %s",
-                        strategy, pair.file_a.name, pair.file_b.name,
+                        strategy,
+                        pair.file_a.name,
+                        pair.file_b.name,
                     )
                     results["errors"] += 1
                     continue
@@ -579,19 +600,23 @@ class ContradictionDetector:
             except Exception:
                 logger.exception(
                     "Failed to resolve contradiction: %s vs %s",
-                    pair.file_a.name, pair.file_b.name,
+                    pair.file_a.name,
+                    pair.file_b.name,
                 )
                 results["errors"] += 1
 
         logger.info(
             "Contradiction resolution complete for anima=%s: %s",
-            self.anima_name, results,
+            self.anima_name,
+            results,
         )
 
         return results
 
     def _persist_contradiction_history(
-        self, pair: ContradictionPair, strategy: str,
+        self,
+        pair: ContradictionPair,
+        strategy: str,
     ) -> None:
         """Append a contradiction resolution entry to shared JSONL history.
 
@@ -625,7 +650,8 @@ class ContradictionDetector:
         except Exception:
             logger.warning(
                 "Failed to persist contradiction history for %s vs %s",
-                pair.file_a.name, pair.file_b.name,
+                pair.file_a.name,
+                pair.file_b.name,
             )
 
     def _increment_failure_count(self, file_path: Path) -> None:
@@ -662,7 +688,9 @@ class ContradictionDetector:
             mm.write_knowledge_with_meta(file_path, content, meta)
             logger.debug(
                 "Incremented failure_count for %s: failure_count=%d confidence=%.4f",
-                file_path.name, meta["failure_count"], meta.get("confidence", 0),
+                file_path.name,
+                meta["failure_count"],
+                meta.get("confidence", 0),
             )
         except Exception:
             logger.warning(
@@ -671,7 +699,9 @@ class ContradictionDetector:
             )
 
     def _log_resolution(
-        self, pair: ContradictionPair, strategy: str,
+        self,
+        pair: ContradictionPair,
+        strategy: str,
     ) -> None:
         """Record a knowledge_contradiction_resolved event to the activity log.
 
@@ -698,7 +728,8 @@ class ContradictionDetector:
         except Exception:
             logger.warning(
                 "Failed to log contradiction resolution event for %s vs %s",
-                pair.file_a.name, pair.file_b.name,
+                pair.file_a.name,
+                pair.file_b.name,
             )
 
     def _apply_supersede(self, pair: ContradictionPair) -> None:
@@ -756,11 +787,15 @@ class ContradictionDetector:
 
         logger.info(
             "Superseded %s by %s (archived to %s)",
-            older.name, newer.name, archive_dir,
+            older.name,
+            newer.name,
+            archive_dir,
         )
 
     async def _apply_merge(
-        self, pair: ContradictionPair, model: str,
+        self,
+        pair: ContradictionPair,
+        model: str,
     ) -> bool:
         """Resolve by merging both files into a unified knowledge file.
 
@@ -784,15 +819,18 @@ class ContradictionDetector:
         # Generate merged content via LLM if not pre-generated
         if not merged_content:
             merged_content = await self._generate_merged_content(
-                pair.text_a, pair.text_b,
-                pair.file_a.name, pair.file_b.name,
+                pair.text_a,
+                pair.text_b,
+                pair.file_a.name,
+                pair.file_b.name,
                 model,
             )
 
         if not merged_content:
             logger.warning(
                 "Failed to generate merged content for %s + %s",
-                pair.file_a.name, pair.file_b.name,
+                pair.file_a.name,
+                pair.file_b.name,
             )
             return False
 
@@ -821,7 +859,9 @@ class ContradictionDetector:
 
         logger.info(
             "Merged %s + %s into %s",
-            pair.file_a.name, pair.file_b.name, merged_filename,
+            pair.file_a.name,
+            pair.file_b.name,
+            merged_filename,
         )
 
         return True
@@ -857,11 +897,14 @@ class ContradictionDetector:
         )
 
         try:
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4096,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=4096,
+                ),
+            )
             result = response.choices[0].message.content or ""
 
             # Strip code fences
@@ -937,5 +980,6 @@ class ContradictionDetector:
 
         logger.info(
             "Marked as coexisting: %s <-> %s",
-            pair.file_a.name, pair.file_b.name,
+            pair.file_a.name,
+            pair.file_b.name,
         )

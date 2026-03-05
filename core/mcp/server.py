@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -23,7 +24,6 @@ import asyncio
 import json
 import logging
 import os
-
 import sys
 from pathlib import Path
 from typing import Any
@@ -49,40 +49,42 @@ server = Server("aw")
 # ``core/tooling/schemas.py``.  We pick them by name to build a
 # stable, curated subset suitable for Mode S.
 
-_EXPOSED_TOOL_NAMES: frozenset[str] = frozenset({
-    "send_message",
-    "post_channel",
-    "read_channel",
-    "manage_channel",
-    "read_dm_history",
-    "add_task",
-    "update_task",
-    "list_tasks",
-    "call_human",
-    "search_memory",
-    "report_procedure_outcome",
-    "report_knowledge_outcome",
-    "check_permissions",
-    "disable_subordinate",
-    "enable_subordinate",
-    "set_subordinate_model",
-    "set_subordinate_background_model",
-    "restart_subordinate",
-    "org_dashboard",
-    "ping_subordinate",
-    "read_subordinate_state",
-    "delegate_task",
-    "task_tracker",
-    "audit_subordinate",
-    "skill",
-    "create_skill",
-    "plan_tasks",
-    "check_background_task",
-    "list_background_tasks",
-    "vault_get",
-    "vault_store",
-    "vault_list",
-})
+_EXPOSED_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "send_message",
+        "post_channel",
+        "read_channel",
+        "manage_channel",
+        "read_dm_history",
+        "add_task",
+        "update_task",
+        "list_tasks",
+        "call_human",
+        "search_memory",
+        "report_procedure_outcome",
+        "report_knowledge_outcome",
+        "check_permissions",
+        "disable_subordinate",
+        "enable_subordinate",
+        "set_subordinate_model",
+        "set_subordinate_background_model",
+        "restart_subordinate",
+        "org_dashboard",
+        "ping_subordinate",
+        "read_subordinate_state",
+        "delegate_task",
+        "task_tracker",
+        "audit_subordinate",
+        "skill",
+        "create_skill",
+        "plan_tasks",
+        "check_background_task",
+        "list_background_tasks",
+        "vault_get",
+        "vault_store",
+        "vault_list",
+    }
+)
 
 
 def _get_supervisor_tool_names() -> frozenset[str]:
@@ -148,8 +150,8 @@ def _load_permitted_categories(anima_dir: Path) -> set[str]:
 
     Delegates to :func:`core.tooling.permissions.parse_permitted_tools`.
     """
-    from core.tools import TOOL_MODULES
     from core.tooling.permissions import parse_permitted_tools
+    from core.tools import TOOL_MODULES
 
     all_tools = set(TOOL_MODULES.keys())
     permissions_path = anima_dir / "permissions.md"
@@ -216,9 +218,7 @@ def _build_mcp_tools() -> tuple[list[Tool], frozenset[str]]:
     # Cache original schemas for type coercion lookup
     for schema in all_schemas:
         if schema["name"] in exposed:
-            _TOOL_SCHEMAS[schema["name"]] = schema.get(
-                "parameters", {}
-            )
+            _TOOL_SCHEMAS[schema["name"]] = schema.get("parameters", {})
 
     # Generate dynamic description for the skill tool
     _skill_description = _build_skill_description()
@@ -281,10 +281,7 @@ def _build_skill_description() -> str:
         procedures_dir = anima_dir / "procedures"
         procedure_metas = []
         if procedures_dir.is_dir():
-            procedure_metas = [
-                SkillMetadataService.extract_skill_meta(f)
-                for f in sorted(procedures_dir.glob("*.md"))
-            ]
+            procedure_metas = [SkillMetadataService.extract_skill_meta(f) for f in sorted(procedures_dir.glob("*.md"))]
 
         return build_skill_tool_description(skill_metas, common_metas, procedure_metas)
 
@@ -321,10 +318,7 @@ def _build_background_manager(anima_dir: Path) -> Any:
         from core.tools._base import load_execution_profiles
 
         profiles = load_execution_profiles(TOOL_MODULES)
-        config_eligible = {
-            name: tc.threshold_s
-            for name, tc in config.background_task.eligible_tools.items()
-        }
+        config_eligible = {name: tc.threshold_s for name, tc in config.background_task.eligible_tools.items()}
 
         mgr = BackgroundTaskManager.from_profiles(
             anima_dir=anima_dir,
@@ -370,11 +364,14 @@ def _make_on_complete_callback(anima_dir: Path) -> Any:
             notif_path.write_text(notif_content, encoding="utf-8")
             logger.info(
                 "MCP bg task notification written: %s (tool=%s, status=%s)",
-                task.task_id, task.tool_name, task.status.value,
+                task.task_id,
+                task.tool_name,
+                task.status.value,
             )
         except Exception:
             logger.exception(
-                "Failed to write MCP bg task notification for %s", task.task_id,
+                "Failed to write MCP bg task notification for %s",
+                task.task_id,
             )
 
     return _on_complete
@@ -463,8 +460,8 @@ def _get_tool_handler() -> Any:
         memory = MemoryManager(anima_dir)
 
         # ── Messenger ──
-        from core.paths import get_shared_dir
         from core.messenger import Messenger
+        from core.paths import get_shared_dir
 
         shared_dir = get_shared_dir()
         messenger = Messenger(shared_dir=shared_dir, anima_name=anima_dir.name)
@@ -487,7 +484,6 @@ def _get_tool_handler() -> Any:
         personal_tools: dict[str, str] = {}
         try:
             from core.tools import (
-                TOOL_MODULES,
                 discover_common_tools,
                 discover_personal_tools,
             )
@@ -509,6 +505,7 @@ def _get_tool_handler() -> Any:
         if _status_path.is_file():
             try:
                 import json as _json_mod
+
                 _su_data = _json_mod.loads(_status_path.read_text(encoding="utf-8"))
                 _superuser = bool(_su_data.get("debug_superuser"))
             except (ValueError, OSError):
@@ -545,6 +542,7 @@ def _get_tool_handler() -> Any:
 
 # ── Trust boundary labeling ───────────────────────────────
 
+
 def _wrap_result(tool_name: str, result: str) -> str:
     """Apply trust boundary tag to a successful tool result.
 
@@ -554,6 +552,7 @@ def _wrap_result(tool_name: str, result: str) -> str:
     """
     try:
         from core.execution._sanitize import wrap_tool_result
+
         return wrap_tool_result(tool_name, result)
     except Exception:
         return result

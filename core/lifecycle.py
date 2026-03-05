@@ -1,18 +1,18 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
-
 import asyncio
 import logging
 import time
 import zlib
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -26,6 +26,7 @@ from core.schemas import CronTask
 logger = logging.getLogger("animaworks.lifecycle")
 
 BroadcastFn = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
+
 
 class LifecycleManager:
     """Manages heartbeat and cron for Digital Animas via APScheduler."""
@@ -56,11 +57,7 @@ class LifecycleManager:
     def register_anima(self, anima: DigitalAnima) -> None:
         self.animas[anima.name] = anima
         # Wire up lock-release callback for deferred inbox processing
-        anima.set_on_lock_released(
-            lambda n=anima.name: asyncio.ensure_future(
-                self._on_anima_lock_released(n)
-            )
-        )
+        anima.set_on_lock_released(lambda n=anima.name: asyncio.ensure_future(self._on_anima_lock_released(n)))
         # Wire up schedule-changed callback for hot-reload
         anima.set_on_schedule_changed(self.reload_anima_schedule)
         # Wire up WebSocket broadcast for background task notifications
@@ -121,13 +118,12 @@ class LifecycleManager:
         self._setup_cron_tasks(anima)
         self._record_schedule_mtimes(name, anima.memory.anima_dir)
 
-        new_jobs = [
-            j.id for j in self.scheduler.get_jobs()
-            if j.id.startswith(f"{name}_")
-        ]
+        new_jobs = [j.id for j in self.scheduler.get_jobs() if j.id.startswith(f"{name}_")]
         logger.info(
             "Reloaded schedule for '%s': removed=%d, new_jobs=%s",
-            name, removed, new_jobs,
+            name,
+            removed,
+            new_jobs,
         )
         return {"reloaded": name, "removed": removed, "new_jobs": new_jobs}
 
@@ -174,9 +170,12 @@ class LifecycleManager:
 
         if (cron_mt, hb_mt) != prev:
             logger.info(
-                "Schedule file changed for '%s' — reloading "
-                "(cron: %.0f->%.0f, hb: %.0f->%.0f)",
-                name, prev[0], cron_mt, prev[1], hb_mt,
+                "Schedule file changed for '%s' — reloading (cron: %.0f->%.0f, hb: %.0f->%.0f)",
+                name,
+                prev[0],
+                cron_mt,
+                prev[1],
+                hb_mt,
             )
             self.reload_anima_schedule(name)
             return True
@@ -315,7 +314,8 @@ class LifecycleManager:
         if self._check_schedule_freshness(name):
             logger.info(
                 "Skipping stale cron '%s' for '%s' (schedule reloaded)",
-                task.name, name,
+                task.name,
+                name,
             )
             return
 
@@ -405,7 +405,10 @@ class LifecycleManager:
                 logger.warning(
                     "CASCADE DETECTED: %s <-> %s (%d round-trips in %ds window). "
                     "Suppressing message-triggered heartbeat.",
-                    anima_name, sender, total, cascade_window,
+                    anima_name,
+                    sender,
+                    total,
+                    cascade_window,
                 )
                 return True
         return False
@@ -437,9 +440,7 @@ class LifecycleManager:
                     self._schedule_deferred_trigger(name)
                     continue
                 self._pending_triggers.add(name)
-                asyncio.create_task(
-                    self._message_triggered_heartbeat(name)
-                )
+                asyncio.create_task(self._message_triggered_heartbeat(name))
 
     async def _on_anima_lock_released(self, name: str) -> None:
         """Check deferred inbox after an anima's lock is released.
@@ -476,7 +477,9 @@ class LifecycleManager:
             lambda n=name: asyncio.create_task(self._try_deferred_trigger(n)),
         )
         logger.debug(
-            "Deferred trigger scheduled for %s in %.1fs", name, delay,
+            "Deferred trigger scheduled for %s in %.1fs",
+            name,
+            delay,
         )
 
     async def _try_deferred_trigger(self, name: str) -> None:
@@ -522,9 +525,7 @@ class LifecycleManager:
 
         has_human = any(m.source == "human" for m in inbox_messages)
         has_external = any(m.source in EXTERNAL_PLATFORM_SOURCES for m in inbox_messages)
-        has_actionable = any(
-            m.intent in self._actionable_intents for m in inbox_messages
-        )
+        has_actionable = any(m.intent in self._actionable_intents for m in inbox_messages)
         if not has_human and not has_external and not has_actionable:
             logger.info(
                 "Intent filter: %s — no actionable messages, deferring to scheduled heartbeat",
@@ -547,9 +548,10 @@ class LifecycleManager:
             for sender, count in sender_counts.items():
                 if count >= 5:
                     logger.info(
-                        "Per-sender rate limit: %s has %d messages for %s, "
-                        "deferring to scheduled heartbeat",
-                        sender, count, name,
+                        "Per-sender rate limit: %s has %d messages for %s, deferring to scheduled heartbeat",
+                        sender,
+                        count,
+                        name,
                     )
                     self._pending_triggers.discard(name)
                     return
@@ -659,6 +661,7 @@ class LifecycleManager:
 
         # Check for embedding model change
         import json
+
         from core.memory.rag.singleton import get_embedding_model_name
 
         current_model = get_embedding_model_name()
@@ -702,26 +705,28 @@ class LifecycleManager:
                     if not memory_dir.is_dir():
                         continue
                     chunks = await loop.run_in_executor(
-                        None, indexer.index_directory, memory_dir, memory_type,
+                        None,
+                        indexer.index_directory,
+                        memory_dir,
+                        memory_type,
                     )
                     total_chunks += chunks
 
                 logger.info("Daily indexing for %s complete", anima_name)
 
             except Exception:
-                logger.exception(
-                    "Daily indexing failed for anima=%s", anima_name
-                )
+                logger.exception("Daily indexing failed for anima=%s", anima_name)
 
         # Index shared user memories
         shared_users_dir = base_dir / "shared" / "users"
         if shared_users_dir.is_dir():
             try:
-                indexer = MemoryIndexer(
-                    vector_store, "shared", shared_users_dir.parent
-                )
+                indexer = MemoryIndexer(vector_store, "shared", shared_users_dir.parent)
                 chunks = await loop.run_in_executor(
-                    None, indexer.index_directory, shared_users_dir, "shared_users",
+                    None,
+                    indexer.index_directory,
+                    shared_users_dir,
+                    "shared_users",
                 )
                 total_chunks += chunks
             except Exception:
@@ -732,11 +737,16 @@ class LifecycleManager:
         if common_skills_dir.is_dir():
             try:
                 shared_indexer = MemoryIndexer(
-                    vector_store, "shared", base_dir,
+                    vector_store,
+                    "shared",
+                    base_dir,
                     collection_prefix="shared",
                 )
                 chunks = await loop.run_in_executor(
-                    None, shared_indexer.index_directory, common_skills_dir, "common_skills",
+                    None,
+                    shared_indexer.index_directory,
+                    common_skills_dir,
+                    "common_skills",
                 )
                 total_chunks += chunks
             except Exception:
@@ -766,12 +776,14 @@ class LifecycleManager:
 
         # Load consolidation config
         from core.config import load_config
+
         config = load_config()
         consolidation_cfg = getattr(config, "consolidation", None)
 
         # Default config if not present
         enabled = True
         from core.config.models import ConsolidationConfig
+
         min_episodes = ConsolidationConfig().min_episodes_threshold
         max_turns = ConsolidationConfig().max_turns
 
@@ -791,9 +803,10 @@ class LifecycleManager:
                 episode_count = anima.count_recent_episodes(hours=24)
                 if episode_count < min_episodes:
                     logger.info(
-                        "Daily consolidation skipped for %s: "
-                        "episodes=%d < threshold=%d",
-                        anima_name, episode_count, min_episodes,
+                        "Daily consolidation skipped for %s: episodes=%d < threshold=%d",
+                        anima_name,
+                        episode_count,
+                        min_episodes,
                     )
                     continue
 
@@ -812,25 +825,30 @@ class LifecycleManager:
                 # Post-processing: Synaptic downscaling (metadata-based, no LLM)
                 try:
                     from core.memory.forgetting import ForgettingEngine
+
                     forgetter = ForgettingEngine(anima.memory.anima_dir, anima_name)
                     downscaling_result = forgetter.synaptic_downscaling()
                     logger.info(
                         "Synaptic downscaling for %s: %s",
-                        anima_name, downscaling_result,
+                        anima_name,
+                        downscaling_result,
                     )
                 except Exception:
                     logger.exception(
-                        "Synaptic downscaling failed for anima=%s", anima_name,
+                        "Synaptic downscaling failed for anima=%s",
+                        anima_name,
                     )
 
                 # Post-processing: Rebuild RAG index
                 try:
                     from core.memory.consolidation import ConsolidationEngine
+
                     engine = ConsolidationEngine(anima.memory.anima_dir, anima_name)
                     engine._rebuild_rag_index()
                 except Exception:
                     logger.exception(
-                        "RAG index rebuild failed for anima=%s", anima_name,
+                        "RAG index rebuild failed for anima=%s",
+                        anima_name,
                     )
 
                 # Broadcast result via WebSocket
@@ -848,10 +866,7 @@ class LifecycleManager:
                     )
 
             except Exception:
-                logger.exception(
-                    "Daily consolidation failed for anima=%s",
-                    anima_name
-                )
+                logger.exception("Daily consolidation failed for anima=%s", anima_name)
 
     async def _handle_weekly_integration(self) -> None:
         """Run weekly integration for all animas.
@@ -863,12 +878,14 @@ class LifecycleManager:
 
         # Load config
         from core.config import load_config
+
         config = load_config()
         consolidation_cfg = getattr(config, "consolidation", None)
 
         # Default config
         enabled = True
         from core.config.models import ConsolidationConfig as _CC
+
         model = _CC().llm_model
         max_turns = _CC().max_turns
 
@@ -899,11 +916,13 @@ class LifecycleManager:
                 # Post-processing: Neurogenesis reorganization (LLM-based merge)
                 try:
                     from core.memory.forgetting import ForgettingEngine
+
                     forgetter = ForgettingEngine(anima.memory.anima_dir, anima_name)
                     reorg_result = await forgetter.neurogenesis_reorganize(model=model)
                     logger.info(
                         "Neurogenesis reorganization for %s: %s",
-                        anima_name, reorg_result,
+                        anima_name,
+                        reorg_result,
                     )
                 except Exception:
                     logger.exception(
@@ -914,11 +933,13 @@ class LifecycleManager:
                 # Post-processing: Rebuild RAG index
                 try:
                     from core.memory.consolidation import ConsolidationEngine
+
                     engine = ConsolidationEngine(anima.memory.anima_dir, anima_name)
                     engine._rebuild_rag_index()
                 except Exception:
                     logger.exception(
-                        "RAG index rebuild failed for anima=%s", anima_name,
+                        "RAG index rebuild failed for anima=%s",
+                        anima_name,
                     )
 
                 # Broadcast result via WebSocket
@@ -936,10 +957,7 @@ class LifecycleManager:
                     )
 
             except Exception:
-                logger.exception(
-                    "Weekly integration failed for anima=%s",
-                    anima_name
-                )
+                logger.exception("Weekly integration failed for anima=%s", anima_name)
 
     async def _handle_monthly_forgetting(self) -> None:
         """Run monthly forgetting for all animas."""
@@ -947,6 +965,7 @@ class LifecycleManager:
 
         # Load config
         from core.config import load_config
+
         config = load_config()
         consolidation_cfg = getattr(config, "consolidation", None)
 
@@ -993,15 +1012,12 @@ class LifecycleManager:
                     )
 
             except Exception:
-                logger.exception(
-                    "Monthly forgetting failed for anima=%s",
-                    anima_name
-                )
+                logger.exception("Monthly forgetting failed for anima=%s", anima_name)
 
     async def _handle_dm_log_rotation(self) -> None:
         """Archive old dm_log entries beyond 7 days."""
-        from core.paths import get_shared_dir
         from core.background import rotate_dm_logs
+        from core.paths import get_shared_dir
 
         shared_dir = get_shared_dir()
         try:
@@ -1018,9 +1034,7 @@ class LifecycleManager:
     def start(self) -> None:
         self.scheduler.start()
         self._setup_system_crons()
-        self._inbox_watcher_task = asyncio.create_task(
-            self._inbox_watcher_loop()
-        )
+        self._inbox_watcher_task = asyncio.create_task(self._inbox_watcher_loop())
         logger.info("Lifecycle manager started (scheduler + inbox watcher + system crons)")
 
     def shutdown(self) -> None:
@@ -1036,6 +1050,7 @@ class LifecycleManager:
 # ── Parsing helpers (re-exported from schedule_parser) ────
 from core.schedule_parser import (  # noqa: E402
     parse_cron_md as _parse_cron_md,
+)
+from core.schedule_parser import (
     parse_schedule as _parse_schedule,
-    parse_heartbeat_config as _parse_heartbeat_config,
 )

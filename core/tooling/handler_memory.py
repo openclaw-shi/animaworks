@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -10,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from core.i18n import t
-
 from core.tooling.handler_base import (
     _error_result,
     _extract_first_heading,
@@ -55,7 +55,9 @@ class MemoryToolsMixin:
         results = self._memory.search_memory_text(query, scope=scope)
         logger.debug(
             "search_memory query=%s scope=%s results=%d",
-            query, scope, len(results),
+            query,
+            scope,
+            len(results),
         )
         if not results:
             return f"No results for '{query}'"
@@ -69,7 +71,8 @@ class MemoryToolsMixin:
         # Support common_knowledge/ prefix — resolve to shared dir
         if rel.startswith("common_knowledge/"):
             from core.paths import get_common_knowledge_dir
-            suffix = rel[len("common_knowledge/"):]
+
+            suffix = rel[len("common_knowledge/") :]
             ck_dir = get_common_knowledge_dir()
             path = (ck_dir / suffix).resolve()
             if not path.is_relative_to(ck_dir.resolve()):
@@ -121,9 +124,7 @@ class MemoryToolsMixin:
         if parent.exists() and parent.is_dir():
             siblings = sorted(f.name for f in parent.iterdir() if f.is_file())[:20]
             if siblings:
-                hint = f"\nAvailable files in {parent.name}/:\n" + "\n".join(
-                    f"  - {s}" for s in siblings
-                )
+                hint = f"\nAvailable files in {parent.name}/:\n" + "\n".join(f"  - {s}" for s in siblings)
         return f"File not found: {rel}{hint}"
 
     def _handle_write_memory_file(self, args: dict[str, Any]) -> str:
@@ -133,7 +134,7 @@ class MemoryToolsMixin:
         if rel.startswith("common_knowledge/"):
             from core.paths import get_common_knowledge_dir
 
-            suffix = rel[len("common_knowledge/"):]
+            suffix = rel[len("common_knowledge/") :]
             ck_dir = get_common_knowledge_dir()
             path = (ck_dir / suffix).resolve()
             if not path.is_relative_to(ck_dir.resolve()):
@@ -144,7 +145,7 @@ class MemoryToolsMixin:
         elif rel.startswith("common_skills/"):
             from core.paths import get_common_skills_dir
 
-            suffix = rel[len("common_skills/"):]
+            suffix = rel[len("common_skills/") :]
             cs_dir = get_common_skills_dir()
             path = (cs_dir / suffix).resolve()
             if not path.is_relative_to(cs_dir.resolve()):
@@ -187,9 +188,12 @@ class MemoryToolsMixin:
         try:
             # Auto-add YAML frontmatter for procedure overwrite writes
             auto_frontmatter_applied = False
-            if (rel.startswith("procedures/") and rel.endswith(".md")
-                    and mode == "overwrite"
-                    and not content.lstrip().startswith("---")):
+            if (
+                rel.startswith("procedures/")
+                and rel.endswith(".md")
+                and mode == "overwrite"
+                and not content.lstrip().startswith("---")
+            ):
                 desc = _extract_first_heading(content)
                 metadata = {
                     "description": desc,
@@ -199,16 +203,23 @@ class MemoryToolsMixin:
                 }
                 self._memory.write_procedure_with_meta(path, content, metadata)
                 auto_frontmatter_applied = True
-            elif (rel.startswith("knowledge/") and rel.endswith(".md")
-                    and mode == "overwrite"
-                    and content.lstrip().startswith("---")):
+            elif (
+                rel.startswith("knowledge/")
+                and rel.endswith(".md")
+                and mode == "overwrite"
+                and content.lstrip().startswith("---")
+            ):
                 # LLM wrote frontmatter — parse, validate, and complete
                 import yaml as _yaml_km_fm
+
                 from core.memory.frontmatter import (
                     parse_frontmatter as _parse_fm_hw,
+                )
+                from core.memory.frontmatter import (
                     validate_and_complete_frontmatter as _validate_fm_hw,
                 )
                 from core.schemas import now_jst as _now_jst_hw
+
                 _meta_hw, _body_hw = _parse_fm_hw(content.lstrip())
                 if _meta_hw:
                     # Preserve original created_at on overwrite; update updated_at
@@ -228,6 +239,7 @@ class MemoryToolsMixin:
                 else:
                     # Parse failed — strip broken FM, apply framework-generated metadata
                     from core.memory.frontmatter import strip_content_frontmatter as _strip_fm_hw
+
                     _clean_body_hw = _strip_fm_hw(content.lstrip())
                     _ts_fb = _now_jst_hw().isoformat()
                     _fallback_meta: dict[str, Any] = {
@@ -247,7 +259,9 @@ class MemoryToolsMixin:
                         except OSError:
                             pass
                     _fm_fb = _yaml_km_fm.dump(
-                        _fallback_meta, default_flow_style=False, allow_unicode=True,
+                        _fallback_meta,
+                        default_flow_style=False,
+                        allow_unicode=True,
                     )
                     path.write_text(
                         f"---\n{_fm_fb}---\n\n{_clean_body_hw.lstrip()}",
@@ -255,19 +269,26 @@ class MemoryToolsMixin:
                     )
                     auto_frontmatter_applied = True
                     logger.info(
-                        "Frontmatter parse failed for %s — applied fallback metadata", rel,
+                        "Frontmatter parse failed for %s — applied fallback metadata",
+                        rel,
                     )
-            elif (rel.startswith("knowledge/") and rel.endswith(".md")
-                    and mode == "overwrite"
-                    and not content.lstrip().startswith("---")):
+            elif (
+                rel.startswith("knowledge/")
+                and rel.endswith(".md")
+                and mode == "overwrite"
+                and not content.lstrip().startswith("---")
+            ):
                 import yaml as _yaml_km
-                from core.schemas import now_jst
+
                 from core.memory.frontmatter import strip_content_frontmatter
+                from core.schemas import now_jst
+
                 # Preserve original created_at on overwrite
                 _original_created_at = None
                 if path.exists():
                     try:
                         from core.memory.frontmatter import parse_frontmatter as _parse_fm_ow
+
                         _existing_text_ow = path.read_text(encoding="utf-8")
                         _existing_meta_ow, _ = _parse_fm_ow(_existing_text_ow)
                         _original_created_at = _existing_meta_ow.get("created_at")
@@ -311,7 +332,8 @@ class MemoryToolsMixin:
                 lock.release()
         logger.info(
             "write_memory_file path=%s mode=%s",
-            args["path"], args.get("mode", "overwrite"),
+            args["path"],
+            args.get("mode", "overwrite"),
         )
 
         # Activity log: memory write

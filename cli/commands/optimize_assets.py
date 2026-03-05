@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import logging
 import shutil
-from pathlib import Path
 
 from core.time_utils import now_jst
 
@@ -21,7 +20,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Optimize existing 3D assets (strip meshes, compress, simplify)",
     )
     parser.add_argument(
-        "--anima", "-a",
+        "--anima",
+        "-a",
         help="Optimize assets for a specific anima only",
     )
     parser.add_argument(
@@ -94,10 +94,7 @@ def _run(args: argparse.Namespace) -> None:
             return
         anima_dirs = [anima_dir]
     else:
-        anima_dirs = sorted(
-            d for d in animas_dir.iterdir()
-            if d.is_dir() and (d / "assets").is_dir()
-        )
+        anima_dirs = sorted(d for d in animas_dir.iterdir() if d.is_dir() and (d / "assets").is_dir())
 
     total_before = 0
     total_after = 0

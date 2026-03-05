@@ -15,13 +15,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import re
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -33,9 +31,9 @@ from core.tools._retry import retry_with_backoff
 
 EXECUTION_PROFILE: dict[str, dict[str, object]] = {
     "generate": {"expected_seconds": 300, "background_eligible": True},
-    "chat":     {"expected_seconds": 300, "background_eligible": True},
-    "list":     {"expected_seconds": 5,   "background_eligible": False},
-    "status":   {"expected_seconds": 5,   "background_eligible": False},
+    "chat": {"expected_seconds": 300, "background_eligible": True},
+    "list": {"expected_seconds": 5, "background_eligible": False},
+    "status": {"expected_seconds": 5, "background_eligible": False},
 }
 
 # ---------------------------------------------------------------------------
@@ -267,13 +265,8 @@ class OllamaClient:
                 timeout=httpx.Timeout(self._timeout, connect=10.0),
             )
             data = r.json()
-            if "error" in data and (
-                "is running" in data["error"]
-                or "busy" in str(data.get("error", "")).lower()
-            ):
-                raise _ServerBusyError(
-                    f"Server {current.name} busy: {data['error']}"
-                )
+            if "error" in data and ("is running" in data["error"] or "busy" in str(data.get("error", "")).lower()):
+                raise _ServerBusyError(f"Server {current.name} busy: {data['error']}")
             r.raise_for_status()
             # Extract nested key like "message.content"
             result: Any = data
@@ -353,19 +346,26 @@ def cli_main(argv: list[str] | None = None) -> None:
         description="AnimaWorks local LLM tool -- Ollama API client.",
     )
     parser.add_argument(
-        "-s", "--server", default="auto",
+        "-s",
+        "--server",
+        default="auto",
         help="Server name or 'auto' for automatic selection. Default: auto.",
     )
     parser.add_argument(
-        "-m", "--model", default=None,
+        "-m",
+        "--model",
+        default=None,
         help="Model name. If omitted, auto-selected from server.",
     )
     parser.add_argument(
-        "--hint", default=None,
+        "--hint",
+        default=None,
         help="Pattern to match model name (regex, case-insensitive).",
     )
     parser.add_argument(
-        "--timeout", type=float, default=600.0,
+        "--timeout",
+        type=float,
+        default=600.0,
         help="Request timeout in seconds (default: 600).",
     )
 
@@ -378,21 +378,26 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_gen.add_argument("--temperature", type=float, default=0.7, help="Temperature")
     p_gen.add_argument("--max-tokens", type=int, default=4096, help="Max tokens")
     p_gen.add_argument(
-        "--think", default="off", choices=["off", "low", "medium", "high"],
+        "--think",
+        default="off",
+        choices=["off", "low", "medium", "high"],
         help="Thinking effort",
     )
 
     # chat
     p_chat = sub.add_parser("chat", help="Chat (multi-turn, JSON input)")
     p_chat.add_argument(
-        "json_input", nargs="?",
-        help='JSON messages array or file path (reads stdin if omitted)',
+        "json_input",
+        nargs="?",
+        help="JSON messages array or file path (reads stdin if omitted)",
     )
     p_chat.add_argument("-S", "--system", default="", help="System prompt")
     p_chat.add_argument("--temperature", type=float, default=0.7, help="Temperature")
     p_chat.add_argument("--max-tokens", type=int, default=4096, help="Max tokens")
     p_chat.add_argument(
-        "--think", default="off", choices=["off", "low", "medium", "high"],
+        "--think",
+        default="off",
+        choices=["off", "low", "medium", "high"],
         help="Thinking effort",
     )
 
@@ -485,7 +490,7 @@ def cli_main(argv: list[str] | None = None) -> None:
                 print(f"  Status: unreachable ({info['error']})")
             else:
                 models = info.get("models", [])
-                print(f"  Status: OK")
+                print("  Status: OK")
                 print(f"  Loaded models: {len(models)}")
                 for m in models:
                     vram_gb = m.get("size_vram", 0) / (1024**3)

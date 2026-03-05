@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -24,7 +25,7 @@ logger = logging.getLogger("animaworks.agent")
 # max_buffer_size).  These thresholds trigger defensive actions well before
 # the hard limit is hit.  JSON framing + tool schemas add ~30-50% overhead
 # on top of the raw text, so we use conservative byte limits.
-_PROMPT_SOFT_LIMIT_BYTES = 600_000   # Force compression
+_PROMPT_SOFT_LIMIT_BYTES = 600_000  # Force compression
 _PROMPT_HARD_LIMIT_BYTES = 1_200_000  # Fall back to S Fallback
 
 

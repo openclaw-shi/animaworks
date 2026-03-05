@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -48,7 +49,7 @@ class SlackChannel(NotificationChannel):
         if not bot_token:
             bot_token = self._resolve_env("bot_token_env")
         if not bot_token and anima_name:
-            from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
+            from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
 
             per_key = f"SLACK_BOT_TOKEN__{anima_name}"
             bot_token = _lookup_vault_credential(per_key) or _lookup_shared_credentials(per_key) or ""
@@ -128,7 +129,8 @@ class SlackChannel(NotificationChannel):
                         )
                     except Exception:
                         logger.debug(
-                            "Failed to save notification mapping", exc_info=True,
+                            "Failed to save notification mapping",
+                            exc_info=True,
                         )
 
             logger.info("Slack notification sent via bot: %s", subject[:50])

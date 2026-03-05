@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
@@ -42,7 +42,7 @@ def create_memory_router() -> APIRouter:
         try:
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to read file: {e}") from None
         return {"date": date, "content": content}
 
     # ── Knowledge ─────────────────────────────────────────
@@ -71,7 +71,7 @@ def create_memory_router() -> APIRouter:
         try:
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to read file: {e}") from None
         return {"topic": topic, "content": content}
 
     # ── Procedures ────────────────────────────────────────
@@ -100,7 +100,7 @@ def create_memory_router() -> APIRouter:
         try:
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to read file: {e}") from None
         return {"name": proc, "content": content}
 
     # ── Conversation ──────────────────────────────────────
@@ -115,6 +115,7 @@ def create_memory_router() -> APIRouter:
 
         # Read model config from anima directory
         from core.config.models import load_model_config
+
         model_config = load_model_config(anima_dir)
 
         conv = ConversationMemory(anima_dir, model_config)
@@ -125,20 +126,12 @@ def create_memory_router() -> APIRouter:
             "raw_turns": len(state.turns),
             "compressed_turn_count": state.compressed_turn_count,
             "has_summary": bool(state.compressed_summary),
-            "summary_preview": (
-                state.compressed_summary[:300]
-                if state.compressed_summary
-                else ""
-            ),
+            "summary_preview": (state.compressed_summary[:300] if state.compressed_summary else ""),
             "total_token_estimate": state.total_token_estimate,
             "turns": [
                 {
                     "role": t.role,
-                    "content": (
-                        t.content[:200] + "..."
-                        if len(t.content) > 200
-                        else t.content
-                    ),
+                    "content": (t.content[:200] + "..." if len(t.content) > 200 else t.content),
                     "timestamp": t.timestamp,
                     "token_estimate": t.token_estimate,
                 }
@@ -159,6 +152,7 @@ def create_memory_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
 
         from core.config.models import load_model_config
+
         model_config = load_model_config(anima_dir)
 
         conv = ConversationMemory(anima_dir, model_config)
@@ -174,6 +168,7 @@ def create_memory_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Anima not found: {name}")
 
         from core.config.models import load_model_config
+
         model_config = load_model_config(anima_dir)
 
         conv = ConversationMemory(anima_dir, model_config)

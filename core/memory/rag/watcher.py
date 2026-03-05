@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -13,7 +14,6 @@ Based on: docs/design/priming-layer-design.md Phase 3
 import asyncio
 import logging
 import time
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -276,7 +276,8 @@ class FileWatcher:
                 total = sum(len(v) for v in graph_changed.values())
                 logger.debug(
                     "Graph incrementally updated and saved for %d files (%s)",
-                    total, ", ".join(graph_changed.keys()),
+                    total,
+                    ", ".join(graph_changed.keys()),
                 )
             except Exception as e:
                 logger.error("Failed to update knowledge graph: %s", e)

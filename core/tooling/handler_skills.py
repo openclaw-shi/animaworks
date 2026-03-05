@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -8,13 +9,12 @@ from __future__ import annotations
 import json as _json
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from core.i18n import t
 from core.time_utils import now_iso
-
 from core.tooling.handler_base import _error_result
 
 if TYPE_CHECKING:
@@ -52,10 +52,7 @@ class SkillsToolsMixin:
 
         names = ", ".join(sorted(merged.keys()))
         logger.info("refresh_tools: discovered %d tools: %s", len(merged), names)
-        return (
-            f"Refreshed tools ({len(merged)} discovered): {names}\n"
-            "These tools are now available for use."
-        )
+        return f"Refreshed tools ({len(merged)} discovered): {names}\nThese tools are now available for use."
 
     def _handle_share_tool(self, args: dict[str, Any]) -> str:
         """Copy a personal tool to common_tools/ for all animas."""
@@ -142,7 +139,9 @@ class SkillsToolsMixin:
 
         logger.info(
             "report_procedure_outcome path=%s success=%s confidence=%.2f",
-            rel, success, meta["confidence"],
+            rel,
+            success,
+            meta["confidence"],
         )
 
         outcome_label = t("handler.outcome_success") if success else t("handler.outcome_failure")
@@ -196,7 +195,9 @@ class SkillsToolsMixin:
 
         logger.info(
             "report_knowledge_outcome path=%s success=%s confidence=%.2f",
-            rel, success, meta["confidence"],
+            rel,
+            success,
+            meta["confidence"],
         )
 
         self._activity.log(
@@ -225,8 +226,8 @@ class SkillsToolsMixin:
 
     def _handle_skill(self, args: dict[str, Any]) -> str:
         """Handle skill tool invocation — load and return skill content."""
-        from core.tooling.skill_tool import load_and_render_skill
         from core.paths import get_common_skills_dir
+        from core.tooling.skill_tool import load_and_render_skill
 
         skill_name = args.get("skill_name", "")
         context = args.get("context", "")
@@ -373,7 +374,7 @@ class SkillsToolsMixin:
         Performs cycle detection, duplicate ID check, and dependency
         reference validation before writing task files.
         """
-        from datetime import datetime as _dt, timezone as _tz
+        from datetime import datetime as _dt
 
         batch_id = args.get("batch_id", "")
         tasks = args.get("tasks", [])
@@ -391,12 +392,11 @@ class SkillsToolsMixin:
         task_id_set = set(task_ids)
 
         # Validate depends_on references
-        for t in tasks:
+        for t in tasks:  # noqa: F402
             for dep in t.get("depends_on", []):
                 if dep not in task_id_set:
                     return _error_result(
-                        "InvalidArguments",
-                        f"Task '{t['task_id']}' depends on unknown task_id '{dep}'"
+                        "InvalidArguments", f"Task '{t['task_id']}' depends on unknown task_id '{dep}'"
                     )
 
         # Validate required fields
@@ -404,12 +404,12 @@ class SkillsToolsMixin:
             if not t.get("task_id") or not t.get("title") or not t.get("description"):
                 return _error_result(
                     "InvalidArguments",
-                    f"Task missing required fields (task_id, title, description): "
-                    f"{t.get('task_id', '?')}"
+                    f"Task missing required fields (task_id, title, description): {t.get('task_id', '?')}",
                 )
 
         # Cycle detection via topological sort
         from core.supervisor.pending_executor import _topological_sort
+
         try:
             _topological_sort(tasks)
         except ValueError:
@@ -418,7 +418,7 @@ class SkillsToolsMixin:
         # Write task files to state/pending/
         pending_dir = self._anima_dir / "state" / "pending"
         pending_dir.mkdir(parents=True, exist_ok=True)
-        now_iso = _dt.now(_tz.utc).isoformat()
+        now_iso = _dt.now(UTC).isoformat()
 
         written: list[str] = []
         for t in tasks:
@@ -448,17 +448,20 @@ class SkillsToolsMixin:
         if hasattr(self, "_pending_executor_wake") and self._pending_executor_wake:
             self._pending_executor_wake()
 
-        return _json.dumps({
-            "status": "submitted",
-            "batch_id": batch_id,
-            "task_count": len(written),
-            "task_ids": written,
-            "message": (
-                f"Batch '{batch_id}' submitted with {len(written)} tasks. "
-                f"Parallel tasks will execute concurrently. "
-                f"Tasks with depends_on will wait for dependencies."
-            ),
-        }, ensure_ascii=False)
+        return _json.dumps(
+            {
+                "status": "submitted",
+                "batch_id": batch_id,
+                "task_count": len(written),
+                "task_ids": written,
+                "message": (
+                    f"Batch '{batch_id}' submitted with {len(written)} tasks. "
+                    f"Parallel tasks will execute concurrently. "
+                    f"Tasks with depends_on will wait for dependencies."
+                ),
+            },
+            ensure_ascii=False,
+        )
 
     # ── Background task handlers ─────────────────────────────
 

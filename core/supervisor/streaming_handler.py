@@ -60,20 +60,20 @@ class StreamingIPCHandler:
         """Clear session IDs and checkpoint after abnormal stream termination."""
         try:
             from core.execution.agent_sdk import clear_session_ids
+
             clear_session_ids(self._anima_dir)
             logger.info("Session IDs cleared: %s", reason)
         except Exception as e:
             logger.warning("Failed to clear session IDs: %s", e)
         try:
             from core.memory.shortterm import ShortTermMemory
+
             ShortTermMemory(self._anima_dir).clear_checkpoint()
             logger.info("Stream checkpoint cleared: %s", reason)
         except Exception as e:
             logger.warning("Failed to clear checkpoint: %s", e)
 
-    async def handle_stream(
-        self, request: IPCRequest
-    ) -> AsyncIterator[IPCResponse]:
+    async def handle_stream(self, request: IPCRequest) -> AsyncIterator[IPCResponse]:
         """Handle streaming process_message request.
 
         Yields IPCResponse chunks with stream=True, followed by
@@ -84,18 +84,13 @@ class StreamingIPCHandler:
         timeout is reset even during long tool executions.
         """
         if not self._anima:
-            yield IPCResponse(
-                id=request.id,
-                error={
-                    "code": "NOT_INITIALIZED",
-                    "message": "Anima not initialized"
-                }
-            )
+            yield IPCResponse(id=request.id, error={"code": "NOT_INITIALIZED", "message": "Anima not initialized"})
             return
 
         # ── Resolve keep-alive interval from config ──────────────
         try:
             from core.config import load_config
+
             keepalive_interval: int = load_config().server.keepalive_interval
         except Exception:
             keepalive_interval = _DEFAULT_KEEPALIVE_INTERVAL
@@ -128,18 +123,23 @@ class StreamingIPCHandler:
             try:
                 # Emit bootstrap_start if anima needs bootstrap
                 if was_bootstrapping:
-                    await _enqueue(IPCResponse(
-                        id=request.id,
-                        stream=True,
-                        chunk=json.dumps(
-                            {"type": "bootstrap_start"}, ensure_ascii=False,
-                        ),
-                    ))
+                    await _enqueue(
+                        IPCResponse(
+                            id=request.id,
+                            stream=True,
+                            chunk=json.dumps(
+                                {"type": "bootstrap_start"},
+                                ensure_ascii=False,
+                            ),
+                        )
+                    )
 
                 async for chunk in self._anima.process_message_stream(
-                    message, from_person=from_person,
+                    message,
+                    from_person=from_person,
                     intent=intent,
-                    images=images, attachment_paths=attachment_paths,
+                    images=images,
+                    attachment_paths=attachment_paths,
                     thread_id=thread_id,
                 ):
                     event_type = chunk.get("type", "unknown")
@@ -147,105 +147,123 @@ class StreamingIPCHandler:
                     if event_type == "text_delta":
                         text = chunk.get("text", "")
                         full_response += text
-                        await _enqueue(IPCResponse(
-                            id=request.id,
-                            stream=True,
-                            chunk=json.dumps(chunk, ensure_ascii=False),
-                        ))
+                        await _enqueue(
+                            IPCResponse(
+                                id=request.id,
+                                stream=True,
+                                chunk=json.dumps(chunk, ensure_ascii=False),
+                            )
+                        )
 
                     elif event_type == "cycle_done":
                         cycle_result = chunk.get("cycle_result", {})
                         full_response = cycle_result.get(
-                            "summary", full_response,
+                            "summary",
+                            full_response,
                         )
 
                         # Emit bootstrap_complete if bootstrap just finished
-                        if (
-                            was_bootstrapping
-                            and not self._anima.needs_bootstrap
-                        ):
-                            await _enqueue(IPCResponse(
+                        if was_bootstrapping and not self._anima.needs_bootstrap:
+                            await _enqueue(
+                                IPCResponse(
+                                    id=request.id,
+                                    stream=True,
+                                    chunk=json.dumps(
+                                        {"type": "bootstrap_complete"},
+                                        ensure_ascii=False,
+                                    ),
+                                )
+                            )
+
+                        await _enqueue(
+                            IPCResponse(
                                 id=request.id,
                                 stream=True,
-                                chunk=json.dumps(
-                                    {"type": "bootstrap_complete"},
-                                    ensure_ascii=False,
-                                ),
-                            ))
-
-                        await _enqueue(IPCResponse(
-                            id=request.id,
-                            stream=True,
-                            done=True,
-                            result={
-                                "response": full_response,
-                                "replied_to": [],
-                                "cycle_result": cycle_result,
-                            },
-                        ))
+                                done=True,
+                                result={
+                                    "response": full_response,
+                                    "replied_to": [],
+                                    "cycle_result": cycle_result,
+                                },
+                            )
+                        )
                         return
 
                     elif event_type == "bootstrap_busy":
                         # Anima is already bootstrapping — forward as-is
-                        await _enqueue(IPCResponse(
-                            id=request.id,
-                            stream=True,
-                            chunk=json.dumps(chunk, ensure_ascii=False),
-                        ))
+                        await _enqueue(
+                            IPCResponse(
+                                id=request.id,
+                                stream=True,
+                                chunk=json.dumps(chunk, ensure_ascii=False),
+                            )
+                        )
 
                     elif event_type == "error":
-                        await _enqueue(IPCResponse(
-                            id=request.id,
-                            stream=True,
-                            chunk=json.dumps(chunk, ensure_ascii=False),
-                        ))
+                        await _enqueue(
+                            IPCResponse(
+                                id=request.id,
+                                stream=True,
+                                chunk=json.dumps(chunk, ensure_ascii=False),
+                            )
+                        )
 
                     else:
                         # Forward other event types (tool_start, tool_end,
                         # chain_start, etc.) as stream chunks
-                        await _enqueue(IPCResponse(
-                            id=request.id,
-                            stream=True,
-                            chunk=json.dumps(
-                                chunk, ensure_ascii=False,
-                                default=_json_default,
-                            ),
-                        ))
+                        await _enqueue(
+                            IPCResponse(
+                                id=request.id,
+                                stream=True,
+                                chunk=json.dumps(
+                                    chunk,
+                                    ensure_ascii=False,
+                                    default=_json_default,
+                                ),
+                            )
+                        )
 
                 # Stream ended without cycle_done — done=False切断パス
                 self._clear_stream_abort_state("stream ended without cycle_done (done=False)")
-                await _enqueue(IPCResponse(
-                    id=request.id,
-                    stream=True,
-                    done=True,
-                    result={
-                        "response": full_response,
-                        "replied_to": [],
-                    },
-                ))
+                await _enqueue(
+                    IPCResponse(
+                        id=request.id,
+                        stream=True,
+                        done=True,
+                        result={
+                            "response": full_response,
+                            "replied_to": [],
+                        },
+                    )
+                )
 
             except TimeoutError as e:
                 logger.error("Timeout in streaming process_message: %s", e)
                 self._clear_stream_abort_state("timeout")
-                await queue.put(IPCResponse(
-                    id=request.id,
-                    error={
-                        "code": "IPC_TIMEOUT",
-                        "message": str(e) or "Stream processing timed out",
-                    },
-                ))
+                await queue.put(
+                    IPCResponse(
+                        id=request.id,
+                        error={
+                            "code": "IPC_TIMEOUT",
+                            "message": str(e) or "Stream processing timed out",
+                        },
+                    )
+                )
             except Exception as e:
                 logger.exception(
-                    "Error in streaming process_message: %s", e,
+                    "Error in streaming process_message: %s",
+                    e,
                 )
                 self._clear_stream_abort_state("exception")
-                await queue.put(IPCResponse(
-                    id=request.id,
-                    error={
-                        "code": "STREAM_ERROR",
-                        "message": str(e),
-                    },
-                ))
+                await queue.put(
+                    IPCResponse(
+                        id=request.id,
+                        error={
+                            "code": "STREAM_ERROR",
+                            "message": str(e),
+                        },
+                    )
+                )
             except BaseException as e:
                 if isinstance(e, (asyncio.CancelledError, GeneratorExit)):
                     raise
@@ -253,16 +271,19 @@ class StreamingIPCHandler:
                 # エラーレスポンスをキューに入れ、親プロセスに正常通知。
                 logger.critical(
                     "BaseException in streaming process_message: %s: %s",
-                    type(e).__name__, e,
+                    type(e).__name__,
+                    e,
                 )
                 try:
-                    await queue.put(IPCResponse(
-                        id=request.id,
-                        error={
-                            "code": "FATAL_STREAM_ERROR",
-                            "message": f"{type(e).__name__}: {e}",
-                        },
-                    ))
+                    await queue.put(
+                        IPCResponse(
+                            id=request.id,
+                            error={
+                                "code": "FATAL_STREAM_ERROR",
+                                "message": f"{type(e).__name__}: {e}",
+                            },
+                        )
+                    )
                 except Exception:
                     pass  # キュー破損時は SENTINEL に委ねる
             finally:
@@ -288,27 +309,32 @@ class StreamingIPCHandler:
                     elapsed_since_chunk = time.monotonic() - last_chunk_time
                     if elapsed_since_chunk >= keepalive_interval:
                         elapsed = round(
-                            time.monotonic() - stream_start_time, 1,
+                            time.monotonic() - stream_start_time,
+                            1,
                         )
                         logger.debug(
                             "Keep-alive sent for %s (elapsed=%.1fs)",
-                            self._anima_name, elapsed,
+                            self._anima_name,
+                            elapsed,
                         )
-                        await _enqueue(IPCResponse(
-                            id=request.id,
-                            stream=True,
-                            chunk=json.dumps(
-                                {"type": "keepalive", "elapsed_s": elapsed},
-                                ensure_ascii=False,
-                            ),
-                        ))
+                        await _enqueue(
+                            IPCResponse(
+                                id=request.id,
+                                stream=True,
+                                chunk=json.dumps(
+                                    {"type": "keepalive", "elapsed_s": elapsed},
+                                    ensure_ascii=False,
+                                ),
+                            )
+                        )
             except asyncio.CancelledError:
                 return
 
         # Launch producer tasks
         logger.debug(
             "Starting queue-based stream merge for %s (keepalive=%ds)",
-            self._anima_name, keepalive_interval,
+            self._anima_name,
+            keepalive_interval,
         )
         producer_task = asyncio.create_task(
             _stream_producer(),

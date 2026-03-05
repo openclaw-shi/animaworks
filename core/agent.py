@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -19,33 +20,33 @@ import asyncio
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from core.notification.notifier import HumanNotifier
 
-from core.background import BackgroundTaskManager
-from core.memory import MemoryManager
-from core.messenger import Messenger
-from core.exceptions import AnimaWorksError  # noqa: F401
-from core.schemas import ModelConfig
-from core.tooling.handler import ToolHandler
+from core._agent_cycle import CycleMixin
 
 # ── Mixin imports ───────────────────────────────────────────────
 from core._agent_executor import ExecutorFactoryMixin
 from core._agent_priming import PrimingMixin
-from core._agent_cycle import CycleMixin
 
 # ── Re-exports for backward compatibility ───────────────────────
 # Tests and other modules import these symbols from ``core.agent``.
 from core._agent_prompt_log import (  # noqa: F401
+    _PROMPT_HARD_LIMIT_BYTES,
     _PROMPT_LOG_RETENTION_DAYS,
     _PROMPT_SOFT_LIMIT_BYTES,
-    _PROMPT_HARD_LIMIT_BYTES,
     _rotate_prompt_logs,
     _save_prompt_log,
     _save_prompt_log_end,
 )
+from core.background import BackgroundTaskManager
+from core.exceptions import AnimaWorksError  # noqa: F401
+from core.memory import MemoryManager
+from core.messenger import Messenger
+from core.schemas import ModelConfig
+from core.tooling.handler import ToolHandler
 
 logger = logging.getLogger("animaworks.agent")
 
@@ -122,6 +123,7 @@ class AgentCore(
         and the legacy instance attribute (backward compat for single-thread).
         """
         from core.execution.base import _active_interrupt_event
+
         _active_interrupt_event.set(event)
         self._interrupt_event = event
         if hasattr(self._executor, "_interrupt_event"):
@@ -154,12 +156,14 @@ class AgentCore(
         """Update model config, rebuild executor and refresh context window."""
         self.model_config = new_config
         from core.config.models import resolve_context_window
+
         cw = resolve_context_window(new_config.model) or 32_000
         self._tool_handler._context_window = cw
         self._executor = self._create_executor()
         logger.info(
             "AgentCore: config reloaded, model=%s, context_window=%d",
-            new_config.model, cw,
+            new_config.model,
+            cw,
         )
 
     def reset_reply_tracking(self, session_type: str | None = None) -> None:
@@ -184,7 +188,7 @@ class AgentCore(
 
     # ── Human notification ─────────────────────────────────
 
-    def _build_human_notifier(self) -> "HumanNotifier | None":
+    def _build_human_notifier(self) -> HumanNotifier | None:
         """Build HumanNotifier if this anima is top-level and notification is enabled."""
         try:
             from core.config import load_config
@@ -229,6 +233,7 @@ class AgentCore(
         """Build BackgroundTaskManager if enabled in config."""
         try:
             from core.config import load_config
+
             config = load_config()
             if not config.background_task.enabled:
                 return None
@@ -237,10 +242,7 @@ class AgentCore(
             from core.tools._base import load_execution_profiles
 
             profiles = load_execution_profiles(TOOL_MODULES)
-            config_eligible = {
-                name: tc.threshold_s
-                for name, tc in config.background_task.eligible_tools.items()
-            }
+            config_eligible = {name: tc.threshold_s for name, tc in config.background_task.eligible_tools.items()}
 
             return BackgroundTaskManager.from_profiles(
                 anima_dir=self.anima_dir,
@@ -289,11 +291,10 @@ class AgentCore(
     def _check_sdk() -> bool:
         try:
             from claude_agent_sdk import query  # noqa: F401
+
             return True
         except ImportError:
-            logger.warning(
-                "claude-agent-sdk not available, falling back to anthropic SDK"
-            )
+            logger.warning("claude-agent-sdk not available, falling back to anthropic SDK")
             return False
 
     def _is_debug_superuser(self) -> bool:
@@ -303,6 +304,7 @@ class AgentCore(
             return False
         try:
             import json as _json_mod
+
             data = _json_mod.loads(status_path.read_text(encoding="utf-8"))
             return bool(data.get("debug_superuser"))
         except (ValueError, OSError):

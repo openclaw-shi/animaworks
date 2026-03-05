@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -27,31 +28,41 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from core.exceptions import LLMAPIError, ToolExecutionError, ConfigError  # noqa: F401
-from core.prompt.context import ContextTracker
-from core.execution._session import build_continuation_prompt, handle_session_chaining
-from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord, strip_thinking_tags
-from core.execution.reminder import MSG_CONTEXT_THRESHOLD, MSG_FINAL_ITERATION, MSG_OUTPUT_TRUNCATED, SystemReminderQueue
-from core.memory import MemoryManager
-from core.prompt.builder import build_system_prompt
-from core.schemas import ImageData, ModelConfig
-from core.memory.shortterm import ShortTermMemory
-from core.tooling.handler import ToolHandler
-
-# ── Mixin imports ──────────────────────────────────────────
-from core.execution._litellm_tools import ToolProcessingMixin
+from core.exceptions import ConfigError, LLMAPIError, ToolExecutionError  # noqa: F401
 from core.execution._litellm_context import ContextMixin, _extract_tool_uses_from_messages
 from core.execution._litellm_streaming import StreamingMixin
 
+# ── Mixin imports ──────────────────────────────────────────
 # ── Backward-compatible re-exports ────────────────────────
 from core.execution._litellm_tools import (  # noqa: F401
     _WRITE_TOOLS,
-    _ToolCallShim,
+    ToolProcessingMixin,
     _bg_tool_executor,
     _convert_litellm_tool_calls,
     _partition_tool_calls,
     _tool_executor,
+    _ToolCallShim,
 )
+from core.execution._session import build_continuation_prompt, handle_session_chaining
+from core.execution.base import (
+    BaseExecutor,
+    ExecutionResult,
+    TokenUsage,
+    ToolCallRecord,
+    strip_thinking_tags,
+)
+from core.execution.reminder import (
+    MSG_CONTEXT_THRESHOLD,
+    MSG_FINAL_ITERATION,
+    MSG_OUTPUT_TRUNCATED,
+    SystemReminderQueue,
+)
+from core.memory import MemoryManager
+from core.memory.shortterm import ShortTermMemory
+from core.prompt.builder import build_system_prompt
+from core.prompt.context import ContextTracker
+from core.schemas import ImageData, ModelConfig
+from core.tooling.handler import ToolHandler
 
 logger = logging.getLogger("animaworks.execution.litellm_loop")
 
@@ -119,7 +130,10 @@ class LiteLLMExecutor(
         context_window = self._resolve_cw()
 
         messages = self._build_initial_messages(
-            system_prompt, prompt, images, prior_messages=prior_messages,
+            system_prompt,
+            prompt,
+            images,
+            prior_messages=prior_messages,
         )
         all_response_text: list[str] = []
         all_tool_records: list[ToolCallRecord] = []
@@ -133,18 +147,18 @@ class LiteLLMExecutor(
                 logger.info("LiteLLM execute interrupted at iteration=%d", iteration)
                 return ExecutionResult(text="[Session interrupted by user]")
 
-            is_final_iteration = (
-                max_iterations > 1 and iteration == max_iterations - 1
-            )
+            is_final_iteration = max_iterations > 1 and iteration == max_iterations - 1
             iter_tools = [] if is_final_iteration else tools
 
             if is_final_iteration:
-                messages.append({
-                    "role": "user",
-                    "content": SystemReminderQueue.format_reminder(
-                        MSG_FINAL_ITERATION,
-                    ),
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": SystemReminderQueue.format_reminder(
+                            MSG_FINAL_ITERATION,
+                        ),
+                    }
+                )
                 logger.info(
                     "A final iteration=%d: tools removed, requesting final answer",
                     iteration,
@@ -152,17 +166,20 @@ class LiteLLMExecutor(
 
             logger.debug(
                 "A tool loop iteration=%d messages=%d",
-                iteration, len(messages),
+                iteration,
+                len(messages),
             )
 
             # ── Pre-flight: clamp max_tokens to fit context window ──
             iter_kwargs = self._preflight_clamp(
-                llm_kwargs, messages, iter_tools, litellm,
+                llm_kwargs,
+                messages,
+                iter_tools,
+                litellm,
             )
             if iter_kwargs is None:
                 return ExecutionResult(
-                    text=f"[Error: prompt too large for "
-                    f"{self._model_config.model}]",
+                    text=f"[Error: prompt too large for {self._model_config.model}]",
                     tool_call_records=all_tool_records,
                 )
 
@@ -199,9 +216,7 @@ class LiteLLMExecutor(
                         ratio = float(tracker.usage_ratio)
                     except (TypeError, ValueError):
                         ratio = 0.0
-                    self.reminder_queue.push_sync(
-                        MSG_CONTEXT_THRESHOLD.format(ratio=ratio)
-                    )
+                    self.reminder_queue.push_sync(MSG_CONTEXT_THRESHOLD.format(ratio=ratio))
 
                 current_text = message.content or ""
                 _, current_text = strip_thinking_tags(current_text)
@@ -266,7 +281,10 @@ class LiteLLMExecutor(
 
             parsed_calls = _convert_litellm_tool_calls(tool_calls)
             async for _event in self._process_streaming_tool_calls(
-                parsed_calls, messages, tools, _active_categories,
+                parsed_calls,
+                messages,
+                tools,
+                _active_categories,
                 context_window=context_window,
             ):
                 if "record" in _event:
@@ -275,10 +293,12 @@ class LiteLLMExecutor(
             # ── Drain reminder queue after tool results ────────
             reminder = self.reminder_queue.drain_sync()
             if reminder:
-                messages.append({
-                    "role": "user",
-                    "content": SystemReminderQueue.format_reminder(reminder),
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": SystemReminderQueue.format_reminder(reminder),
+                    }
+                )
 
         logger.warning("A max iterations (%d) reached", max_iterations)
         return ExecutionResult(
@@ -312,14 +332,20 @@ class LiteLLMExecutor(
         """
         if self._is_ollama_model:
             async for event in self._stream_iteration_level(
-                system_prompt, prompt, tracker, images,
+                system_prompt,
+                prompt,
+                tracker,
+                images,
                 prior_messages=prior_messages,
                 max_turns_override=max_turns_override,
             ):
                 yield event
         else:
             async for event in self._stream_token_level(
-                system_prompt, prompt, tracker, images,
+                system_prompt,
+                prompt,
+                tracker,
+                images,
                 prior_messages=prior_messages,
                 max_turns_override=max_turns_override,
             ):

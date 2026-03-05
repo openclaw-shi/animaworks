@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -74,12 +75,14 @@ class FileToolsMixin:
         path = Path(path_str)
         if not path.exists():
             return _error_result(
-                "FileNotFound", f"File not found: {path_str}",
+                "FileNotFound",
+                f"File not found: {path_str}",
                 suggestion="Use list_directory to find the correct path",
             )
         if not path.is_file():
             return _error_result(
-                "InvalidArguments", f"Not a file: {path_str}",
+                "InvalidArguments",
+                f"Not a file: {path_str}",
                 suggestion="Provide a file path, not a directory",
             )
 
@@ -90,14 +93,15 @@ class FileToolsMixin:
 
         truncated_read = False
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 raw = f.read(max_chars + 1)
             if len(raw) > max_chars:
                 raw = raw[:max_chars]
                 truncated_read = True
         except UnicodeDecodeError:
             return _error_result(
-                "ReadError", f"Cannot read binary file: {path_str}",
+                "ReadError",
+                f"Cannot read binary file: {path_str}",
                 suggestion="This appears to be a binary file",
             )
         except Exception as e:
@@ -121,10 +125,7 @@ class FileToolsMixin:
                 capped.append(line)
 
         width = len(str(end_idx)) if end_idx > 0 else 1
-        numbered = [
-            f"{str(i).rjust(width)}|{line}"
-            for i, line in enumerate(capped, start=offset)
-        ]
+        numbered = [f"{str(i).rjust(width)}|{line}" for i, line in enumerate(capped, start=offset)]
 
         parts: list[str] = [_READ_FILE_SAFETY_NOTICE, ""]
         parts.append(f"File: {path_str} ({total_lines} lines total)")
@@ -132,9 +133,7 @@ class FileToolsMixin:
             shown_end = min(offset + len(selected) - 1, total_lines)
             parts.append(f"Showing lines {offset}-{shown_end} of {total_lines}")
         if truncated_read:
-            parts.append(
-                f"(File exceeded {max_chars} char read limit; content may be incomplete)"
-            )
+            parts.append(f"(File exceeded {max_chars} char read limit; content may be incomplete)")
         parts.append("")
         parts.append("```")
         parts.extend(numbered)
@@ -142,14 +141,15 @@ class FileToolsMixin:
 
         if end_idx < total_lines:
             remaining = total_lines - end_idx
-            parts.append(
-                f"\n({remaining} more lines not shown. "
-                f"Use offset={end_idx + 1} to continue reading.)"
-            )
+            parts.append(f"\n({remaining} more lines not shown. Use offset={end_idx + 1} to continue reading.)")
 
         logger.info(
             "read_file path=%s lines=%d offset=%d limit=%d budget=%d",
-            path_str, len(selected), offset, limit, max_lines,
+            path_str,
+            len(selected),
+            offset,
+            limit,
+            max_lines,
         )
         return "\n".join(parts)
 
@@ -210,6 +210,7 @@ class FileToolsMixin:
                 return True
             if parts[0] == "knowledge":
                 from core.schemas import now_jst
+
                 ts = now_jst().isoformat()
                 metadata = {
                     "confidence": 0.5,
@@ -223,7 +224,8 @@ class FileToolsMixin:
                 return True
         except Exception:
             logger.debug(
-                "Frontmatter auto-inject failed for %s, falling back", path,
+                "Frontmatter auto-inject failed for %s, falling back",
+                path,
                 exc_info=True,
             )
         return False
@@ -235,7 +237,9 @@ class FileToolsMixin:
             return err
         path = Path(path_str)
         if not path.exists():
-            return _error_result("FileNotFound", f"File not found: {path_str}", suggestion="Use list_directory to find the correct path")
+            return _error_result(
+                "FileNotFound", f"File not found: {path_str}", suggestion="Use list_directory to find the correct path"
+            )
         try:
             lock = self._state_file_lock if self._state_file_lock and self._is_state_file(path) else None
             if lock:
@@ -245,10 +249,19 @@ class FileToolsMixin:
                 old = args.get("old_string", "")
                 new = args.get("new_string", "")
                 if old not in content:
-                    return _error_result("StringNotFound", f"old_string not found in {path_str}", suggestion="Use search_code to find the exact string")
+                    return _error_result(
+                        "StringNotFound",
+                        f"old_string not found in {path_str}",
+                        suggestion="Use search_code to find the exact string",
+                    )
                 count = content.count(old)
                 if count > 1:
-                    return _error_result("AmbiguousMatch", f"old_string matches {count} locations", context={"match_count": count}, suggestion="Provide more surrounding context to make it unique")
+                    return _error_result(
+                        "AmbiguousMatch",
+                        f"old_string matches {count} locations",
+                        context={"match_count": count},
+                        suggestion="Provide more surrounding context to make it unique",
+                    )
                 content = content.replace(old, new, 1)
                 path.write_text(content, encoding="utf-8")
             finally:
@@ -299,11 +312,17 @@ class FileToolsMixin:
                 output += f"\n[stderr]\n{proc.stderr}"
             logger.info(
                 "execute_command cmd=%s rc=%d shell=%s",
-                command[:80], proc.returncode, use_shell,
+                command[:80],
+                proc.returncode,
+                use_shell,
             )
             return output[:50_000] or f"(exit code {proc.returncode})"
         except subprocess.TimeoutExpired:
-            return _error_result("Timeout", f"Command timed out after {timeout}s", suggestion="Increase timeout or break the command into smaller steps")
+            return _error_result(
+                "Timeout",
+                f"Command timed out after {timeout}s",
+                suggestion="Increase timeout or break the command into smaller steps",
+            )
         except Exception as e:
             return _error_result("ExecutionError", f"Error executing command: {e}")
 
@@ -315,7 +334,8 @@ class FileToolsMixin:
         pattern_str = args.get("pattern", "")
         if not pattern_str:
             return _error_result(
-                "InvalidArguments", "pattern is required",
+                "InvalidArguments",
+                "pattern is required",
                 suggestion="Provide a regex pattern to search for",
             )
 
@@ -323,7 +343,8 @@ class FileToolsMixin:
             regex = _re.compile(pattern_str)
         except _re.error as e:
             return _error_result(
-                "InvalidArguments", f"Invalid regex: {e}",
+                "InvalidArguments",
+                f"Invalid regex: {e}",
                 suggestion="Use a valid Python regex pattern",
             )
 
@@ -338,7 +359,8 @@ class FileToolsMixin:
 
         if not search_path.exists():
             return _error_result(
-                "FileNotFound", f"Path not found: {search_path}",
+                "FileNotFound",
+                f"Path not found: {search_path}",
                 suggestion="Use list_directory to find the correct path",
             )
 
@@ -393,12 +415,14 @@ class FileToolsMixin:
 
         if not dir_path.exists():
             return _error_result(
-                "FileNotFound", f"Directory not found: {dir_path}",
+                "FileNotFound",
+                f"Directory not found: {dir_path}",
                 suggestion="Check the path and try again",
             )
         if not dir_path.is_dir():
             return _error_result(
-                "InvalidArguments", f"Not a directory: {dir_path}",
+                "InvalidArguments",
+                f"Not a directory: {dir_path}",
                 suggestion="Provide a directory path, not a file path",
             )
 
@@ -461,14 +485,16 @@ class FileToolsMixin:
         raw_url = (args.get("url") or "").strip()
         if not raw_url:
             return _error_result(
-                "InvalidArguments", "url is required",
+                "InvalidArguments",
+                "url is required",
                 suggestion="Provide a fully-formed URL (e.g. https://example.com)",
             )
 
         parsed = urlparse(raw_url)
         if parsed.scheme == "file":
             return _error_result(
-                "Blocked", "file:// URLs are not allowed",
+                "Blocked",
+                "file:// URLs are not allowed",
                 suggestion="Use read_file for local files",
             )
         if parsed.scheme == "http":
@@ -476,19 +502,22 @@ class FileToolsMixin:
             parsed = urlparse(raw_url)
         if parsed.scheme != "https":
             return _error_result(
-                "InvalidArguments", f"Unsupported scheme: {parsed.scheme}",
+                "InvalidArguments",
+                f"Unsupported scheme: {parsed.scheme}",
                 suggestion="Use an https:// URL",
             )
 
         hostname = parsed.hostname or ""
         if not hostname:
             return _error_result(
-                "InvalidArguments", "URL has no hostname",
+                "InvalidArguments",
+                "URL has no hostname",
                 suggestion="Provide a valid URL with a hostname",
             )
         if self._is_private_host(hostname):
             return _error_result(
-                "Blocked", "Private/localhost URLs are not allowed (SSRF prevention)",
+                "Blocked",
+                "Private/localhost URLs are not allowed (SSRF prevention)",
                 suggestion="Use a public URL",
             )
 
@@ -527,12 +556,14 @@ class FileToolsMixin:
             )
         except httpx.HTTPStatusError as e:
             return _error_result(
-                "HTTPError", f"HTTP {e.response.status_code} for {raw_url}",
+                "HTTPError",
+                f"HTTP {e.response.status_code} for {raw_url}",
                 suggestion="Check that the URL is valid and accessible",
             )
         except httpx.RequestError as e:
             return _error_result(
-                "RequestError", f"Failed to fetch URL: {e}",
+                "RequestError",
+                f"Failed to fetch URL: {e}",
                 suggestion="Check the URL and your network connection",
             )
 
@@ -543,6 +574,7 @@ class FileToolsMixin:
             try:
                 from bs4 import BeautifulSoup
                 from markdownify import markdownify as md
+
                 soup = BeautifulSoup(body, "html.parser")
                 for tag in soup(["script", "style", "noscript"]):
                     tag.decompose()
@@ -557,7 +589,7 @@ class FileToolsMixin:
             )
 
         if len(body) > self._WEB_FETCH_MAX_CHARS:
-            body = body[:self._WEB_FETCH_MAX_CHARS] + "\n\n[Truncated — content exceeded 8000 chars]"
+            body = body[: self._WEB_FETCH_MAX_CHARS] + "\n\n[Truncated — content exceeded 8000 chars]"
 
         result_parts = [
             self._WEB_FETCH_SAFETY_NOTICE,
@@ -570,10 +602,7 @@ class FileToolsMixin:
 
         with self._web_fetch_cache_lock:
             if len(self._web_fetch_cache) >= self._WEB_FETCH_CACHE_MAX_SIZE:
-                expired = [
-                    k for k, (ts, _) in self._web_fetch_cache.items()
-                    if (now - ts) >= self._WEB_FETCH_CACHE_TTL
-                ]
+                expired = [k for k, (ts, _) in self._web_fetch_cache.items() if (now - ts) >= self._WEB_FETCH_CACHE_TTL]
                 for k in expired:
                     del self._web_fetch_cache[k]
                 if len(self._web_fetch_cache) >= self._WEB_FETCH_CACHE_MAX_SIZE:

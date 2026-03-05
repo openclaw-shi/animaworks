@@ -85,6 +85,7 @@ def _get_locale() -> str:
     """Get locale from config lazily to avoid circular imports."""
     try:
         from core.config.models import load_config
+
         loc = load_config().locale
         if isinstance(loc, str) and loc:
             return loc
@@ -119,9 +120,7 @@ def resolve_template_path(
     """
     loc = locale or _get_locale()
     if ".." in category or ".." in filename:
-        raise ValueError(
-            f"Path traversal not allowed: {category}/{filename}"
-        )
+        raise ValueError(f"Path traversal not allowed: {category}/{filename}")
     for fallback in _unique([loc, "en", "ja"]):
         path = TEMPLATES_DIR / fallback / category / filename
         if path.exists():
@@ -129,10 +128,7 @@ def resolve_template_path(
     shared = TEMPLATES_DIR / "_shared" / category / filename
     if shared.exists():
         return shared
-    raise FileNotFoundError(
-        f"Template not found: {category}/{filename} "
-        f"(tried locales: {loc}, en, ja and _shared)"
-    )
+    raise FileNotFoundError(f"Template not found: {category}/{filename} (tried locales: {loc}, en, ja and _shared)")
 
 
 def load_prompt(name: str, *, locale: str | None = None, **kwargs: object) -> str:

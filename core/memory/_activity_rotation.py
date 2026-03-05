@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -93,7 +94,9 @@ class RotationMixin:
         if deleted_count:
             logger.info(
                 "Rotation completed for %s: deleted=%d freed=%d bytes",
-                self.anima_dir.name, deleted_count, freed_bytes,  # type: ignore[attr-defined]
+                self.anima_dir.name,
+                deleted_count,
+                freed_bytes,  # type: ignore[attr-defined]
             )
 
         return {"deleted_files": deleted_count, "freed_bytes": freed_bytes}

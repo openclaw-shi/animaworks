@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -67,12 +68,14 @@ class ReconsolidationEngine:
             self.memory_manager = memory_manager
         else:
             from core.memory.manager import MemoryManager
+
             self.memory_manager = MemoryManager(anima_dir)
 
         if activity_logger is not None:
             self.activity_logger = activity_logger
         else:
             from core.memory.activity import ActivityLogger
+
             self.activity_logger = ActivityLogger(anima_dir)
 
     # ── Target Detection ───────────────────────────────────────
@@ -123,6 +126,7 @@ class ReconsolidationEngine:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         results: dict[str, int] = {"updated": 0, "skipped": 0, "errors": 0}
 
@@ -145,7 +149,9 @@ class ReconsolidationEngine:
                     meta["reconsolidated_at"] = datetime.now(UTC).isoformat()
 
                     self.memory_manager.write_procedure_with_meta(
-                        proc_path, revised, meta,
+                        proc_path,
+                        revised,
+                        meta,
                     )
 
                     # Activity log event
@@ -154,26 +160,27 @@ class ReconsolidationEngine:
 
                     logger.info(
                         "Reconsolidated %s: v%d -> v%d",
-                        proc_path.name, version, version + 1,
+                        proc_path.name,
+                        version,
+                        version + 1,
                     )
                 else:
                     results["skipped"] += 1
                     logger.debug(
-                        "Skipping reconsolidation (LLM returned no revision) "
-                        "for %s",
+                        "Skipping reconsolidation (LLM returned no revision) for %s",
                         proc_path.name,
                     )
 
             except Exception as e:
                 logger.warning(
                     "Reconsolidation failed for %s: %s",
-                    proc_path, e,
+                    proc_path,
+                    e,
                 )
                 results["errors"] += 1
 
         logger.info(
-            "Reconsolidation complete for anima=%s: "
-            "updated=%d skipped=%d errors=%d",
+            "Reconsolidation complete for anima=%s: updated=%d skipped=%d errors=%d",
             self.anima_name,
             results["updated"],
             results["skipped"],
@@ -204,6 +211,7 @@ class ReconsolidationEngine:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
 
         results: dict[str, int] = {"created": 0, "skipped": 0, "errors": 0}
@@ -211,6 +219,7 @@ class ReconsolidationEngine:
         # Collect resolved events
         try:
             from core.memory.activity import ActivityLogger
+
             activity = ActivityLogger(self.anima_dir)
             entries = activity.recent(days=days, limit=50, types=["issue_resolved"])
         except Exception:
@@ -225,6 +234,7 @@ class ReconsolidationEngine:
             return results
 
         from core.memory.distillation import ProceduralDistiller
+
         distiller = ProceduralDistiller(self.anima_dir, self.anima_name)
         existing_procedures = distiller._load_existing_procedures()
 
@@ -239,7 +249,8 @@ class ReconsolidationEngine:
             if existing:
                 logger.debug(
                     "Skipping resolved event (similar to %s): %.80s",
-                    existing, resolution_text,
+                    existing,
+                    resolution_text,
                 )
                 results["skipped"] += 1
                 continue
@@ -254,15 +265,19 @@ class ReconsolidationEngine:
 
                 import litellm
 
-                response = cast(Any, await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2048,
-                ))
+                response = cast(
+                    Any,
+                    await litellm.acompletion(
+                        model=model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=2048,
+                    ),
+                )
                 text = response.choices[0].message.content or ""
 
                 # Sanitize and parse
                 from core.memory.consolidation import ConsolidationEngine
+
                 text = ConsolidationEngine._sanitize_llm_output(text)
 
                 procedure_items = distiller._parse_procedure_items(text)
@@ -290,13 +305,13 @@ class ReconsolidationEngine:
 
             except Exception as e:
                 logger.warning(
-                    "Failed to create procedure from resolved event: %s", e,
+                    "Failed to create procedure from resolved event: %s",
+                    e,
                 )
                 results["errors"] += 1
 
         logger.info(
-            "Resolved-to-procedure complete for anima=%s: "
-            "created=%d skipped=%d errors=%d",
+            "Resolved-to-procedure complete for anima=%s: created=%d skipped=%d errors=%d",
             self.anima_name,
             results["created"],
             results["skipped"],
@@ -337,16 +352,20 @@ class ReconsolidationEngine:
         try:
             import litellm
 
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2048,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2048,
+                ),
+            )
 
             text = response.choices[0].message.content or ""
 
             # Sanitize LLM output
             from core.memory.consolidation import ConsolidationEngine
+
             text = ConsolidationEngine._sanitize_llm_output(text)
 
             if text.strip():
@@ -355,7 +374,8 @@ class ReconsolidationEngine:
 
         except Exception as e:
             logger.warning(
-                "LLM procedure revision failed: %s", e,
+                "LLM procedure revision failed: %s",
+                e,
             )
             return None
 
@@ -388,7 +408,9 @@ class ReconsolidationEngine:
 
         logger.debug(
             "Archived version %d of %s to %s",
-            version, file_path.name, dest.name,
+            version,
+            file_path.name,
+            dest.name,
         )
 
     # ── Knowledge Reconsolidation ─────────────────────────────
@@ -432,6 +454,7 @@ class ReconsolidationEngine:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         targets = await self.find_knowledge_reconsolidation_targets()
         results: dict[str, Any] = {
@@ -464,16 +487,15 @@ class ReconsolidationEngine:
                     meta["reconsolidated_at"] = datetime.now(UTC).isoformat()
 
                     self.memory_manager.write_knowledge_with_meta(
-                        know_path, revised, meta,
+                        know_path,
+                        revised,
+                        meta,
                     )
 
                     # Activity log event
                     self.activity_logger.log(
                         "knowledge_reconsolidated",
-                        summary=(
-                            f"Reconsolidated {know_path.name}: "
-                            f"v{version} -> v{version + 1}"
-                        ),
+                        summary=(f"Reconsolidated {know_path.name}: v{version} -> v{version + 1}"),
                         meta={
                             "knowledge": know_path.name,
                             "old_version": version,
@@ -485,26 +507,27 @@ class ReconsolidationEngine:
 
                     logger.info(
                         "Reconsolidated knowledge %s: v%d -> v%d",
-                        know_path.name, version, version + 1,
+                        know_path.name,
+                        version,
+                        version + 1,
                     )
                 else:
                     results["skipped"] += 1
                     logger.debug(
-                        "Skipping knowledge reconsolidation (LLM returned "
-                        "no revision) for %s",
+                        "Skipping knowledge reconsolidation (LLM returned no revision) for %s",
                         know_path.name,
                     )
 
             except Exception as e:
                 logger.warning(
                     "Knowledge reconsolidation failed for %s: %s",
-                    know_path, e,
+                    know_path,
+                    e,
                 )
                 results["errors"] += 1
 
         logger.info(
-            "Knowledge reconsolidation complete for anima=%s: "
-            "targets=%d updated=%d skipped=%d errors=%d",
+            "Knowledge reconsolidation complete for anima=%s: targets=%d updated=%d skipped=%d errors=%d",
             self.anima_name,
             results["targets_found"],
             results["updated"],
@@ -542,16 +565,20 @@ class ReconsolidationEngine:
         try:
             import litellm
 
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2048,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2048,
+                ),
+            )
 
             text = response.choices[0].message.content or ""
 
             # Sanitize LLM output
             from core.memory.consolidation import ConsolidationEngine
+
             text = ConsolidationEngine._sanitize_llm_output(text)
 
             if text.strip():
@@ -560,7 +587,8 @@ class ReconsolidationEngine:
 
         except Exception as e:
             logger.warning(
-                "LLM knowledge revision failed: %s", e,
+                "LLM knowledge revision failed: %s",
+                e,
             )
             return None
 
@@ -579,10 +607,7 @@ class ReconsolidationEngine:
         """
         self.activity_logger.log(
             "procedure_reconsolidated",
-            summary=(
-                f"Reconsolidated {proc_path.name}: "
-                f"v{old_version} -> v{old_version + 1}"
-            ),
+            summary=(f"Reconsolidated {proc_path.name}: v{old_version} -> v{old_version + 1}"),
             meta={
                 "procedure": proc_path.name,
                 "old_version": old_version,

@@ -6,6 +6,7 @@
 # See LICENSE for the full license text.
 
 """API clients and shared constants for image/3D generation."""
+
 from __future__ import annotations
 
 import base64
@@ -16,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from core.tools._base import ToolConfigError, get_credential, logger
+from core.tools._base import get_credential, logger
 from core.tools._retry import retry_with_backoff
 
 __all__ = [
@@ -55,13 +56,13 @@ __all__ = [
 # ── Execution Profile ─────────────────────────────────────
 
 EXECUTION_PROFILE: dict[str, dict[str, object]] = {
-    "pipeline":   {"expected_seconds": 1800, "background_eligible": True},
-    "3d":         {"expected_seconds": 600,  "background_eligible": True},
-    "rigging":    {"expected_seconds": 600,  "background_eligible": True},
-    "animations": {"expected_seconds": 600,  "background_eligible": True},
-    "fullbody":   {"expected_seconds": 120,  "background_eligible": True},
-    "bustup":     {"expected_seconds": 120,  "background_eligible": True},
-    "chibi":      {"expected_seconds": 120,  "background_eligible": True},
+    "pipeline": {"expected_seconds": 1800, "background_eligible": True},
+    "3d": {"expected_seconds": 600, "background_eligible": True},
+    "rigging": {"expected_seconds": 600, "background_eligible": True},
+    "animations": {"expected_seconds": 600, "background_eligible": True},
+    "fullbody": {"expected_seconds": 120, "background_eligible": True},
+    "bustup": {"expected_seconds": 120, "background_eligible": True},
+    "chibi": {"expected_seconds": 120, "background_eligible": True},
 }
 
 # ── Constants ──────────────────────────────────────────────
@@ -235,8 +236,7 @@ _REALISTIC_EXPRESSION_PROMPTS: dict[str, str] = {
 }
 
 assert set(_REALISTIC_EXPRESSION_PROMPTS.keys()) == _VALID_EXPRESSION_NAMES, (
-    f"Realistic expression prompts mismatch: "
-    f"{set(_REALISTIC_EXPRESSION_PROMPTS.keys())} != {_VALID_EXPRESSION_NAMES}"
+    f"Realistic expression prompts mismatch: {set(_REALISTIC_EXPRESSION_PROMPTS.keys())} != {_VALID_EXPRESSION_NAMES}"
 )
 
 _REALISTIC_EXPRESSION_GUIDANCE: dict[str, float] = {
@@ -250,17 +250,24 @@ _REALISTIC_EXPRESSION_GUIDANCE: dict[str, float] = {
 }
 
 assert set(_REALISTIC_EXPRESSION_GUIDANCE.keys()) == _VALID_EXPRESSION_NAMES, (
-    f"Realistic expression guidance mismatch: "
-    f"{set(_REALISTIC_EXPRESSION_GUIDANCE.keys())} != {_VALID_EXPRESSION_NAMES}"
+    f"Realistic expression guidance mismatch: {set(_REALISTIC_EXPRESSION_GUIDANCE.keys())} != {_VALID_EXPRESSION_NAMES}"
 )
 
 # ── Anime → Realistic prompt conversion ──────────────────
 
-_ANIME_QUALITY_TAGS = frozenset({
-    "masterpiece", "best quality", "very aesthetic", "absurdres",
-    "anime coloring", "clean lineart", "soft shading",
-    "highres", "extremely detailed",
-})
+_ANIME_QUALITY_TAGS = frozenset(
+    {
+        "masterpiece",
+        "best quality",
+        "very aesthetic",
+        "absurdres",
+        "anime coloring",
+        "clean lineart",
+        "soft shading",
+        "highres",
+        "extremely detailed",
+    }
+)
 
 _LOCALE_ETHNICITY: dict[str, str] = {
     "ja": "Japanese",
@@ -282,6 +289,7 @@ def _convert_anime_to_realistic(anime_prompt: str, locale: str | None = None) ->
     if locale is None:
         try:
             from core.config.models import load_config
+
             locale = load_config().locale or "ja"
         except Exception:
             locale = "ja"
@@ -321,10 +329,10 @@ def _convert_anime_to_realistic(anime_prompt: str, locale: str | None = None) ->
 # Default animation presets for office digital animas
 # See https://docs.meshy.ai/api/animation-library for full catalog
 _DEFAULT_ANIMATIONS: dict[str, int] = {
-    "idle": 0,           # Standing idle
-    "sitting": 32,       # Chair sit idle (female)
-    "waving": 28,        # Big wave hello
-    "talking": 307,      # Talking gesture
+    "idle": 0,  # Standing idle
+    "sitting": 32,  # Chair sit idle (female)
+    "waving": 28,  # Big wave hello
+    "talking": 307,  # Talking gesture
 }
 
 _HTTP_TIMEOUT = httpx.Timeout(30.0, read=120.0)
@@ -613,26 +621,24 @@ class FluxKontextClient:
         while time.monotonic() < deadline:
             time.sleep(self.POLL_INTERVAL)
             status_resp = httpx.get(
-                status_url, headers=headers, timeout=_HTTP_TIMEOUT,
+                status_url,
+                headers=headers,
+                timeout=_HTTP_TIMEOUT,
             )
             status_resp.raise_for_status()
             status_data = status_resp.json()
             if status_data.get("status") == "COMPLETED":
                 break
             if status_data.get("status") == "FAILED":
-                raise RuntimeError(
-                    f"Flux Kontext task {request_id} failed: "
-                    f"{status_data.get('error', 'unknown')}"
-                )
+                raise RuntimeError(f"Flux Kontext task {request_id} failed: {status_data.get('error', 'unknown')}")
         else:
-            raise TimeoutError(
-                f"Flux Kontext task {request_id} timed out after "
-                f"{self.POLL_TIMEOUT}s"
-            )
+            raise TimeoutError(f"Flux Kontext task {request_id} timed out after {self.POLL_TIMEOUT}s")
 
         # Fetch result
         result_resp = httpx.get(
-            result_url, headers=headers, timeout=_HTTP_TIMEOUT,
+            result_url,
+            headers=headers,
+            timeout=_HTTP_TIMEOUT,
         )
         result_resp.raise_for_status()
         result_data = result_resp.json()
@@ -728,26 +734,24 @@ class FalTextToImageClient:
         while time.monotonic() < deadline:
             time.sleep(self.POLL_INTERVAL)
             status_resp = httpx.get(
-                status_url, headers=headers, timeout=_HTTP_TIMEOUT,
+                status_url,
+                headers=headers,
+                timeout=_HTTP_TIMEOUT,
             )
             status_resp.raise_for_status()
             status_data = status_resp.json()
             if status_data.get("status") == "COMPLETED":
                 break
             if status_data.get("status") == "FAILED":
-                raise RuntimeError(
-                    f"Fal Flux Pro task {request_id} failed: "
-                    f"{status_data.get('error', 'unknown')}"
-                )
+                raise RuntimeError(f"Fal Flux Pro task {request_id} failed: {status_data.get('error', 'unknown')}")
         else:
-            raise TimeoutError(
-                f"Fal Flux Pro task {request_id} timed out after "
-                f"{self.POLL_TIMEOUT}s"
-            )
+            raise TimeoutError(f"Fal Flux Pro task {request_id} timed out after {self.POLL_TIMEOUT}s")
 
         # Fetch result
         result_resp = httpx.get(
-            result_url, headers=headers, timeout=_HTTP_TIMEOUT,
+            result_url,
+            headers=headers,
+            timeout=_HTTP_TIMEOUT,
         )
         result_resp.raise_for_status()
         result_data = result_resp.json()
@@ -835,13 +839,13 @@ class MeshyClient:
                 raise RuntimeError(f"Meshy task {task_id} {status}: {err}")
             logger.debug(
                 "Meshy task %s: %s (%d%%)",
-                task_id, status, task.get("progress", 0),
+                task_id,
+                status,
+                task.get("progress", 0),
             )
             time.sleep(self.POLL_INTERVAL)
 
-        raise TimeoutError(
-            f"Meshy task {task_id} timed out after {self.POLL_TIMEOUT}s"
-        )
+        raise TimeoutError(f"Meshy task {task_id} timed out after {self.POLL_TIMEOUT}s")
 
     def download_model(self, task: dict[str, Any], fmt: str = "glb") -> bytes:
         """Download the generated 3-D model.
@@ -857,9 +861,7 @@ class MeshyClient:
         url = model_urls.get(fmt)
         if not url:
             available = list(model_urls.keys())
-            raise ValueError(
-                f"Format '{fmt}' not available; got {available}"
-            )
+            raise ValueError(f"Format '{fmt}' not available; got {available}")
         resp = httpx.get(url, timeout=_DOWNLOAD_TIMEOUT)
         resp.raise_for_status()
         return resp.content
@@ -901,13 +903,13 @@ class MeshyClient:
                 raise RuntimeError(f"Meshy rigging {task_id} {status}: {err}")
             logger.debug(
                 "Meshy rigging %s: %s (%d%%)",
-                task_id, status, task.get("progress", 0),
+                task_id,
+                status,
+                task.get("progress", 0),
             )
             time.sleep(self.POLL_INTERVAL)
 
-        raise TimeoutError(
-            f"Meshy rigging {task_id} timed out after {self.POLL_TIMEOUT}s"
-        )
+        raise TimeoutError(f"Meshy rigging {task_id} timed out after {self.POLL_TIMEOUT}s")
 
     def download_rigged_model(self, task: dict[str, Any], fmt: str = "glb") -> bytes:
         """Download the rigged character model.
@@ -997,13 +999,13 @@ class MeshyClient:
                 raise RuntimeError(f"Meshy animation {task_id} {status}: {err}")
             logger.debug(
                 "Meshy animation %s: %s (%d%%)",
-                task_id, status, task.get("progress", 0),
+                task_id,
+                status,
+                task.get("progress", 0),
             )
             time.sleep(self.POLL_INTERVAL)
 
-        raise TimeoutError(
-            f"Meshy animation {task_id} timed out after {self.POLL_TIMEOUT}s"
-        )
+        raise TimeoutError(f"Meshy animation {task_id} timed out after {self.POLL_TIMEOUT}s")
 
     def download_animation(self, task: dict[str, Any], fmt: str = "glb") -> bytes:
         """Download generated animation file.

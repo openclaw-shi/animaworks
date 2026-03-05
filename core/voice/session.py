@@ -178,9 +178,7 @@ class VoiceSession:
             return
         rms = _normalized_rms_from_pcm16(audio_data)
         if rms < SILENCE_RMS_THRESHOLD:
-            logger.debug(
-                "Ignore likely silence: rms=%.5f bytes=%s", rms, len(audio_data)
-            )
+            logger.debug("Ignore likely silence: rms=%.5f bytes=%s", rms, len(audio_data))
             return
 
         # 1. STT
@@ -260,10 +258,12 @@ class VoiceSession:
                     remaining = self._splitter.flush()
                     if remaining and tts_ok:
                         await self._synthesize_and_send(remaining)
-                    await self._ws.send_json({
-                        "type": "response_done",
-                        "emotion": emotion,
-                    })
+                    await self._ws.send_json(
+                        {
+                            "type": "response_done",
+                            "emotion": emotion,
+                        }
+                    )
                     response_done_sent = True
                     break
 
@@ -279,11 +279,13 @@ class VoiceSession:
                     if chunk_data.get("type") == "text_delta":
                         delta = chunk_data.get("text", "")
                         if delta:
-                            await self._ws.send_json({
-                                "type": "response_text",
-                                "text": delta,
-                                "done": False,
-                            })
+                            await self._ws.send_json(
+                                {
+                                    "type": "response_text",
+                                    "text": delta,
+                                    "done": False,
+                                }
+                            )
                             if tts_ok:
                                 sentences = self._splitter.feed(delta)
                                 for sentence in sentences:
@@ -298,10 +300,12 @@ class VoiceSession:
                     elif chunk_data.get("type") == "thinking_delta":
                         delta = chunk_data.get("text", "")
                         if delta:
-                            await self._ws.send_json({
-                                "type": "thinking_delta",
-                                "text": delta,
-                            })
+                            await self._ws.send_json(
+                                {
+                                    "type": "thinking_delta",
+                                    "text": delta,
+                                }
+                            )
 
                     elif chunk_data.get("type") == "cycle_done":
                         cycle_result = chunk_data.get("cycle_result", {})
@@ -309,10 +313,12 @@ class VoiceSession:
                         remaining = self._splitter.flush()
                         if remaining and tts_ok:
                             await self._synthesize_and_send(remaining)
-                        await self._ws.send_json({
-                            "type": "response_done",
-                            "emotion": emotion,
-                        })
+                        await self._ws.send_json(
+                            {
+                                "type": "response_done",
+                                "emotion": emotion,
+                            }
+                        )
                         response_done_sent = True
                         break
 
@@ -322,10 +328,12 @@ class VoiceSession:
         finally:
             if not response_done_sent:
                 try:
-                    await self._ws.send_json({
-                        "type": "response_done",
-                        "emotion": "neutral",
-                    })
+                    await self._ws.send_json(
+                        {
+                            "type": "response_done",
+                            "emotion": "neutral",
+                        }
+                    )
                 except Exception:
                     pass
             self._tts_playing = False

@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 
 from core.config.models import ExternalMessagingConfig, UserAliasConfig
-from core.exceptions import MessagingError, DeliveryError, RecipientNotFoundError  # noqa: F401
+from core.exceptions import DeliveryError, MessagingError, RecipientNotFoundError  # noqa: F401
 
 logger = logging.getLogger("animaworks.outbound")
 
@@ -184,12 +184,15 @@ def send_external(
     """
     channels_to_try = _build_channel_order(resolved)
     if not channels_to_try:
-        return json.dumps({
-            "status": "error",
-            "error_type": "NoChannelConfigured",
-            "message": f"No external messaging channel configured for '{resolved.name}'. "
-                       f"Set up slack or chatwork in config.json external_messaging.",
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "NoChannelConfigured",
+                "message": f"No external messaging channel configured for '{resolved.name}'. "
+                f"Set up slack or chatwork in config.json external_messaging.",
+            },
+            ensure_ascii=False,
+        )
 
     last_error = ""
     for channel in channels_to_try:
@@ -203,14 +206,19 @@ def send_external(
         except Exception as e:
             last_error = f"{channel}: {e}"
             logger.warning(
-                "External send failed via %s: %s", channel, e,
+                "External send failed via %s: %s",
+                channel,
+                e,
             )
 
-    return json.dumps({
-        "status": "error",
-        "error_type": "DeliveryFailed",
-        "message": f"Message delivery failed to '{resolved.name}'. Last error: {last_error}",
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "error",
+            "error_type": "DeliveryFailed",
+            "message": f"Message delivery failed to '{resolved.name}'. Last error: {last_error}",
+        },
+        ensure_ascii=False,
+    )
 
 
 def _build_channel_order(resolved: ResolvedRecipient) -> list[str]:
@@ -226,8 +234,8 @@ def _build_channel_order(resolved: ResolvedRecipient) -> list[str]:
 
 def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: str = "") -> str:
     """Send a DM via Slack API."""
+    from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
     from core.tools.slack import SlackClient
-    from core.tools._base import _lookup_vault_credential, _lookup_shared_credentials
 
     token = None
     if anima_name:
@@ -242,18 +250,24 @@ def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: st
     client = SlackClient(token=token)
     response = client.post_message(user_id, text)
     ts = response.get("ts", "")
-    channel = response.get("channel", user_id)
+    _channel = response.get("channel", user_id)
 
     logger.info(
         "External message sent via slack: user=%s ts=%s sender=%s per_anima=%s",
-        user_id, ts, sender_name, bool(token),
+        user_id,
+        ts,
+        sender_name,
+        bool(token),
     )
-    return json.dumps({
-        "status": "sent",
-        "channel": "slack",
-        "recipient": user_id,
-        "message": f"Message sent via Slack DM to {user_id}",
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "sent",
+            "channel": "slack",
+            "recipient": user_id,
+            "message": f"Message sent via Slack DM to {user_id}",
+        },
+        ensure_ascii=False,
+    )
 
 
 def _send_via_chatwork(room_id: str, content: str, sender_name: str) -> str:
@@ -264,20 +278,23 @@ def _send_via_chatwork(room_id: str, content: str, sender_name: str) -> str:
     prefix = f"[{sender_name}] " if sender_name else ""
     body = f"{prefix}{content}"
 
-    write_token = get_credential(
-        "chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE"
-    )
+    write_token = get_credential("chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE")
     client = ChatworkClient(api_token=write_token)
     response = client.post_message(room_id, body)
     message_id = response.get("message_id", "") if response else ""
 
     logger.info(
         "External message sent via chatwork: room=%s msg_id=%s sender=%s",
-        room_id, message_id, sender_name,
+        room_id,
+        message_id,
+        sender_name,
     )
-    return json.dumps({
-        "status": "sent",
-        "channel": "chatwork",
-        "recipient": room_id,
-        "message": f"Message sent via Chatwork to room {room_id}",
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "sent",
+            "channel": "chatwork",
+            "recipient": room_id,
+            "message": f"Message sent via Chatwork to room {room_id}",
+        },
+        ensure_ascii=False,
+    )

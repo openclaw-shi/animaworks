@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import logging
 import re
 from pathlib import Path
@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, field_validator
 
-from server.routes.media_proxy import proxy_external_image
 from server.events import emit
+from server.routes.media_proxy import proxy_external_image
 
 logger = logging.getLogger("animaworks.routes.assets")
 
@@ -23,6 +23,8 @@ _ASSET_CONTENT_TYPES = {
     ".glb": "model/gltf-binary",
     ".gltf": "model/gltf+json",
 }
+
+
 class AssetGenerateRequest(BaseModel):
     prompt: str | None = None
     negative_prompt: str = ""
@@ -39,6 +41,7 @@ class ExpressionGenerateRequest(BaseModel):
     @classmethod
     def validate_expression(cls, v: str) -> str:
         from core.schemas import VALID_EMOTIONS
+
         if v not in VALID_EMOTIONS:
             raise ValueError(f"Invalid expression: {v}. Valid: {', '.join(sorted(VALID_EMOTIONS))}")
         return v
@@ -64,10 +67,7 @@ class RemakePreviewRequest(BaseModel):
     @classmethod
     def validate_backup_id(cls, v: str | None) -> str | None:
         if v is not None and not re.match(r"^assets_backup_\d{8}_\d{6}$", v):
-            raise ValueError(
-                f"Invalid backup_id format: {v}. "
-                "Expected: assets_backup_YYYYMMDD_HHMMSS"
-            )
+            raise ValueError(f"Invalid backup_id format: {v}. Expected: assets_backup_YYYYMMDD_HHMMSS")
         return v
 
 
@@ -80,10 +80,7 @@ class RemakeConfirmRequest(BaseModel):
     @classmethod
     def validate_backup_id(cls, v: str) -> str:
         if not re.match(r"^assets_backup_\d{8}_\d{6}$", v):
-            raise ValueError(
-                f"Invalid backup_id format: {v}. "
-                "Expected: assets_backup_YYYYMMDD_HHMMSS"
-            )
+            raise ValueError(f"Invalid backup_id format: {v}. Expected: assets_backup_YYYYMMDD_HHMMSS")
         return v
 
 
@@ -117,11 +114,7 @@ def create_assets_router() -> APIRouter:
         if not assets_dir.exists():
             return {"assets": []}
         return {
-            "assets": [
-                {"name": f.name, "size": f.stat().st_size}
-                for f in sorted(assets_dir.iterdir())
-                if f.is_file()
-            ]
+            "assets": [{"name": f.name, "size": f.stat().st_size} for f in sorted(assets_dir.iterdir()) if f.is_file()]
         }
 
     @router.get("/animas/{name}/assets/metadata")
@@ -152,6 +145,7 @@ def create_assets_router() -> APIRouter:
         display_mode = "anime"
         try:
             from core.config.models import load_config
+
             display_mode = load_config().image_gen.image_style or "anime"
         except Exception:
             pass
@@ -217,7 +211,7 @@ def create_assets_router() -> APIRouter:
 
             for f in sorted(assets_dir.iterdir()):
                 if f.is_file() and f.name.startswith("anim_") and f.suffix == ".glb":
-                    anim_name = f.stem[len("anim_"):]
+                    anim_name = f.stem[len("anim_") :]
                     result["animations"][anim_name] = {
                         "filename": f.name,
                         "url": f"{base_url}/{f.name}",
@@ -272,6 +266,7 @@ def create_assets_router() -> APIRouter:
             or if_none_match.strip() == "*"
         ):
             from starlette.responses import Response
+
             return Response(
                 status_code=304,
                 headers={
@@ -343,7 +338,9 @@ def create_assets_router() -> APIRouter:
 
     @router.post("/animas/{name}/assets/generate")
     async def generate_assets(
-        name: str, body: AssetGenerateRequest, request: Request,
+        name: str,
+        body: AssetGenerateRequest,
+        request: Request,
     ):
         """Trigger character asset generation pipeline."""
         import asyncio
@@ -362,6 +359,7 @@ def create_assets_router() -> APIRouter:
         if body.image_style:
             try:
                 from core.config.models import ImageGenConfig
+
                 pipeline_kwargs["config"] = ImageGenConfig(image_style=body.image_style)
             except Exception:
                 pass
@@ -391,21 +389,27 @@ def create_assets_router() -> APIRouter:
             generated.append("avatar_chibi.glb")
         if result.rigged_model_path:
             generated.append("avatar_chibi_rigged.glb")
-        for anim_name, anim_path in result.animation_paths.items():
+        for _, anim_path in result.animation_paths.items():
             generated.append(anim_path.name)
 
         if generated:
-            await emit(request, "anima.assets_updated", {
-                "name": name,
-                "assets": generated,
-                "errors": result.errors,
-            })
+            await emit(
+                request,
+                "anima.assets_updated",
+                {
+                    "name": name,
+                    "assets": generated,
+                    "errors": result.errors,
+                },
+            )
 
         return result.to_dict()
 
     @router.post("/animas/{name}/assets/generate-expression")
     async def generate_expression_on_demand(
-        name: str, body: ExpressionGenerateRequest, request: Request,
+        name: str,
+        body: ExpressionGenerateRequest,
+        request: Request,
     ):
         """Generate a specific bustup expression variant on demand."""
         import asyncio
@@ -417,10 +421,7 @@ def create_assets_router() -> APIRouter:
 
         is_realistic = body.image_style == "realistic"
         assets_dir = anima_dir / "assets"
-        ref_filename = (
-            "avatar_fullbody_realistic.png" if is_realistic
-            else "avatar_fullbody.png"
-        )
+        ref_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
         reference_path = assets_dir / ref_filename
         if not reference_path.exists():
             raise HTTPException(
@@ -435,7 +436,8 @@ def create_assets_router() -> APIRouter:
 
         style = body.image_style or "anime"
         pipeline = ImageGenPipeline(
-            anima_dir, config=ImageGenConfig(image_style=style),
+            anima_dir,
+            config=ImageGenConfig(image_style=style),
         )
 
         loop = asyncio.get_running_loop()
@@ -449,11 +451,15 @@ def create_assets_router() -> APIRouter:
         )
 
         if result_path:
-            await emit(request, "anima.assets_updated", {
-                "name": name,
-                "assets": [result_path.name],
-                "expression": body.expression,
-            })
+            await emit(
+                request,
+                "anima.assets_updated",
+                {
+                    "name": name,
+                    "assets": [result_path.name],
+                    "expression": body.expression,
+                },
+            )
 
         return {
             "expression": body.expression,
@@ -465,7 +471,9 @@ def create_assets_router() -> APIRouter:
 
     @router.post("/animas/{name}/assets/remake-preview")
     async def remake_preview(
-        name: str, body: RemakePreviewRequest, request: Request,
+        name: str,
+        body: RemakePreviewRequest,
+        request: Request,
     ):
         """Generate a fullbody preview, optionally using Vibe Transfer."""
         import asyncio
@@ -483,6 +491,7 @@ def create_assets_router() -> APIRouter:
         if not style:
             try:
                 from core.config.models import load_config
+
                 style = load_config().image_gen.image_style or "realistic"
             except Exception:
                 style = "realistic"
@@ -497,10 +506,7 @@ def create_assets_router() -> APIRouter:
                     status_code=404,
                     detail=f"Style reference anima not found: {body.style_from}",
                 )
-            style_ref_filename = (
-                "avatar_fullbody_realistic.png" if is_realistic
-                else "avatar_fullbody.png"
-            )
+            style_ref_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
             style_fullbody = style_dir / "assets" / style_ref_filename
             if not style_fullbody.exists():
                 raise HTTPException(
@@ -513,6 +519,7 @@ def create_assets_router() -> APIRouter:
         prompt = body.prompt
         if not prompt:
             from core.asset_reconciler import _resolve_prompt
+
             prompt = _resolve_prompt(anima_dir, style="realistic" if is_realistic else "anime")
             if not prompt:
                 raise HTTPException(
@@ -542,7 +549,8 @@ def create_assets_router() -> APIRouter:
         from core.tools.image_gen import ImageGenPipeline
 
         pipeline = ImageGenPipeline(
-            anima_dir, config=ImageGenConfig(image_style=style or "realistic"),
+            anima_dir,
+            config=ImageGenConfig(image_style=style or "realistic"),
         )
 
         gen_kwargs: dict = {
@@ -558,7 +566,8 @@ def create_assets_router() -> APIRouter:
 
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
-            None, lambda: pipeline.generate_all(**gen_kwargs),
+            None,
+            lambda: pipeline.generate_all(**gen_kwargs),
         )
 
         if result.errors:
@@ -573,10 +582,7 @@ def create_assets_router() -> APIRouter:
             )
 
         # Save preview as numbered file for history navigation
-        output_filename = (
-            "avatar_fullbody_realistic.png" if is_realistic
-            else "avatar_fullbody.png"
-        )
+        output_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
         source_path = assets_dir / output_filename
         counter = _next_preview_counter(assets_dir, is_realistic)
         if is_realistic:
@@ -586,17 +592,22 @@ def create_assets_router() -> APIRouter:
 
         if source_path.exists():
             import shutil as _sh
+
             _sh.copy2(source_path, assets_dir / preview_filename)
 
         preview_url = f"/api/animas/{name}/assets/{preview_filename}"
 
-        await emit(request, "anima.remake_preview_ready", {
-            "name": name,
-            "preview_url": preview_url,
-            "preview_file": preview_filename,
-            "seed_used": body.seed,
-            "backup_id": backup_id,
-        })
+        await emit(
+            request,
+            "anima.remake_preview_ready",
+            {
+                "name": name,
+                "preview_url": preview_url,
+                "preview_file": preview_filename,
+                "seed_used": body.seed,
+                "backup_id": backup_id,
+            },
+        )
 
         return {
             "preview_url": preview_url,
@@ -607,7 +618,9 @@ def create_assets_router() -> APIRouter:
 
     @router.post("/animas/{name}/assets/remake-confirm")
     async def remake_confirm(
-        name: str, body: RemakeConfirmRequest, request: Request,
+        name: str,
+        body: RemakeConfirmRequest,
+        request: Request,
     ):
         """Accept the preview and cascade-rebuild all remaining assets."""
         import asyncio
@@ -631,14 +644,12 @@ def create_assets_router() -> APIRouter:
         if not style:
             try:
                 from core.config.models import load_config
+
                 style = load_config().image_gen.image_style or "realistic"
             except Exception:
                 style = "realistic"
         is_realistic = style == "realistic"
-        fullbody_filename = (
-            "avatar_fullbody_realistic.png" if is_realistic
-            else "avatar_fullbody.png"
-        )
+        fullbody_filename = "avatar_fullbody_realistic.png" if is_realistic else "avatar_fullbody.png"
         assets_dir = anima_dir / "assets"
 
         # Copy selected preview file to the canonical fullbody path
@@ -660,9 +671,14 @@ def create_assets_router() -> APIRouter:
 
         # Resolve prompt (style-aware)
         from core.asset_reconciler import _resolve_prompt
-        prompt = _resolve_prompt(
-            anima_dir, style="realistic" if is_realistic else "anime",
-        ) or ""
+
+        prompt = (
+            _resolve_prompt(
+                anima_dir,
+                style="realistic" if is_realistic else "anime",
+            )
+            or ""
+        )
         if not prompt:
             raise HTTPException(
                 status_code=400,
@@ -678,7 +694,8 @@ def create_assets_router() -> APIRouter:
         from core.tools.image_gen import ImageGenPipeline
 
         pipeline = ImageGenPipeline(
-            anima_dir, config=ImageGenConfig(image_style=style or "realistic"),
+            anima_dir,
+            config=ImageGenConfig(image_style=style or "realistic"),
         )
 
         app = request.app
@@ -689,12 +706,15 @@ def create_assets_router() -> APIRouter:
 
                 def _progress(step: str, status: str, pct: int) -> None:
                     asyncio.run_coroutine_threadsafe(
-                        _emit_ws("anima.remake_progress", {
-                            "name": name,
-                            "step": step,
-                            "status": status,
-                            "progress_pct": pct,
-                        }),
+                        _emit_ws(
+                            "anima.remake_progress",
+                            {
+                                "name": name,
+                                "step": step,
+                                "status": status,
+                                "progress_pct": pct,
+                            },
+                        ),
                         loop,
                     )
 
@@ -720,18 +740,24 @@ def create_assets_router() -> APIRouter:
                 if result.animation_paths:
                     completed.append("animations")
 
-                await _emit_ws("anima.remake_complete", {
-                    "name": name,
-                    "steps_completed": completed,
-                    "errors": result.errors,
-                })
+                await _emit_ws(
+                    "anima.remake_complete",
+                    {
+                        "name": name,
+                        "steps_completed": completed,
+                        "errors": result.errors,
+                    },
+                )
             except Exception:
                 logger.exception("Cascade rebuild failed for %s", name)
-                await _emit_ws("anima.remake_complete", {
-                    "name": name,
-                    "steps_completed": [],
-                    "errors": ["Internal error during cascade rebuild"],
-                })
+                await _emit_ws(
+                    "anima.remake_complete",
+                    {
+                        "name": name,
+                        "steps_completed": [],
+                        "errors": ["Internal error during cascade rebuild"],
+                    },
+                )
 
         async def _emit_ws(event_type: str, data: dict) -> None:
             ws = getattr(app.state, "ws_manager", None)
@@ -757,8 +783,7 @@ def create_assets_router() -> APIRouter:
 
         # Find the most recent backup
         backups = sorted(
-            (d for d in anima_dir.iterdir()
-             if d.is_dir() and d.name.startswith("assets_backup_")),
+            (d for d in anima_dir.iterdir() if d.is_dir() and d.name.startswith("assets_backup_")),
             reverse=True,
         )
         if not backups:

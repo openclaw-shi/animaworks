@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -111,11 +112,11 @@ class MemoryRetriever:
             try:
                 _cfg = self._load_config()
                 enable_spreading_activation = getattr(
-                    _cfg.rag, "enable_spreading_activation", False,
+                    _cfg.rag,
+                    "enable_spreading_activation",
+                    False,
                 )
-                spreading_types = tuple(
-                    getattr(_cfg.rag, "spreading_memory_types", ("knowledge", "episodes"))
-                )
+                spreading_types = tuple(getattr(_cfg.rag, "spreading_memory_types", ("knowledge", "episodes")))
             except Exception:
                 enable_spreading_activation = False
                 spreading_types = ("knowledge", "episodes")
@@ -123,8 +124,7 @@ class MemoryRetriever:
             spreading_types = self._get_spreading_memory_types()
 
         logger.debug(
-            "Vector search: query='%s', anima=%s, type=%s, top_k=%d, "
-            "spreading=%s, shared=%s",
+            "Vector search: query='%s', anima=%s, type=%s, top_k=%d, spreading=%s, shared=%s",
             query,
             anima_name,
             memory_type,
@@ -140,7 +140,10 @@ class MemoryRetriever:
 
         # 1. Dense Vector search (personal collection)
         vector_results = self._vector_search(
-            query, anima_name, memory_type, top_k * 2,
+            query,
+            anima_name,
+            memory_type,
+            top_k * 2,
             filter_metadata=filter_metadata,
         )
 
@@ -153,7 +156,9 @@ class MemoryRetriever:
             shared_collection = _SHARED_COLLECTION_MAP.get(memory_type)
             if shared_collection:
                 shared_results = self._vector_search_collection(
-                    query, shared_collection, top_k * 2,
+                    query,
+                    shared_collection,
+                    top_k * 2,
                     filter_metadata=filter_metadata,
                 )
                 vector_results.extend(shared_results)
@@ -205,7 +210,10 @@ class MemoryRetriever:
         """
         collection_name = f"{anima_name}_{memory_type}"
         return self._vector_search_collection(
-            query, collection_name, top_k, filter_metadata=filter_metadata,
+            query,
+            collection_name,
+            top_k,
+            filter_metadata=filter_metadata,
         )
 
     def _vector_search_collection(
@@ -238,10 +246,7 @@ class MemoryRetriever:
             filter_metadata=filter_metadata,
         )
 
-        return [
-            (r.document.id, r.document.content, r.score, r.document.metadata)
-            for r in results
-        ]
+        return [(r.document.id, r.document.content, r.score, r.document.metadata) for r in results]
 
     # ── Score adjustment ────────────────────────────────────────────
 
@@ -301,17 +306,17 @@ class MemoryRetriever:
                 updates_by_collection[collection] = ([], [])
             ids, metas = updates_by_collection[collection]
             ids.append(r.doc_id)
-            metas.append({
-                "access_count": int(str(r.metadata.get("access_count", 0))) + 1,
-                "last_accessed_at": now_iso_str,
-            })
+            metas.append(
+                {
+                    "access_count": int(str(r.metadata.get("access_count", 0))) + 1,
+                    "last_accessed_at": now_iso_str,
+                }
+            )
 
         for collection, (ids, metas) in updates_by_collection.items():
             try:
                 self.vector_store.update_metadata(collection, ids, metas)
-                logger.debug(
-                    "Recorded access for %d chunks in %s", len(ids), collection
-                )
+                logger.debug("Recorded access for %d chunks in %s", len(ids), collection)
             except Exception as e:
                 logger.warning("Failed to record access for %s: %s", collection, e)
 
@@ -321,6 +326,7 @@ class MemoryRetriever:
     def _load_config():
         """Load AnimaWorks config (cached internally by load_config)."""
         from core.config.models import load_config
+
         return load_config()
 
     def _get_spreading_memory_types(self) -> tuple[str, ...]:
@@ -363,13 +369,20 @@ class MemoryRetriever:
 
                     cache_dir = self.knowledge_dir.parent / "vectordb"
                     _cfg = self._safe_load_config()
-                    threshold = getattr(
-                        _cfg.rag, "implicit_link_threshold", 0.75,
-                    ) if _cfg else 0.75
+                    threshold = (
+                        getattr(
+                            _cfg.rag,
+                            "implicit_link_threshold",
+                            0.75,
+                        )
+                        if _cfg
+                        else 0.75
+                    )
                     if not self._knowledge_graph.load_graph(cache_dir):
                         memory_dirs = self._collect_spreading_dirs()
                         self._knowledge_graph.build_graph(
-                            anima_name, self.knowledge_dir,
+                            anima_name,
+                            self.knowledge_dir,
                             memory_dirs=memory_dirs,
                             implicit_link_threshold=threshold,
                         )
@@ -382,7 +395,8 @@ class MemoryRetriever:
 
         max_hops = self._get_config_max_hops()
         return self._knowledge_graph.expand_search_results(
-            initial_results, max_hops=max_hops,
+            initial_results,
+            max_hops=max_hops,
         )
 
     def _safe_load_config(self):

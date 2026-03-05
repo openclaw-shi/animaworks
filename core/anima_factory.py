@@ -24,6 +24,7 @@ logger = logging.getLogger("animaworks.anima_factory")
 def _get_anima_templates_dir(locale: str | None = None) -> Path:
     """Get locale-aware anima_templates directory."""
     from core.paths import _get_locale
+
     loc = locale or _get_locale()
     d = TEMPLATES_DIR / loc / "anima_templates"
     if d.exists():
@@ -37,6 +38,7 @@ def _get_blank_template_dir(locale: str | None = None) -> Path:
 
 def _get_bootstrap_template(locale: str | None = None) -> Path:
     from core.paths import _get_locale
+
     loc = locale or _get_locale()
     p = TEMPLATES_DIR / loc / "bootstrap.md"
     if p.exists():
@@ -47,6 +49,7 @@ def _get_bootstrap_template(locale: str | None = None) -> Path:
 def _get_roles_dir(locale: str | None = None) -> Path:
     """Get locale-aware roles directory for .md files."""
     from core.paths import _get_locale
+
     loc = locale or _get_locale()
     d = TEMPLATES_DIR / loc / "roles"
     if d.exists():
@@ -97,6 +100,7 @@ def _normalize_sheet_headings(content: str) -> str:
                 )
     return content
 
+
 FIELD_NAMES: dict[str, dict[str, str]] = {
     "ja": {
         "name": "英名",
@@ -119,9 +123,18 @@ TABLE_SKIP_VALUES: dict[str, set[str]] = {
     "en": {"Field", "Value", "Item", "Setting", "---", "------"},
 }
 
-NONE_VALUES: frozenset[str] = frozenset({
-    "なし", "(なし)", "（なし）", "None", "(None)", "-", "---", "",
-})
+NONE_VALUES: frozenset[str] = frozenset(
+    {
+        "なし",
+        "(なし)",
+        "（なし）",
+        "None",
+        "(None)",
+        "-",
+        "---",
+        "",
+    }
+)
 
 # Backward compatibility: patch targets for tests
 BLANK_TEMPLATE_DIR = _get_blank_template_dir()
@@ -145,16 +158,10 @@ def list_anima_templates() -> list[str]:
     anima_templates_dir = ANIMA_TEMPLATES_DIR
     if not anima_templates_dir.exists():
         return []
-    return [
-        d.name
-        for d in sorted(anima_templates_dir.iterdir())
-        if d.is_dir() and not d.name.startswith("_")
-    ]
+    return [d.name for d in sorted(anima_templates_dir.iterdir()) if d.is_dir() and not d.name.startswith("_")]
 
 
-def create_from_template(
-    animas_dir: Path, template_name: str, *, anima_name: str | None = None
-) -> Path:
+def create_from_template(animas_dir: Path, template_name: str, *, anima_name: str | None = None) -> Path:
     """Create an anima by copying a named template.
 
     Args:
@@ -183,7 +190,8 @@ def create_from_template(
     except Exception:
         logger.error(
             "Failed to create anima '%s' from template '%s'; rolling back",
-            name, template_name,
+            name,
+            template_name,
         )
         shutil.rmtree(anima_dir, ignore_errors=True)
         raise
@@ -217,9 +225,7 @@ def create_blank(animas_dir: Path, name: str) -> Path:
             for md_file in anima_dir.rglob("*.md"):
                 content = md_file.read_text(encoding="utf-8")
                 if "{name}" in content:
-                    md_file.write_text(
-                        content.replace("{name}", name), encoding="utf-8"
-                    )
+                    md_file.write_text(content.replace("{name}", name), encoding="utf-8")
         else:
             anima_dir.mkdir(parents=True, exist_ok=True)
 
@@ -293,8 +299,7 @@ def create_from_md(
         name = _extract_name_from_md(md_content)
     if not name:
         raise ValueError(
-            "Could not extract anima name from MD file. "
-            "Add a '# Character: name' heading or specify --name."
+            "Could not extract anima name from MD file. Add a '# Character: name' heading or specify --name."
         )
 
     # Create blank skeleton first, then layer character sheet on top
@@ -312,9 +317,7 @@ def create_from_md(
             role=resolved_role,
         )
     except Exception:
-        logger.error(
-            "Failed to set up anima '%s' from MD file; rolling back", name
-        )
+        logger.error("Failed to set up anima '%s' from MD file; rolling back", name)
         shutil.rmtree(anima_dir, ignore_errors=True)
         raise
 
@@ -375,9 +378,7 @@ def _parse_character_sheet_info(content: str) -> dict[str, str]:
     locale = _detect_sheet_locale(content)
     headings = SECTION_HEADINGS[locale]
     skip_values = (
-        TABLE_SKIP_VALUES.get(locale, set())
-        | TABLE_SKIP_VALUES.get("ja", set())
-        | TABLE_SKIP_VALUES.get("en", set())
+        TABLE_SKIP_VALUES.get(locale, set()) | TABLE_SKIP_VALUES.get("ja", set()) | TABLE_SKIP_VALUES.get("en", set())
     )
 
     info: dict[str, str] = {}
@@ -530,8 +531,14 @@ def _create_status_json(
         status["execution_mode"] = explicit_mode
 
     # Merge role defaults (model config fields)
-    for key in ("model", "background_model", "context_threshold", "max_turns",
-                "max_chains", "conversation_history_threshold"):
+    for key in (
+        "model",
+        "background_model",
+        "context_threshold",
+        "max_turns",
+        "max_chains",
+        "conversation_history_threshold",
+    ):
         if key in role_defaults:
             status[key] = role_defaults[key]
 
@@ -584,6 +591,7 @@ def _expand_permission_placeholders(content: str, anima_name: str) -> str:
       - ``{animaworks_home}`` → runtime data directory (e.g. ~/.animaworks)
     """
     from core.paths import get_data_dir
+
     content = content.replace("{name}", anima_name)
     content = content.replace("{animaworks_home}", str(get_data_dir()))
     return content
@@ -657,9 +665,7 @@ def _apply_role_defaults(anima_dir: Path, role: str) -> None:
     # Copy specialty_prompt.md
     spec_src = role_dir / "specialty_prompt.md"
     if spec_src.exists():
-        (anima_dir / "specialty_prompt.md").write_text(
-            spec_src.read_text(encoding="utf-8"), encoding="utf-8"
-        )
+        (anima_dir / "specialty_prompt.md").write_text(spec_src.read_text(encoding="utf-8"), encoding="utf-8")
 
     logger.debug("Applied role '%s' defaults to %s", role, anima_dir.name)
 
@@ -706,7 +712,7 @@ def _should_create_bootstrap(anima_dir: Path) -> bool:
     if not content.strip() or "未定義" in content or "undefined" in content.lower():
         return True
 
-    if (anima_dir / "character_sheet.md").exists():
+    if (anima_dir / "character_sheet.md").exists():  # noqa: SIM103
         return True
 
     return False

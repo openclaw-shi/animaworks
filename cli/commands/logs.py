@@ -27,20 +27,10 @@ def cmd_logs(args: argparse.Namespace) -> None:
             print("Error: --anima is required (or use --all)")
             sys.exit(1)
 
-        _tail_anima_log(
-            log_dir=log_dir,
-            anima_name=args.anima,
-            lines=args.lines,
-            date=args.date
-        )
+        _tail_anima_log(log_dir=log_dir, anima_name=args.anima, lines=args.lines, date=args.date)
 
 
-def _tail_anima_log(
-    log_dir: Path,
-    anima_name: str,
-    lines: int = 50,
-    date: str | None = None
-) -> None:
+def _tail_anima_log(log_dir: Path, anima_name: str, lines: int = 50, date: str | None = None) -> None:
     """Tail a specific anima's log file."""
     anima_log_dir = log_dir / "animas" / anima_name
 
@@ -68,11 +58,7 @@ def _tail_anima_log(
                 log_file = anima_log_dir / target_name
         else:
             # Find latest log file
-            log_files = sorted(
-                anima_log_dir.glob("*.log"),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True
-            )
+            log_files = sorted(anima_log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
             if not log_files:
                 print(f"Error: No log files found in {anima_log_dir}")
                 sys.exit(1)
@@ -159,7 +145,7 @@ def _tail_all_logs(log_dir: Path) -> None:
 def _show_last_lines(log_file: Path, n: int, prefix: str = "") -> None:
     """Show last N lines of a file."""
     try:
-        lines = log_file.read_text(encoding='utf-8', errors='replace').splitlines()
+        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
         for line in lines[-n:]:
             if prefix:
                 print(f"{prefix} {line}")
@@ -171,7 +157,7 @@ def _show_last_lines(log_file: Path, n: int, prefix: str = "") -> None:
 
 def _follow_file(log_file: Path) -> None:
     """Follow a single log file (like tail -f)."""
-    with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+    with open(log_file, encoding="utf-8", errors="replace") as f:
         # Seek to end
         f.seek(0, 2)
 
@@ -190,7 +176,7 @@ def _follow_multiple_files(log_files: dict[str, Path]) -> None:
     # Open all files and seek to end
     for prefix, log_file in log_files.items():
         try:
-            f = open(log_file, 'r', encoding='utf-8', errors='replace')
+            f = open(log_file, encoding="utf-8", errors="replace")  # noqa: SIM115
             f.seek(0, 2)  # Seek to end
             file_handles[prefix] = f
         except Exception as e:

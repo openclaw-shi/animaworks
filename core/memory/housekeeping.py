@@ -173,7 +173,9 @@ def _rotate_daemon_log(
 
     logger.info(
         "Daemon log rotated: %.1f MB → %s (deleted %d old generations)",
-        size_mb, gen1.name, deleted,
+        size_mb,
+        gen1.name,
+        deleted,
     )
     return {"rotated": True, "size_mb": round(size_mb, 1), "deleted_generations": deleted}
 

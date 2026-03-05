@@ -23,9 +23,9 @@ import logging
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 
-from core.time_utils import now_jst
-
 import structlog
+
+from core.time_utils import now_jst
 
 # Re-export for backward compatibility with existing imports
 # (e.g. ``from core.logging_config import set_request_id``)

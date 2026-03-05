@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -15,13 +16,13 @@ import logging
 import time
 from typing import Any
 
-from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_bolt.app.async_app import AsyncApp
 
 from core.config.models import load_config
 from core.messenger import Messenger
 from core.paths import get_data_dir
-from core.tools._base import get_credential, _lookup_vault_credential, _lookup_shared_credentials
+from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential, get_credential
 
 logger = logging.getLogger("animaworks.slack_socket")
 
@@ -115,7 +116,8 @@ class SlackSocketModeManager:
         if self._handler_map:
             await asyncio.gather(*(h.connect_async() for h in self._handler_map.values()))
             logger.info(
-                "Slack Socket Mode connected (%d handler(s))", len(self._handler_map),
+                "Slack Socket Mode connected (%d handler(s))",
+                len(self._handler_map),
             )
 
     async def reload(self) -> dict[str, Any]:
@@ -127,9 +129,7 @@ class SlackSocketModeManager:
                 await self.stop()
             return {"status": "disabled"}
 
-        current_animas = {
-            name for name in self._handler_map if name != "__shared__"
-        }
+        current_animas = {name for name in self._handler_map if name != "__shared__"}
         desired_animas = set(self._discover_per_anima_bots())
 
         added: list[str] = []
@@ -189,12 +189,14 @@ class SlackSocketModeManager:
             await handler.connect_async()
             logger.info(
                 "Per-Anima Slack bot registered: %s (bot_uid=%s)",
-                anima_name, bot_uid,
+                anima_name,
+                bot_uid,
             )
             return True
         except Exception:
             logger.exception(
-                "Failed to set up per-Anima Slack bot for '%s'", anima_name,
+                "Failed to set up per-Anima Slack bot for '%s'",
+                anima_name,
             )
             # Clean up partial state
             self._app_map.pop(anima_name, None)
@@ -212,7 +214,8 @@ class SlackSocketModeManager:
                 await handler.close_async()
             except Exception:
                 logger.exception(
-                    "Error closing Socket Mode handler for '%s'", anima_name,
+                    "Error closing Socket Mode handler for '%s'",
+                    anima_name,
                 )
         logger.info("Per-Anima Slack bot removed: %s", anima_name)
 
@@ -230,7 +233,7 @@ class SlackSocketModeManager:
             shared_section = data.get("shared") or {}
             for key in shared_section:
                 if key.startswith(prefix):
-                    found.add(key[len(prefix):])
+                    found.add(key[len(prefix) :])
         except Exception:
             pass
 
@@ -240,7 +243,7 @@ class SlackSocketModeManager:
                 data = json.loads(cred_file.read_text(encoding="utf-8"))
                 for key in data:
                     if key.startswith(prefix):
-                        found.add(key[len(prefix):])
+                        found.add(key[len(prefix) :])
         except Exception:
             pass
 
@@ -322,7 +325,9 @@ class SlackSocketModeManager:
             )
 
     def _register_shared_handler(
-        self, app: AsyncApp, bot_user_id: str = "",
+        self,
+        app: AsyncApp,
+        bot_user_id: str = "",
     ) -> None:
         """Register event handler for the shared bot (channel-based routing).
 

@@ -1,20 +1,19 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
-
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from core.memory import MemoryManager
-from core.paths import PROJECT_DIR, get_data_dir, load_prompt
 from core.memory.shortterm import ShortTermMemory
+from core.paths import PROJECT_DIR, get_data_dir, load_prompt
 from core.time_utils import now_jst
 
 logger = logging.getLogger("animaworks.prompt_builder")
@@ -45,7 +44,7 @@ def _parse_kv_template(raw: str) -> dict[str, str]:
         if sep < 0:
             continue
         key = line[1:bracket_end]
-        value = line[sep + 3:]
+        value = line[sep + 3 :]
         result[key] = value
     return result
 
@@ -113,10 +112,10 @@ class BuildResult:
 _CURRENT_TASK_MAX_CHARS = 3000
 
 # ── Prompt tier constants ─────────────────────────────────────
-TIER_FULL = "full"          # 128k+
+TIER_FULL = "full"  # 128k+
 TIER_STANDARD = "standard"  # 32k–128k
-TIER_LIGHT = "light"        # 16k–32k
-TIER_MINIMAL = "minimal"    # <16k
+TIER_LIGHT = "light"  # 16k–32k
+TIER_MINIMAL = "minimal"  # <16k
 
 
 def resolve_prompt_tier(context_window: int) -> str:
@@ -136,11 +135,14 @@ def resolve_prompt_tier(context_window: int) -> str:
         return TIER_LIGHT
     return TIER_MINIMAL
 
+
 # ── Emotion Instruction ───────────────────────────────────
+
 
 def _build_emotion_instruction() -> str:
     """Build EMOTION_INSTRUCTION with the canonical emotion list."""
     from core.schemas import VALID_EMOTIONS
+
     emotion_list = ", ".join(sorted(VALID_EMOTIONS))
     return load_prompt("builder/emotion_instruction", emotion_list=emotion_list)
 
@@ -187,6 +189,7 @@ def _shorten_model_name(model: str | None) -> str | None:
     # GPT family — extract version number
     if low.startswith("gpt-"):
         import re
+
         ver = re.match(r"gpt-([\d.]+)", low)
         label = f"GPT-{ver.group(1)}" if ver else "GPT"
         if "mini" in low:
@@ -241,7 +244,7 @@ def _build_full_org_tree(
         lines.append(f"{prefix}{marker}{label}{suffix}")
         kids = children.get(name, [])
         for i, child in enumerate(kids):
-            child_is_last = (i == len(kids) - 1)
+            child_is_last = i == len(kids) - 1
             if is_root:
                 child_prefix = prefix
             else:
@@ -295,6 +298,7 @@ def _scan_all_animas(animas_dir: Path) -> dict[str, Any]:
         if status_path.exists():
             try:
                 import json
+
                 data = json.loads(status_path.read_text(encoding="utf-8"))
                 if "supervisor" in data:
                     supervisor = data["supervisor"] or None
@@ -333,8 +337,8 @@ def _build_org_context(anima_name: str, other_animas: list[str], execution_mode:
     Scans anima directories for ``status.json`` supervisor relationships
     and merges with config.json for a complete org tree.
     """
-    from core.tooling.prompt_db import get_prompt_store
     from core.paths import get_data_dir
+    from core.tooling.prompt_db import get_prompt_store
 
     _fs = _load_fallback_strings()
 
@@ -363,9 +367,7 @@ def _build_org_context(anima_name: str, other_animas: list[str], execution_mode:
         if other_animas:
             cr_key = "communication_rules_s" if _is_mcp_mode(execution_mode) else "communication_rules"
             _cr_store = get_prompt_store()
-            _cr = (
-                _cr_store.get_section(cr_key) if _cr_store else None
-            ) or load_prompt(cr_key)
+            _cr = (_cr_store.get_section(cr_key) if _cr_store else None) or load_prompt(cr_key)
             if _cr:
                 parts.append(_cr)
         return "\n\n".join(parts)
@@ -419,9 +421,7 @@ def _build_org_context(anima_name: str, other_animas: list[str], execution_mode:
     if other_animas:
         cr_key = "communication_rules_s" if _is_mcp_mode(execution_mode) else "communication_rules"
         _cr_store = get_prompt_store()
-        _cr = (
-            _cr_store.get_section(cr_key) if _cr_store else None
-        ) or load_prompt(cr_key)
+        _cr = (_cr_store.get_section(cr_key) if _cr_store else None) or load_prompt(cr_key)
         if _cr:
             parts.append(_cr)
 
@@ -439,17 +439,17 @@ def _build_messaging_section(
     _fs = _load_fallback_strings()
     self_name = anima_dir.name
     main_py = PROJECT_DIR / "main.py"
-    animas_line = (
-        ", ".join(other_animas) if other_animas else _fs.get("no_other_animas", "(no other employees yet)")
-    )
+    animas_line = ", ".join(other_animas) if other_animas else _fs.get("no_other_animas", "(no other employees yet)")
 
     db_key = "messaging_s" if _is_mcp_mode(execution_mode) else "messaging"
     _msg_store = get_prompt_store()
-    raw = (_msg_store.get_section(db_key) if _msg_store else None)
+    raw = _msg_store.get_section(db_key) if _msg_store else None
     if raw:
         try:
             return raw.format(
-                animas_line=animas_line, main_py=main_py, self_name=self_name,
+                animas_line=animas_line,
+                main_py=main_py,
+                self_name=self_name,
             )
         except (KeyError, IndexError):
             return raw
@@ -478,6 +478,7 @@ def _build_recent_tool_section(anima_dir: Path, model_config: Any) -> str:
     """
     try:
         from core.memory.conversation import ConversationMemory
+
         conv_memory = ConversationMemory(anima_dir, model_config)
         state = conv_memory.load()
     except Exception:
@@ -504,7 +505,6 @@ def _build_recent_tool_section(anima_dir: Path, model_config: Any) -> str:
     _ss = _load_section_strings()
     header = _ss.get("recent_tool_results_header", "## Recent Tool Results")
     return f"{header}\n\n" + "\n".join(tool_lines)
-
 
 
 def _build_human_notification_guidance(execution_mode: str = "") -> str:
@@ -558,6 +558,7 @@ def build_system_prompt(
 
     # DB-first prompt store (singleton); used for system sections & tool guides
     from core.tooling.prompt_db import get_default_guide, get_prompt_store
+
     _prompt_store = get_prompt_store()
 
     # other_animas is needed by Group 5 (org_context, messaging)
@@ -577,7 +578,7 @@ def build_system_prompt(
     if is_task:
         parts.append(f"Anima: {pd.name}\nData directory: {data_dir}")
     else:
-        _env = (_prompt_store.get_section("environment") if _prompt_store else None)
+        _env = _prompt_store.get_section("environment") if _prompt_store else None
         if _env:
             try:
                 _env = _env.format(data_dir=data_dir, anima_name=pd.name)
@@ -607,9 +608,7 @@ def build_system_prompt(
     parts.append(f"{_ss.get('current_time_label', '**Current time**:')} {current_time}")
 
     if tier in (TIER_FULL, TIER_STANDARD):
-        _br = (
-            _prompt_store.get_section("behavior_rules") if _prompt_store else None
-        ) or load_prompt("behavior_rules")
+        _br = (_prompt_store.get_section("behavior_rules") if _prompt_store else None) or load_prompt("behavior_rules")
         if _br:
             parts.append(_br)
 
@@ -661,7 +660,7 @@ def build_system_prompt(
                 truncated = state[-_state_max:]
                 first_nl = truncated.find("\n")
                 if first_nl != -1 and first_nl < _state_max * 0.2:
-                    truncated = truncated[first_nl + 1:]
+                    truncated = truncated[first_nl + 1 :]
                 state = f"{_fs.get('truncated', '(earlier portion omitted)')}\n\n{truncated}"
             parts.append(load_prompt("builder/task_in_progress", state=state))
         elif state:
@@ -677,6 +676,7 @@ def build_system_prompt(
     if not is_inbox and not is_task and tier in (TIER_FULL, TIER_STANDARD):
         try:
             from core.memory.task_queue import TaskQueueManager
+
             task_queue = TaskQueueManager(memory.anima_dir)
             task_summary = task_queue.format_for_priming()
             if task_summary:
@@ -698,10 +698,12 @@ def build_system_prompt(
                     resolver = r.get("resolver", "unknown")
                     issue = r.get("issue", "")
                     res_lines.append(f"- [{ts_short}] {resolver}: {issue}")
-                parts.append(load_prompt(
-                    "builder/resolution_registry",
-                    res_lines="\n".join(res_lines),
-                ))
+                parts.append(
+                    load_prompt(
+                        "builder/resolution_registry",
+                        res_lines="\n".join(res_lines),
+                    )
+                )
         except Exception:
             logger.debug("Failed to inject resolution registry", exc_info=True)
 
@@ -742,15 +744,17 @@ def build_system_prompt(
         skill_names = "\n".join(skill_lines) or _none
         shared_users_list = ", ".join(memory.list_shared_users()) or _none
 
-        parts.append(load_prompt(
-            "memory_guide",
-            anima_dir=pd,
-            knowledge_list=knowledge_list,
-            episode_list=episode_list,
-            procedure_list=procedure_list,
-            skill_names=skill_names,
-            shared_users_list=shared_users_list,
-        ))
+        parts.append(
+            load_prompt(
+                "memory_guide",
+                anima_dir=pd,
+                knowledge_list=knowledge_list,
+                episode_list=episode_list,
+                procedure_list=procedure_list,
+                skill_names=skill_names,
+                shared_users_list=shared_users_list,
+            )
+        )
 
     # ── Distilled Knowledge Injection (skip for task) ─────
     injected_knowledge_files: list[str] = []
@@ -761,6 +765,7 @@ def build_system_prompt(
         knowledge_budget = 0
     elif tier == TIER_FULL:
         from core.prompt.context import resolve_context_window
+
         try:
             _model_config = memory.read_model_config()
             ctx_window = resolve_context_window(_model_config.model)
@@ -780,27 +785,20 @@ def build_system_prompt(
     for entry in procedures_list:
         est_tokens = len(entry["content"]) // 3
         if used_tokens + est_tokens <= knowledge_budget:
-            proc_parts.append(
-                f"### {entry['name']}\n\n{entry['content']}"
-            )
+            proc_parts.append(f"### {entry['name']}\n\n{entry['content']}")
             used_tokens += est_tokens
             injected_procedures.append(Path(entry["path"]))
         else:
             overflow_files.append(entry["name"])
 
     if proc_parts:
-        parts.append(
-            f"{_ss.get('procedures_header', '## Procedures')}\n\n"
-            + "\n\n---\n\n".join(proc_parts)
-        )
+        parts.append(f"{_ss.get('procedures_header', '## Procedures')}\n\n" + "\n\n---\n\n".join(proc_parts))
 
     know_parts: list[str] = []
     for entry in knowledge_list:
         est_tokens = len(entry["content"]) // 3
         if used_tokens + est_tokens <= knowledge_budget:
-            know_parts.append(
-                f"### {entry['name']}\n\n{entry['content']}"
-            )
+            know_parts.append(f"### {entry['name']}\n\n{entry['content']}")
             used_tokens += est_tokens
             injected_knowledge_files.append(entry["name"])
         else:
@@ -808,8 +806,7 @@ def build_system_prompt(
 
     if know_parts:
         parts.append(
-            f"{_ss.get('distilled_knowledge_header', '## Distilled Knowledge')}\n\n"
-            + "\n\n---\n\n".join(know_parts)
+            f"{_ss.get('distilled_knowledge_header', '## Distilled Knowledge')}\n\n" + "\n\n---\n\n".join(know_parts)
         )
 
     if not is_task and tier in (TIER_FULL, TIER_STANDARD):
@@ -840,20 +837,16 @@ def build_system_prompt(
             )
     else:
         if _is_mcp_mode(execution_mode):
-            _s_builtin = (
-                _prompt_store.get_guide("s_builtin") if _prompt_store else None
-            ) or get_default_guide("s_builtin")
+            _s_builtin = (_prompt_store.get_guide("s_builtin") if _prompt_store else None) or get_default_guide(
+                "s_builtin"
+            )
             if _s_builtin:
                 parts.append(_s_builtin)
-            _s_mcp = (
-                _prompt_store.get_guide("s_mcp") if _prompt_store else None
-            ) or get_default_guide("s_mcp")
+            _s_mcp = (_prompt_store.get_guide("s_mcp") if _prompt_store else None) or get_default_guide("s_mcp")
             if _s_mcp:
                 parts.append(_s_mcp)
         else:
-            _non_s = (
-                _prompt_store.get_guide("non_s") if _prompt_store else None
-            ) or get_default_guide("non_s")
+            _non_s = (_prompt_store.get_guide("non_s") if _prompt_store else None) or get_default_guide("non_s")
             if _non_s:
                 parts.append(_non_s)
 
@@ -892,10 +885,9 @@ def build_system_prompt(
             try:
                 model_config = memory.read_model_config()
                 if model_config.supervisor is None:
-                    _hc = (
-                        _prompt_store.get_section("hiring_context")
-                        if _prompt_store else None
-                    ) or load_prompt("hiring_context")
+                    _hc = (_prompt_store.get_section("hiring_context") if _prompt_store else None) or load_prompt(
+                        "hiring_context"
+                    )
                     if _hc:
                         parts.append(_hc)
             except Exception:
@@ -916,6 +908,7 @@ def build_system_prompt(
             if not is_inbox:
                 try:
                     from core.config import load_config as _load_cfg
+
                     _cfg = _load_cfg()
                     _my_pcfg = _cfg.animas.get(pd.name)
                     _is_top_level = _my_pcfg is None or _my_pcfg.supervisor is None
@@ -935,20 +928,14 @@ def build_system_prompt(
 
     # emotion: skip for background-auto (heartbeat/cron) and task
     if not is_background_auto and not is_task and tier in (TIER_FULL, TIER_STANDARD):
-        _ei = (
-            _prompt_store.get_section("emotion_instruction")
-            if _prompt_store else None
-        ) or EMOTION_INSTRUCTION
+        _ei = (_prompt_store.get_section("emotion_instruction") if _prompt_store else None) or EMOTION_INSTRUCTION
         if _ei:
             parts.append(_ei)
 
     # a_reflection: skip for inbox and background-auto (heartbeat/cron)
     if not is_inbox and not is_background_auto and tier in (TIER_FULL, TIER_STANDARD):
         if execution_mode == "a":
-            _ar = (
-                _prompt_store.get_section("a_reflection")
-                if _prompt_store else None
-            ) or _load_a_reflection()
+            _ar = (_prompt_store.get_section("a_reflection") if _prompt_store else None) or _load_a_reflection()
             if _ar:
                 parts.append(_ar)
 
@@ -969,7 +956,10 @@ def build_system_prompt(
     prompt = "\n\n---\n\n".join(parts)
     logger.debug(
         "System prompt built: %d sections, total_len=%d, tier=%s, context_window=%d",
-        len(parts), len(prompt), tier, context_window,
+        len(parts),
+        len(prompt),
+        tier,
+        context_window,
     )
     return BuildResult(
         system_prompt=prompt,

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -17,9 +18,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, cast
-
-from typing import Literal
+from typing import Any, Literal, cast
 
 from core.exceptions import AnimaWorksError  # noqa: F401
 from core.i18n import t
@@ -88,10 +87,10 @@ def _record_failure(anima_name: str, error: str) -> None:
 def _is_non_transient_error(error_str: str) -> bool:
     """Detect non-transient errors that should trigger cooldown."""
     non_transient_patterns = [
-        "402",                    # Payment Required (Meshy credits)
-        "401",                    # Unauthorized (bad API key)
-        "403",                    # Forbidden
-        "ToolConfigError",        # Missing API key
+        "402",  # Payment Required (Meshy credits)
+        "401",  # Unauthorized (bad API key)
+        "403",  # Forbidden
+        "ToolConfigError",  # Missing API key
         "No image generation API key",
         "MESHY_API_KEY",
         "NOVELAI_TOKEN",
@@ -185,7 +184,9 @@ def find_animas_with_missing_assets(
         if not (anima_dir / "identity.md").exists():
             continue
         result = check_anima_assets(
-            anima_dir, enable_3d=enable_3d, image_style=image_style,
+            anima_dir,
+            enable_3d=enable_3d,
+            image_style=image_style,
         )
         if not result["complete"]:
             results.append((anima_dir.name, result))
@@ -226,7 +227,9 @@ async def reconcile_anima_assets(
     in_cooldown, cooldown_reason = _is_in_cooldown(anima_name)
     if in_cooldown:
         logger.debug(
-            "Skipping asset generation for %s: %s", anima_name, cooldown_reason,
+            "Skipping asset generation for %s: %s",
+            anima_name,
+            cooldown_reason,
         )
         return {"anima": anima_name, "skipped": True, "reason": cooldown_reason}
 
@@ -239,7 +242,9 @@ async def reconcile_anima_assets(
 
     async with lock:
         check = check_anima_assets(
-            anima_dir, enable_3d=enable_3d, image_style=image_style,
+            anima_dir,
+            enable_3d=enable_3d,
+            image_style=image_style,
         )
         if check["complete"]:
             logger.debug("Assets complete for %s (post-lock check)", anima_name)
@@ -334,7 +339,9 @@ async def reconcile_all_assets(
         List of per-anima result dicts.
     """
     incomplete = find_animas_with_missing_assets(
-        animas_dir, enable_3d=enable_3d, image_style=image_style,
+        animas_dir,
+        enable_3d=enable_3d,
+        image_style=image_style,
     )
     if not incomplete:
         logger.debug("All animas have complete assets")
@@ -351,7 +358,9 @@ async def reconcile_all_assets(
     for anima_name, _check in incomplete:
         anima_dir = animas_dir / anima_name
         result = await reconcile_anima_assets(
-            anima_dir, enable_3d=enable_3d, image_style=image_style,
+            anima_dir,
+            enable_3d=enable_3d,
+            image_style=image_style,
         )
         results.append(result)
 
@@ -364,7 +373,8 @@ async def reconcile_all_assets(
                 )
             except Exception:
                 logger.debug(
-                    "Failed to broadcast asset update for %s", anima_name,
+                    "Failed to broadcast asset update for %s",
+                    anima_name,
                 )
 
     return results
@@ -394,6 +404,7 @@ def _resolve_prompt(anima_dir: Path, style: str) -> str | None:
             anime_text = anime_path.read_text(encoding="utf-8").strip()
             if anime_text:
                 from core.tools._image_clients import _convert_anime_to_realistic
+
                 return _convert_anime_to_realistic(anime_text)
         return None
 
@@ -446,6 +457,7 @@ async def _extract_prompt(
                 raw = match.group(1).strip()
                 if style == "realistic":
                     from core.tools._image_clients import _convert_anime_to_realistic
+
                     return _convert_anime_to_realistic(raw)
                 return raw
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -19,7 +20,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-
 from typing import TYPE_CHECKING
 
 from core.time_utils import ensure_aware, now_iso
@@ -304,8 +304,8 @@ class MemoryIndexer:
         embeddings = self._generate_embeddings([c.content for c in chunks])
 
         # Build documents and upsert
-        from core.memory.rag.store import Document
         from core.memory.rag.singleton import get_embedding_dimension
+        from core.memory.rag.store import Document
 
         collection_name = f"{self.collection_prefix}_conversation_summary"
         self.vector_store.create_collection(collection_name, get_embedding_dimension())
@@ -477,8 +477,13 @@ class MemoryIndexer:
         if preamble and len(preamble) > 50:
             chunk_id = self._make_chunk_id(file_path, memory_type, chunk_idx)
             metadata = self._extract_metadata(
-                file_path, preamble, memory_type, chunk_idx, 1,
-                frontmatter=frontmatter, origin=origin,
+                file_path,
+                preamble,
+                memory_type,
+                chunk_idx,
+                1,
+                frontmatter=frontmatter,
+                origin=origin,
             )
             chunks.append(
                 MemoryChunk(
@@ -499,8 +504,13 @@ class MemoryIndexer:
                 if section_content.strip():
                     chunk_id = self._make_chunk_id(file_path, memory_type, chunk_idx)
                     metadata = self._extract_metadata(
-                        file_path, section_content, memory_type, chunk_idx, 1,
-                        frontmatter=frontmatter, origin=origin,
+                        file_path,
+                        section_content,
+                        memory_type,
+                        chunk_idx,
+                        1,
+                        frontmatter=frontmatter,
+                        origin=origin,
                     )
                     chunks.append(
                         MemoryChunk(
@@ -536,8 +546,13 @@ class MemoryIndexer:
                 if section_content.strip():
                     chunk_id = self._make_chunk_id(file_path, memory_type, i // 2)
                     metadata = self._extract_metadata(
-                        file_path, section_content, memory_type, i // 2, (i // 2) + 1,
-                        frontmatter=frontmatter, origin=origin,
+                        file_path,
+                        section_content,
+                        memory_type,
+                        i // 2,
+                        (i // 2) + 1,
+                        frontmatter=frontmatter,
+                        origin=origin,
                     )
                     chunks.append(
                         MemoryChunk(
@@ -571,8 +586,13 @@ class MemoryIndexer:
 
         chunk_id = self._make_chunk_id(file_path, memory_type, 0)
         metadata = self._extract_metadata(
-            file_path, content, memory_type, 0, 1,
-            frontmatter=frontmatter, origin=origin,
+            file_path,
+            content,
+            memory_type,
+            0,
+            1,
+            frontmatter=frontmatter,
+            origin=origin,
         )
 
         return [
@@ -599,6 +619,7 @@ class MemoryIndexer:
             Content without frontmatter, or original content if none found
         """
         from core.memory.frontmatter import strip_frontmatter
+
         return strip_frontmatter(content).strip()
 
     # ── Helpers ─────────────────────────────────────────────────────
@@ -628,6 +649,7 @@ class MemoryIndexer:
             Parsed frontmatter dict, or empty dict if absent/unparseable
         """
         from core.memory.frontmatter import parse_frontmatter
+
         meta, _ = parse_frontmatter(raw_content)
         return meta
 

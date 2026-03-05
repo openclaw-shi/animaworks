@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -23,45 +24,48 @@ logger = logging.getLogger("animaworks.execution.agent_sdk")
 # ── Mode S Bash blocklist ────────────────────────────────────
 
 _BASH_BLOCKED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"(?:^|[|;&]\s*)nc\b"),
-     "nc (netcat) is blocked for security"),
-    (re.compile(r"(?:^|[|;&]\s*)ncat\b"),
-     "ncat is blocked for security"),
-    (re.compile(r"(?:^|[|;&]\s*)socat\b"),
-     "socat is blocked for security"),
-    (re.compile(r"(?:^|[|;&]\s*)telnet\b"),
-     "telnet is blocked for security"),
-    (re.compile(r"curl\s+.*-[dFT]\b"),
-     "curl data upload is blocked for security"),
-    (re.compile(r"curl\s+.*--data\b"),
-     "curl --data is blocked for security"),
-    (re.compile(r"wget\s+.*--post\b"),
-     "wget --post is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)nc\b"), "nc (netcat) is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)ncat\b"), "ncat is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)socat\b"), "socat is blocked for security"),
+    (re.compile(r"(?:^|[|;&]\s*)telnet\b"), "telnet is blocked for security"),
+    (re.compile(r"curl\s+.*-[dFT]\b"), "curl data upload is blocked for security"),
+    (re.compile(r"curl\s+.*--data\b"), "curl --data is blocked for security"),
+    (re.compile(r"wget\s+.*--post\b"), "wget --post is blocked for security"),
 ]
 
 # ── Mode S security ──────────────────────────────────────────
 
-_PROTECTED_FILES = frozenset({
-    "permissions.md",
-    "bootstrap.md",
-})
+_PROTECTED_FILES = frozenset(
+    {
+        "permissions.md",
+        "bootstrap.md",
+    }
+)
 
-_WRITE_COMMANDS = frozenset({
-    "cp", "mv", "tee", "dd", "install", "rsync",
-})
+_WRITE_COMMANDS = frozenset(
+    {
+        "cp",
+        "mv",
+        "tee",
+        "dd",
+        "install",
+        "rsync",
+    }
+)
 
 
 # ── Mode S output guard ──────────────────────────────────────
 
-_BASH_TRUNCATE_BYTES = 10_000   # 10 KB
-_BASH_HEAD_BYTES = 5_000        # head display
-_BASH_TAIL_BYTES = 3_000        # tail display
-_READ_DEFAULT_LIMIT = 500       # lines
+_BASH_TRUNCATE_BYTES = 10_000  # 10 KB
+_BASH_HEAD_BYTES = 5_000  # head display
+_BASH_TAIL_BYTES = 3_000  # tail display
+_READ_DEFAULT_LIMIT = 500  # lines
 _GREP_DEFAULT_HEAD_LIMIT = 200  # entries
 _GLOB_DEFAULT_HEAD_LIMIT = 500  # entries
 
 
 # ── Security check functions ─────────────────────────────────
+
 
 def _check_a1_file_access(
     file_path: str,
@@ -162,9 +166,7 @@ def _check_a1_bash_command(
             try:
                 resolved = str(Path(arg).resolve())
                 # Writing to other anima's directory
-                if resolved.startswith(animas_root) and not resolved.startswith(
-                    anima_resolved
-                ):
+                if resolved.startswith(animas_root) and not resolved.startswith(anima_resolved):
                     return f"Command targets other anima's directory: {arg}"
             except (ValueError, OSError):
                 pass
@@ -173,6 +175,7 @@ def _check_a1_bash_command(
 
 
 # ── Output guard functions ───────────────────────────────────
+
 
 def _build_output_guard(
     tool_name: str,
@@ -207,7 +210,7 @@ def _guard_bash(tool_input: dict[str, Any], anima_dir: Path) -> dict[str, Any]:
         f'mkdir -p "$_OUTDIR"\n'
         f'_OUTF="$_OUTDIR/bash_$(date +%s%N).txt"\n'
         f'{{ {command} ; }} > "$_OUTF" 2>&1\n'
-        f'_EC=$?\n'
+        f"_EC=$?\n"
         f'_SZ=$(wc -c < "$_OUTF")\n'
         f'if [ "$_SZ" -gt {_BASH_TRUNCATE_BYTES} ]; then\n'
         f'  head -c {_BASH_HEAD_BYTES} "$_OUTF"\n'
@@ -218,11 +221,11 @@ def _guard_bash(tool_input: dict[str, Any], anima_dir: Path) -> dict[str, Any]:
         f'  echo ""\n'
         f'  echo "[Full output saved: $_OUTF]"\n'
         f'  echo "[Use Read tool with file_path=$_OUTF to view full content]"\n'
-        f'else\n'
+        f"else\n"
         f'  cat "$_OUTF"\n'
         f'  rm -f "$_OUTF"\n'
-        f'fi\n'
-        f'exit $_EC'
+        f"fi\n"
+        f"exit $_EC"
     )
     return {**tool_input, "command": wrapped}
 

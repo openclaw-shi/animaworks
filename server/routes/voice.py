@@ -20,11 +20,14 @@ from core.voice.session import VoiceSession
 from core.voice.stt import VoiceSTT
 from core.voice.tts_base import TTSConfig
 from core.voice.tts_factory import create_tts_provider
+
 try:
     from server.localhost import _is_safe_localhost_request
 except ImportError:
+
     def _is_safe_localhost_request(_ws: object) -> bool:  # type: ignore[misc]
         return False
+
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +152,10 @@ def create_voice_router() -> APIRouter:
             tts = create_tts_provider(tts_config.provider, voice_config)
             logger.info(
                 "Voice session created: anima=%s provider=%s voice_id=%s speed=%.1f",
-                name, tts_config.provider, tts_config.voice_id, tts_config.speed,
+                name,
+                tts_config.provider,
+                tts_config.voice_id,
+                tts_config.speed,
             )
 
             session = VoiceSession(

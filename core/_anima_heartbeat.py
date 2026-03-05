@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -14,14 +15,13 @@ import logging
 import re
 from typing import Any
 
-from core.time_utils import now_iso, now_jst
-
+from core.i18n import t
 from core.memory.conversation import ConversationMemory
 from core.memory.streaming_journal import StreamingJournal
 from core.messenger import InboxItem
 from core.paths import load_prompt
-from core.i18n import t
 from core.schemas import CycleResult
+from core.time_utils import now_iso, now_jst
 
 logger = logging.getLogger("animaworks.anima")
 
@@ -53,7 +53,7 @@ class HeartbeatMixin:
 
     # ── Background model resolution ──────────────────────────
 
-    def _resolve_background_config(self) -> "ModelConfig | None":
+    def _resolve_background_config(self) -> ModelConfig | None:  # noqa: F821
         """Resolve background model config for heartbeat/cron.
 
         Resolution order:
@@ -144,14 +144,16 @@ class HeartbeatMixin:
         except Exception:
             logger.debug(
                 "[%s] Failed to load recent reflections",
-                self.name, exc_info=True,
+                self.name,
+                exc_info=True,
             )
             return ""
 
     # ── Heartbeat private methods ──────────────────────────
 
     def _build_prior_messages(
-        self, prompt_text: str,
+        self,
+        prompt_text: str,
     ) -> list[dict[str, Any]] | None:
         """Build prior_messages for A mode, None for S/B."""
         mode = self.agent.execution_mode
@@ -173,9 +175,7 @@ class HeartbeatMixin:
         if recovery_note_path.exists():
             try:
                 recovery_content = recovery_note_path.read_text(encoding="utf-8")
-                parts.append(
-                    load_prompt("fragments/recovery_note_header") + "\n\n" + recovery_content
-                )
+                parts.append(load_prompt("fragments/recovery_note_header") + "\n\n" + recovery_content)
                 recovery_note_path.unlink(missing_ok=True)
                 logger.info("[%s] Recovery note loaded and removed", self.name)
             except Exception:
@@ -185,23 +185,22 @@ class HeartbeatMixin:
         bg_notifications = self.drain_background_notifications()
         if bg_notifications:
             notif_text = "\n\n".join(bg_notifications)
-            parts.append(
-                load_prompt("fragments/bg_task_notification") + "\n\n" + notif_text
-            )
+            parts.append(load_prompt("fragments/bg_task_notification") + "\n\n" + notif_text)
 
         # Inject recent heartbeat history for continuity
         history_text = self._load_heartbeat_history()
         if history_text:
-            parts.append(load_prompt(
-                "heartbeat_history", history=history_text,
-            ))
+            parts.append(
+                load_prompt(
+                    "heartbeat_history",
+                    history=history_text,
+                )
+            )
 
         # Inject recent reflections for cognitive continuity
         reflection_text = self._load_recent_reflections()
         if reflection_text:
-            parts.append(
-                load_prompt("fragments/recent_reflections") + "\n\n" + reflection_text
-            )
+            parts.append(load_prompt("fragments/recent_reflections") + "\n\n" + reflection_text)
 
         # Inject recent dialogue context for cross-session continuity
         try:
@@ -215,10 +214,12 @@ class HeartbeatMixin:
                     conv_lines.append(f"- [{turn.role}] {snippet}")
                 conv_summary = "\n".join(conv_lines)
                 parts.append(
-                    t("agent.recent_dialogue_header") + "\n\n"
+                    t("agent.recent_dialogue_header")
+                    + "\n\n"
                     + t("agent.recent_dialogue_intro")
                     + "\n"
-                    + t("agent.recent_dialogue_consider") + "\n\n"
+                    + t("agent.recent_dialogue_consider")
+                    + "\n\n"
                     + conv_summary
                 )
         except Exception:
@@ -228,20 +229,21 @@ class HeartbeatMixin:
         try:
             from core.config.models import load_config
             from core.paths import get_animas_dir
+
             _cfg = load_config()
-            _subordinates = [
-                _name for _name, _pcfg in _cfg.animas.items()
-                if _pcfg.supervisor == self.name
-            ]
+            _subordinates = [_name for _name, _pcfg in _cfg.animas.items() if _pcfg.supervisor == self.name]
             if _subordinates:
-                parts.append(load_prompt(
-                    "heartbeat_subordinate_check",
-                    subordinates=", ".join(_subordinates),
-                    animas_dir=str(get_animas_dir()),
-                ))
+                parts.append(
+                    load_prompt(
+                        "heartbeat_subordinate_check",
+                        subordinates=", ".join(_subordinates),
+                        animas_dir=str(get_animas_dir()),
+                    )
+                )
         except Exception:
             logger.debug(
-                "[%s] Failed to inject delegation check", self.name,
+                "[%s] Failed to inject delegation check",
+                self.name,
                 exc_info=True,
             )
 
@@ -262,7 +264,10 @@ class HeartbeatMixin:
         return parts
 
     def _build_cron_prompt(
-        self, task_name: str, description: str, command_output: str | None = None,
+        self,
+        task_name: str,
+        description: str,
+        command_output: str | None = None,
     ) -> str:
         """Build cron task prompt with heartbeat-equivalent context.
 
@@ -275,7 +280,9 @@ class HeartbeatMixin:
 
         # Cron task header
         cron_prompt = load_prompt(
-            "cron_task", task_name=task_name, description=description,
+            "cron_task",
+            task_name=task_name,
+            description=description,
         )
         if cron_prompt:
             parts.append(cron_prompt)
@@ -315,7 +322,8 @@ class HeartbeatMixin:
                 "unread_count": unread_count,
             }
             checkpoint_path.write_text(
-                json.dumps(checkpoint_data, ensure_ascii=False), encoding="utf-8",
+                json.dumps(checkpoint_data, ensure_ascii=False),
+                encoding="utf-8",
             )
         except Exception:
             logger.debug("[%s] Failed to write heartbeat checkpoint", self.name, exc_info=True)
@@ -344,7 +352,8 @@ class HeartbeatMixin:
 
         try:
             async for chunk in self.agent.run_cycle_streaming(
-                prompt, trigger="heartbeat",
+                prompt,
+                trigger="heartbeat",
                 prior_messages=prior_messages,
             ):
                 # Relay text_delta chunks to waiting user stream
@@ -359,12 +368,8 @@ class HeartbeatMixin:
                         action=cycle_result.get("action", "responded"),
                         summary=cycle_result.get("summary", ""),
                         duration_ms=cycle_result.get("duration_ms", 0),
-                        context_usage_ratio=cycle_result.get(
-                            "context_usage_ratio", 0.0
-                        ),
-                        session_chained=cycle_result.get(
-                            "session_chained", False
-                        ),
+                        context_usage_ratio=cycle_result.get("context_usage_ratio", 0.0),
+                        session_chained=cycle_result.get("session_chained", False),
                         total_turns=cycle_result.get("total_turns", 0),
                     )
                     journal.finalize(summary=result.summary[:500])
@@ -402,9 +407,7 @@ class HeartbeatMixin:
                 # A-3b: Extract and record reflection from accumulated text
                 reflection_text = _extract_reflection(accumulated_text)
                 if reflection_text and len(reflection_text) >= _MIN_REFLECTION_LENGTH:
-                    episode_entry += (
-                        f"\n\n[REFLECTION]\n{reflection_text}\n[/REFLECTION]"
-                    )
+                    episode_entry += f"\n\n[REFLECTION]\n{reflection_text}\n[/REFLECTION]"
                     self._activity.log(
                         "heartbeat_reflection",
                         content=reflection_text,
@@ -418,7 +421,9 @@ class HeartbeatMixin:
 
             logger.info(
                 "[%s] run_heartbeat END duration_ms=%d unread_processed=%d",
-                self.name, result.duration_ms, unread_count,
+                self.name,
+                result.duration_ms,
+                unread_count,
             )
             # Heartbeat completed successfully — remove checkpoint
             try:
@@ -448,12 +453,15 @@ class HeartbeatMixin:
                 crash_archived = self.messenger.archive_paths(inbox_items)
                 logger.info(
                     "[%s] Crash-archived %d/%d inbox messages",
-                    self.name, crash_archived, len(inbox_items),
+                    self.name,
+                    crash_archived,
+                    len(inbox_items),
                 )
             except Exception:
                 logger.warning(
                     "[%s] Failed to crash-archive inbox messages",
-                    self.name, exc_info=True,
+                    self.name,
+                    exc_info=True,
                 )
 
         # Activity log: error
@@ -492,7 +500,8 @@ class HeartbeatMixin:
         except Exception:
             logger.debug(
                 "[%s] Failed to clean up streaming journal",
-                self.name, exc_info=True,
+                self.name,
+                exc_info=True,
             )
 
     # ── run_heartbeat orchestrator ───────────────────────────
@@ -510,7 +519,8 @@ class HeartbeatMixin:
         if task_files:
             logger.info(
                 "[%s] %d pending tasks found after heartbeat, signaling executor",
-                self.name, len(task_files),
+                self.name,
+                len(task_files),
             )
             if self._pending_executor is not None:
                 self._pending_executor.wake()

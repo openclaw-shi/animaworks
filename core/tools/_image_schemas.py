@@ -6,6 +6,7 @@
 # See LICENSE for the full license text.
 
 """Tool schemas and CLI guide for image generation."""
+
 from __future__ import annotations
 
 __all__ = [

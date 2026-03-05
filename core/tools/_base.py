@@ -6,12 +6,13 @@
 # See LICENSE for the full license text.
 
 """Base infrastructure for AnimaWorks tools."""
+
 from __future__ import annotations
+
 import json
 import logging
 import os
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("animaworks.tools")
@@ -23,6 +24,7 @@ from core.exceptions import ToolConfigError  # noqa: F401 – re-export
 @dataclass
 class ToolResult:
     """Standardized return value from tool execution."""
+
     success: bool
     data: Any = None
     text: str = ""
@@ -34,8 +36,7 @@ def get_env_or_fail(key: str, tool_name: str) -> str:
     val = os.environ.get(key)
     if not val:
         raise ToolConfigError(
-            f"Tool '{tool_name}' requires environment variable {key}. "
-            f"Set it in .env or the shell environment."
+            f"Tool '{tool_name}' requires environment variable {key}. Set it in .env or the shell environment."
         )
     return val
 
@@ -107,8 +108,7 @@ def get_credential(
         sources.append("vault.json")
         sources.append(f"environment variable {env_var}")
     raise ToolConfigError(
-        f"Tool '{tool_name}' requires credential '{credential_name}'. "
-        f"Set it in: {' or '.join(sources)}"
+        f"Tool '{tool_name}' requires credential '{credential_name}'. Set it in: {' or '.join(sources)}"
     )
 
 
@@ -144,13 +144,19 @@ def _lookup_shared_credentials(key: str) -> str | None:
 
 
 def _log_resolved(
-    credential_name: str, key_name: str, source: str, value: str,
+    credential_name: str,
+    key_name: str,
+    source: str,
+    value: str,
 ) -> None:
     """Log credential resolution with masked value."""
     masked = value[:4] + "****" if len(value) > 4 else "****"
     logger.debug(
         "Credential '%s.%s' resolved from %s: %s",
-        credential_name, key_name, source, masked,
+        credential_name,
+        key_name,
+        source,
+        masked,
     )
 
 
@@ -229,7 +235,8 @@ def load_execution_profiles(
         for tool_name, file_path in personal_tools.items():
             try:
                 spec = importlib.util.spec_from_file_location(
-                    f"animaworks_profile_{tool_name}", file_path,
+                    f"animaworks_profile_{tool_name}",
+                    file_path,
                 )
                 if spec and spec.loader:
                     mod = importlib.util.module_from_spec(spec)

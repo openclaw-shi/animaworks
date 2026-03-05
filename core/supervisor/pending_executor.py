@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -63,7 +63,7 @@ def _deps_satisfied(
     failed: set[str],
 ) -> bool:
     """Check if all dependencies are either completed or failed."""
-    for dep in task.get("depends_on", []):
+    for dep in task.get("depends_on", []):  # noqa: SIM110
         if dep not in completed and dep not in failed:
             return False
     return True
@@ -93,6 +93,7 @@ class PendingTaskExecutor:
         if self._anima._task_semaphore is None:
             try:
                 from core.config.models import load_config
+
                 config = load_config()
                 max_parallel = config.background_task.max_parallel_llm_tasks
             except Exception:
@@ -178,7 +179,8 @@ class PendingTaskExecutor:
                         task_desc = json.loads(path.read_text(encoding="utf-8"))
                     except json.JSONDecodeError:
                         logger.warning(
-                            "Invalid JSON in pending task file: %s", path.name,
+                            "Invalid JSON in pending task file: %s",
+                            path.name,
                         )
                         path.unlink(missing_ok=True)
                         continue
@@ -188,7 +190,8 @@ class PendingTaskExecutor:
                         path.rename(processing_path)
                     except OSError:
                         logger.exception(
-                            "Failed to move task to processing: %s", path.name,
+                            "Failed to move task to processing: %s",
+                            path.name,
                         )
                         continue
 
@@ -204,13 +207,15 @@ class PendingTaskExecutor:
                         processing_path.unlink(missing_ok=True)
                     except Exception:
                         logger.exception(
-                            "Error processing pending task file: %s", path.name,
+                            "Error processing pending task file: %s",
+                            path.name,
                         )
                         try:
                             processing_path.rename(cmd_failed_dir / path.name)
                         except OSError:
                             logger.exception(
-                                "Failed to move task to failed: %s", path.name,
+                                "Failed to move task to failed: %s",
+                                path.name,
                             )
 
                 # Scan LLM pending tasks — group batch tasks, execute serial ones
@@ -219,7 +224,8 @@ class PendingTaskExecutor:
                         task_desc = json.loads(path.read_text(encoding="utf-8"))
                     except json.JSONDecodeError:
                         logger.warning(
-                            "Invalid JSON in LLM pending task file: %s", path.name,
+                            "Invalid JSON in LLM pending task file: %s",
+                            path.name,
                         )
                         path.unlink(missing_ok=True)
                         continue
@@ -229,7 +235,8 @@ class PendingTaskExecutor:
                         path.rename(processing_path)
                     except OSError:
                         logger.exception(
-                            "Failed to move LLM task to processing: %s", path.name,
+                            "Failed to move LLM task to processing: %s",
+                            path.name,
                         )
                         continue
 
@@ -253,13 +260,15 @@ class PendingTaskExecutor:
                         processing_path.unlink(missing_ok=True)
                     except Exception:
                         logger.exception(
-                            "Error processing LLM pending task file: %s", path.name,
+                            "Error processing LLM pending task file: %s",
+                            path.name,
                         )
                         try:
                             processing_path.rename(llm_failed_dir / path.name)
                         except OSError:
                             logger.exception(
-                                "Failed to move LLM task to failed: %s", path.name,
+                                "Failed to move LLM task to failed: %s",
+                                path.name,
                             )
 
                 # Dispatch accumulated batch tasks
@@ -273,13 +282,14 @@ class PendingTaskExecutor:
                         timeout=_PENDING_WATCHER_POLL_INTERVAL,
                     )
                     self._wake_event.clear()
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception(
-                    "Error in pending task watcher for %s", self._anima_name,
+                    "Error in pending task watcher for %s",
+                    self._anima_name,
                 )
                 await asyncio.sleep(_PENDING_WATCHER_POLL_INTERVAL)
 
@@ -288,7 +298,9 @@ class PendingTaskExecutor:
     # ── DAG batch dispatch ──────────────────────────────────────
 
     async def _dispatch_batch(
-        self, batch_id: str, tasks: list[dict[str, Any]],
+        self,
+        batch_id: str,
+        tasks: list[dict[str, Any]],
     ) -> None:
         """Dispatch a batch of tasks respecting DAG dependencies.
 
@@ -298,7 +310,9 @@ class PendingTaskExecutor:
         """
         logger.info(
             "[%s] Dispatching batch %s with %d tasks",
-            self._anima_name, batch_id, len(tasks),
+            self._anima_name,
+            batch_id,
+            len(tasks),
         )
 
         try:
@@ -306,7 +320,8 @@ class PendingTaskExecutor:
         except ValueError:
             logger.error(
                 "[%s] Cycle detected in batch %s; aborting all tasks",
-                self._anima_name, batch_id,
+                self._anima_name,
+                batch_id,
             )
             for t in tasks:
                 self._write_failed_result(t["task_id"], "cycle_in_batch")
@@ -330,17 +345,16 @@ class PendingTaskExecutor:
 
             # Execute parallel tasks concurrently under semaphore
             if parallel_ready:
-                coros = [
-                    self._execute_parallel_task(t, completed, batch_id)
-                    for t in parallel_ready
-                ]
+                coros = [self._execute_parallel_task(t, completed, batch_id) for t in parallel_ready]
                 results = await asyncio.gather(*coros, return_exceptions=True)
-                for task, result in zip(parallel_ready, results):
+                for task, result in zip(parallel_ready, results, strict=False):
                     remaining.remove(task)
                     if isinstance(result, Exception):
                         logger.error(
                             "[%s] Parallel task %s failed: %s",
-                            self._anima_name, task["task_id"], result,
+                            self._anima_name,
+                            task["task_id"],
+                            result,
                         )
                         failed.add(task["task_id"])
                         self._write_failed_result(task["task_id"], str(result))
@@ -353,6 +367,7 @@ class PendingTaskExecutor:
                             try:
                                 from core.execution._sanitize import ORIGIN_ANIMA
                                 from core.i18n import t
+
                                 notify_text = t(
                                     "pending_executor.task_fail_notify",
                                     task_id=task["task_id"],
@@ -371,7 +386,9 @@ class PendingTaskExecutor:
                                         if _attempt > 0:
                                             logger.error(
                                                 "[%s] Batch failure notification failed after retry to %s",
-                                                self._anima_name, reply_to, exc_info=True,
+                                                self._anima_name,
+                                                reply_to,
+                                                exc_info=True,
                                             )
                             except Exception:
                                 logger.warning("[%s] Failed to build batch failure notification", self._anima_name)
@@ -387,13 +404,17 @@ class PendingTaskExecutor:
                     continue
                 try:
                     result = await self._execute_serial_batch_task(
-                        task, completed, batch_id,
+                        task,
+                        completed,
+                        batch_id,
                     )
                     completed[task["task_id"]] = result or ""
                 except Exception as exc:
                     logger.error(
                         "[%s] Serial batch task %s failed: %s",
-                        self._anima_name, task["task_id"], exc,
+                        self._anima_name,
+                        task["task_id"],
+                        exc,
                     )
                     failed.add(task["task_id"])
                     self._write_failed_result(task["task_id"], str(exc))
@@ -406,6 +427,7 @@ class PendingTaskExecutor:
                         try:
                             from core.execution._sanitize import ORIGIN_ANIMA
                             from core.i18n import t
+
                             notify_text = t(
                                 "pending_executor.task_fail_notify",
                                 task_id=task["task_id"],
@@ -424,14 +446,19 @@ class PendingTaskExecutor:
                                     if _attempt > 0:
                                         logger.error(
                                             "[%s] Batch failure notification failed after retry to %s",
-                                            self._anima_name, reply_to, exc_info=True,
+                                            self._anima_name,
+                                            reply_to,
+                                            exc_info=True,
                                         )
                         except Exception:
                             logger.warning("[%s] Failed to build batch failure notification", self._anima_name)
 
         logger.info(
             "[%s] Batch %s complete: %d succeeded, %d failed",
-            self._anima_name, batch_id, len(completed), len(failed),
+            self._anima_name,
+            batch_id,
+            len(completed),
+            len(failed),
         )
 
     async def _execute_parallel_task(
@@ -449,7 +476,7 @@ class PendingTaskExecutor:
             self._anima._active_parallel_tasks[task_id] = {
                 "title": title,
                 "description": (task_desc.get("description", ""))[:100],
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.now(UTC).isoformat(),
                 "batch_id": batch_id,
                 "status": "running",
                 "depends_on": task_desc.get("depends_on", []),
@@ -504,13 +531,16 @@ class PendingTaskExecutor:
             try:
                 sub_dt = datetime.fromisoformat(submitted_at)
                 if sub_dt.tzinfo is None:
-                    sub_dt = sub_dt.replace(tzinfo=timezone.utc)
-                now_utc = datetime.now(timezone.utc)
+                    sub_dt = sub_dt.replace(tzinfo=UTC)
+                now_utc = datetime.now(UTC)
                 age_hours = (now_utc - sub_dt).total_seconds() / 3600
                 if age_hours > _LLM_TASK_TTL_HOURS:
                     logger.warning(
                         "[%s] Skipping expired LLM task: %s (age=%.1fh, TTL=%dh)",
-                        self._anima_name, task_id, age_hours, _LLM_TASK_TTL_HOURS,
+                        self._anima_name,
+                        task_id,
+                        age_hours,
+                        _LLM_TASK_TTL_HOURS,
                     )
                     return "(expired)"
             except (ValueError, TypeError):
@@ -521,9 +551,9 @@ class PendingTaskExecutor:
         if completed_results:
             dep_context = self._build_dependency_context(task_desc, completed_results)
 
-        from core.paths import load_prompt
-        from core.memory.streaming_journal import StreamingJournal
         from core.memory.activity import ActivityLogger
+        from core.memory.streaming_journal import StreamingJournal
+        from core.paths import load_prompt
 
         activity = ActivityLogger(self._anima_dir)
         activity.log(
@@ -532,18 +562,9 @@ class PendingTaskExecutor:
             meta={"task_id": task_id, "submitted_by": submitted_by},
         )
 
-        criteria_text = (
-            "\n".join(f"- {c}" for c in acceptance_criteria)
-            if acceptance_criteria else "(なし)"
-        )
-        constraints_text = (
-            "\n".join(f"- {c}" for c in constraints)
-            if constraints else "(なし)"
-        )
-        paths_text = (
-            "\n".join(f"- {p}" for p in file_paths)
-            if file_paths else "(なし)"
-        )
+        criteria_text = "\n".join(f"- {c}" for c in acceptance_criteria) if acceptance_criteria else "(なし)"
+        constraints_text = "\n".join(f"- {c}" for c in constraints) if constraints else "(なし)"
+        paths_text = "\n".join(f"- {p}" for p in file_paths) if file_paths else "(なし)"
 
         full_context = context or "(なし)"
         if dep_context:
@@ -571,7 +592,8 @@ class PendingTaskExecutor:
 
         try:
             async for chunk in self._anima.agent.run_cycle_streaming(
-                prompt, trigger=trigger,
+                prompt,
+                trigger=trigger,
             ):
                 if chunk.get("type") == "text_delta":
                     accumulated_text += chunk.get("text", "")
@@ -579,7 +601,8 @@ class PendingTaskExecutor:
                 if chunk.get("type") == "cycle_done":
                     cycle_result = chunk.get("cycle_result", {})
                     result_summary = cycle_result.get(
-                        "summary", accumulated_text[:500],
+                        "summary",
+                        accumulated_text[:500],
                     )
                     journal.finalize(summary=result_summary[:500])
         finally:
@@ -609,6 +632,7 @@ class PendingTaskExecutor:
                     result_summary=result_summary[:1000],
                 )
                 from core.execution._sanitize import ORIGIN_ANIMA
+
                 for _attempt in range(2):
                     try:
                         self._anima.messenger.send(
@@ -626,7 +650,9 @@ class PendingTaskExecutor:
                         else:
                             logger.error(
                                 "[%s] Task completion notification failed after retry to %s",
-                                self._anima_name, reply_to, exc_info=True,
+                                self._anima_name,
+                                reply_to,
+                                exc_info=True,
                             )
                             if hasattr(self._anima, "_activity"):
                                 self._anima._activity.log(
@@ -636,7 +662,8 @@ class PendingTaskExecutor:
             except Exception:
                 logger.warning(
                     "[%s] Failed to build task completion notification",
-                    self._anima_name, exc_info=True,
+                    self._anima_name,
+                    exc_info=True,
                 )
 
         logger.info("[%s] LLM task completed: id=%s", self._anima_name, task_id)
@@ -683,9 +710,10 @@ class PendingTaskExecutor:
         task_id = task_desc.get("task_id", "")
 
         logger.info(
-            "Submitting pending task to BackgroundTaskManager: "
-            "id=%s tool=%s subcmd=%s",
-            task_id, tool_name, subcommand,
+            "Submitting pending task to BackgroundTaskManager: id=%s tool=%s subcmd=%s",
+            task_id,
+            tool_name,
+            subcommand,
         )
 
         def _dispatch_fn(name: str, args: dict[str, Any]) -> str:
@@ -711,8 +739,11 @@ class PendingTaskExecutor:
             }
 
             result = subprocess.run(
-                cmd, capture_output=True, text=True,
-                timeout=_PENDING_TASK_SUBPROCESS_TIMEOUT, env=env,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_PENDING_TASK_SUBPROCESS_TIMEOUT,
+                env=env,
             )
             if result.returncode != 0:
                 error_msg = result.stderr.strip() or f"Exit code {result.returncode}"
@@ -734,7 +765,9 @@ class PendingTaskExecutor:
 
         logger.info(
             "[%s] Executing LLM task: id=%s title=%s",
-            self._anima_name, task_id, task_desc.get("title", ""),
+            self._anima_name,
+            task_id,
+            task_desc.get("title", ""),
         )
 
         try:
@@ -748,12 +781,15 @@ class PendingTaskExecutor:
                     self._anima._task_slots["background"] = ""
         except Exception as exc:
             logger.exception(
-                "[%s] LLM task failed: id=%s", self._anima_name, task_id,
+                "[%s] LLM task failed: id=%s",
+                self._anima_name,
+                task_id,
             )
             self._anima._status_slots["background"] = "idle"
             self._anima._task_slots["background"] = ""
             self._write_failed_result(
-                task_id, f"{type(exc).__name__}: {str(exc)[:200]}",
+                task_id,
+                f"{type(exc).__name__}: {str(exc)[:200]}",
             )
             reply_to = task_desc.get("reply_to")
             if isinstance(reply_to, dict):
@@ -762,8 +798,9 @@ class PendingTaskExecutor:
                 reply_to = None
             if reply_to:
                 try:
-                    from core.i18n import t
                     from core.execution._sanitize import ORIGIN_ANIMA
+                    from core.i18n import t
+
                     notify_text = t(
                         "pending_executor.task_fail_notify",
                         task_id=task_id,
@@ -782,12 +819,15 @@ class PendingTaskExecutor:
                             if _attempt == 0:
                                 logger.warning(
                                     "[%s] Task failure notification failed, retrying to %s",
-                                    self._anima_name, reply_to,
+                                    self._anima_name,
+                                    reply_to,
                                 )
                             else:
                                 logger.error(
                                     "[%s] Task failure notification failed after retry to %s",
-                                    self._anima_name, reply_to, exc_info=True,
+                                    self._anima_name,
+                                    reply_to,
+                                    exc_info=True,
                                 )
                                 if hasattr(self._anima, "_activity"):
                                     self._anima._activity.log(
@@ -797,5 +837,7 @@ class PendingTaskExecutor:
                 except Exception:
                     logger.warning(
                         "[%s] Failed to build task failure notification for %s",
-                        self._anima_name, reply_to, exc_info=True,
+                        self._anima_name,
+                        reply_to,
+                        exc_info=True,
                     )

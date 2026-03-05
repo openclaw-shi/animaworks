@@ -19,7 +19,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from core.schemas import ModelConfig
@@ -268,9 +268,9 @@ class ActivityLogConfig(BaseModel):
 
     rotation_enabled: bool = True
     rotation_mode: Literal["size", "time", "both"] = "size"
-    max_size_mb: int = Field(default=1024, ge=0)   # per-anima total, default 1GB
-    max_age_days: int = Field(default=7, ge=0)     # mode="time"|"both" で使用
-    rotation_time: str = "05:00"                   # 実行時刻 (JST)
+    max_size_mb: int = Field(default=1024, ge=0)  # per-anima total, default 1GB
+    max_age_days: int = Field(default=7, ge=0)  # mode="time"|"both" で使用
+    rotation_time: str = "05:00"  # 実行時刻 (JST)
 
 
 class HousekeepingConfig(BaseModel):
@@ -291,7 +291,9 @@ class HousekeepingConfig(BaseModel):
 class HeartbeatConfig(BaseModel):
     """Heartbeat scheduling and cascade prevention settings."""
 
-    interval_minutes: int = Field(default=30, ge=1, le=60)  # heartbeat interval (config-driven, not parsed from heartbeat.md)
+    interval_minutes: int = Field(
+        default=30, ge=1, le=60
+    )  # heartbeat interval (config-driven, not parsed from heartbeat.md)
     default_model: str | None = None  # global background model for heartbeat/cron (None = use main model)
     msg_heartbeat_cooldown_s: int = 300  # message-triggered heartbeat cooldown
     cascade_window_s: int = 1800  # sliding window for cascade detection
@@ -299,7 +301,9 @@ class HeartbeatConfig(BaseModel):
     depth_window_s: int = 600  # bilateral depth limiter window
     max_depth: int = 6  # max bilateral exchange depth
     actionable_intents: list[str] = ["delegation", "report", "question"]
-    enable_read_ack: bool = False  # Send read-receipt ACK to message senders (disabled by default to prevent gratitude loops)
+    enable_read_ack: bool = (
+        False  # Send read-receipt ACK to message senders (disabled by default to prevent gratitude loops)
+    )
     channel_post_cooldown_s: int = 300  # Min seconds between board posts per Anima (0 = no limit)
     max_messages_per_hour: int = 30  # Global outbound DM limit per Anima per hour
     max_messages_per_day: int = 100  # Global outbound DM limit per Anima per day
@@ -551,9 +555,7 @@ def _load_status_json(anima_dir: Path) -> dict[str, Any]:
     for status_key, config_key in field_mapping.items():
         if status_key in data:
             value = data[status_key]
-            if value is None and status_key in _nullable_fields:
-                result[config_key] = value
-            elif value not in (None, ""):
+            if value is None and status_key in _nullable_fields or value not in (None, ""):
                 result[config_key] = value
     return result
 
@@ -611,10 +613,7 @@ def resolve_anima_config(
 
     credential_name = resolved_defaults.credential
     if credential_name not in config.credentials:
-        raise KeyError(
-            f"Credential '{credential_name}' (for anima '{anima_name}') "
-            f"not found in config.credentials"
-        )
+        raise KeyError(f"Credential '{credential_name}' (for anima '{anima_name}') not found in config.credentials")
 
     credential = config.credentials[credential_name]
     return resolved_defaults, credential
@@ -640,10 +639,8 @@ def resolve_anima_config(
 DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     # ── S: Claude Agent SDK ──────────────────────────────
     "claude-*": "S",
-
     # ── C: Codex SDK (Codex CLI wrapper) ─────────────────
     "codex/*": "C",
-
     # ── A: Cloud API providers (LiteLLM + tool_use) ──────
     "openai/*": "A",
     "azure/*": "A",
@@ -657,7 +654,6 @@ DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     "minimax/*": "A",
     "moonshot/*": "A",
     "deepseek/deepseek-chat": "A",
-
     # ── A: Ollama models with reliable tool_use ──────────
     "ollama/qwen3.5*": "A",
     "ollama/qwen3:14b": "A",
@@ -673,7 +669,6 @@ DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     "ollama/minimax*": "A",
     "ollama/kimi-k2*": "A",
     "ollama/gpt-oss*": "A",
-
     # ── B: No reliable tool_use ───────────────────────────
     "ollama/qwen3:0.6b": "B",
     "ollama/qwen3:1.7b": "B",
@@ -695,47 +690,47 @@ DEFAULT_MODEL_MODES = DEFAULT_MODEL_MODE_PATTERNS
 # informational and does NOT restrict which models can be used.
 KNOWN_MODELS: list[dict[str, str]] = [
     # ── Claude / Anthropic (Mode S) ──────────────────────────────────────────
-    {"name": "claude-opus-4-6",              "mode": "S", "note": "最高性能・推奨"},
-    {"name": "claude-sonnet-4-6",            "mode": "S", "note": "バランス型・推奨"},
-    {"name": "claude-haiku-4-5-20251001",    "mode": "S", "note": "軽量・高速"},
+    {"name": "claude-opus-4-6", "mode": "S", "note": "最高性能・推奨"},
+    {"name": "claude-sonnet-4-6", "mode": "S", "note": "バランス型・推奨"},
+    {"name": "claude-haiku-4-5-20251001", "mode": "S", "note": "軽量・高速"},
     # Legacy (still available)
-    {"name": "claude-opus-4-5-20251101",     "mode": "S", "note": "旧フラッグシップ"},
-    {"name": "claude-opus-4-1-20250805",     "mode": "S", "note": "旧Opus"},
-    {"name": "claude-sonnet-4-5-20250929",   "mode": "S", "note": "旧Sonnet"},
-    {"name": "claude-sonnet-4-20250514",     "mode": "S", "note": "旧Sonnet4"},
+    {"name": "claude-opus-4-5-20251101", "mode": "S", "note": "旧フラッグシップ"},
+    {"name": "claude-opus-4-1-20250805", "mode": "S", "note": "旧Opus"},
+    {"name": "claude-sonnet-4-5-20250929", "mode": "S", "note": "旧Sonnet"},
+    {"name": "claude-sonnet-4-20250514", "mode": "S", "note": "旧Sonnet4"},
     # ── OpenAI (Mode A) ──────────────────────────────────────────────────────
-    {"name": "openai/gpt-4.1",               "mode": "A", "note": "最新・コーディング強"},
-    {"name": "openai/gpt-4.1-mini",          "mode": "A", "note": "高速・低コスト"},
-    {"name": "openai/gpt-4.1-nano",          "mode": "A", "note": "最軽量"},
-    {"name": "openai/gpt-4o",                "mode": "A", "note": "音声対応・レガシー"},
-    {"name": "openai/o3-2025-04-16",         "mode": "A", "note": "推論特化"},
-    {"name": "openai/o4-mini-2025-04-16",    "mode": "A", "note": "推論・低コスト"},
+    {"name": "openai/gpt-4.1", "mode": "A", "note": "最新・コーディング強"},
+    {"name": "openai/gpt-4.1-mini", "mode": "A", "note": "高速・低コスト"},
+    {"name": "openai/gpt-4.1-nano", "mode": "A", "note": "最軽量"},
+    {"name": "openai/gpt-4o", "mode": "A", "note": "音声対応・レガシー"},
+    {"name": "openai/o3-2025-04-16", "mode": "A", "note": "推論特化"},
+    {"name": "openai/o4-mini-2025-04-16", "mode": "A", "note": "推論・低コスト"},
     # ── Azure OpenAI (Mode A) ──────────────────────────────────────────────────
-    {"name": "azure/gpt-4.1-mini",           "mode": "A", "note": "Azure OpenAI 4.1-mini"},
-    {"name": "azure/gpt-4.1",               "mode": "A", "note": "Azure OpenAI 4.1"},
+    {"name": "azure/gpt-4.1-mini", "mode": "A", "note": "Azure OpenAI 4.1-mini"},
+    {"name": "azure/gpt-4.1", "mode": "A", "note": "Azure OpenAI 4.1"},
     # ── Google Gemini (Mode A) ────────────────────────────────────────────────
-    {"name": "google/gemini-2.5-pro",        "mode": "A", "note": "最高性能"},
-    {"name": "google/gemini-2.5-flash",      "mode": "A", "note": "高速バランス"},
+    {"name": "google/gemini-2.5-pro", "mode": "A", "note": "最高性能"},
+    {"name": "google/gemini-2.5-flash", "mode": "A", "note": "高速バランス"},
     {"name": "google/gemini-2.5-flash-lite", "mode": "A", "note": "軽量・高スループット"},
     # ── Vertex AI (Mode A) ────────────────────────────────────────────────────
-    {"name": "vertex_ai/gemini-2.5-flash",   "mode": "A", "note": "Vertex AI Flash"},
-    {"name": "vertex_ai/gemini-2.5-pro",     "mode": "A", "note": "Vertex AI Pro"},
+    {"name": "vertex_ai/gemini-2.5-flash", "mode": "A", "note": "Vertex AI Flash"},
+    {"name": "vertex_ai/gemini-2.5-pro", "mode": "A", "note": "Vertex AI Pro"},
     # ── xAI Grok (Mode A) ─────────────────────────────────────────────────────
-    {"name": "xai/grok-4",                   "mode": "A", "note": "最新Grok"},
-    {"name": "xai/grok-3-beta",              "mode": "A", "note": "安定版"},
-    {"name": "xai/grok-3-mini-beta",         "mode": "A", "note": "軽量Grok"},
+    {"name": "xai/grok-4", "mode": "A", "note": "最新Grok"},
+    {"name": "xai/grok-3-beta", "mode": "A", "note": "安定版"},
+    {"name": "xai/grok-3-mini-beta", "mode": "A", "note": "軽量Grok"},
     # ── Ollama Local (Mode A: tool_use 対応) ─────────────────────────────────
-    {"name": "ollama/qwen3.5:9b",            "mode": "A", "note": "GDN hybrid 9B・高効率"},
-    {"name": "ollama/glm-4.7",               "mode": "A", "note": "ローカル・tool_use対応"},
-    {"name": "ollama/qwen3:14b",             "mode": "A", "note": "ローカル中型"},
-    {"name": "ollama/qwen3:32b",             "mode": "A", "note": "ローカル大型"},
+    {"name": "ollama/qwen3.5:9b", "mode": "A", "note": "GDN hybrid 9B・高効率"},
+    {"name": "ollama/glm-4.7", "mode": "A", "note": "ローカル・tool_use対応"},
+    {"name": "ollama/qwen3:14b", "mode": "A", "note": "ローカル中型"},
+    {"name": "ollama/qwen3:32b", "mode": "A", "note": "ローカル大型"},
     # ── Codex (Mode C) ──────────────────────────────────────────────────────
-    {"name": "codex/o4-mini",                "mode": "C", "note": "Codex CLI経由・高速"},
-    {"name": "codex/o3",                     "mode": "C", "note": "Codex CLI経由・推論"},
-    {"name": "codex/gpt-4.1",               "mode": "C", "note": "Codex CLI経由・コーディング"},
+    {"name": "codex/o4-mini", "mode": "C", "note": "Codex CLI経由・高速"},
+    {"name": "codex/o3", "mode": "C", "note": "Codex CLI経由・推論"},
+    {"name": "codex/gpt-4.1", "mode": "C", "note": "Codex CLI経由・コーディング"},
     # ── Ollama Local (Mode B: tool_use 非対応) ────────────────────────────────
-    {"name": "ollama/gemma3:4b",             "mode": "B", "note": "軽量ローカル"},
-    {"name": "ollama/gemma3:12b",            "mode": "B", "note": "中型ローカル"},
+    {"name": "ollama/gemma3:4b", "mode": "B", "note": "軽量ローカル"},
+    {"name": "ollama/gemma3:12b", "mode": "B", "note": "中型ローカル"},
 ]
 
 # ── Legacy mode value mapping ──────────────────────────────
@@ -860,10 +855,7 @@ def _match_pattern_table(
         return table[model_name].upper()
 
     # Phase 2: wildcard patterns sorted by specificity
-    wildcard_patterns = [
-        p for p in table
-        if any(c in p for c in ("*", "?", "["))
-    ]
+    wildcard_patterns = [p for p in table if any(c in p for c in ("*", "?", "["))]
     wildcard_patterns.sort(key=_pattern_specificity)
 
     for pattern in wildcard_patterns:
@@ -873,7 +865,7 @@ def _match_pattern_table(
     return None
 
 
-def load_model_config(anima_dir: Path) -> "ModelConfig":
+def load_model_config(anima_dir: Path) -> ModelConfig:
     """Build a ModelConfig for *anima_dir* from the unified config.json.
 
     This is a standalone version of ``MemoryManager.read_model_config()``
@@ -892,7 +884,9 @@ def load_model_config(anima_dir: Path) -> "ModelConfig":
     cred_name = resolved.credential
     api_key_env = f"{cred_name.upper()}_API_KEY"
     mode = resolve_execution_mode(
-        config, resolved.model, resolved.execution_mode,
+        config,
+        resolved.model,
+        resolved.execution_mode,
     )
     return ModelConfig(
         model=resolved.model,
@@ -952,10 +946,7 @@ def _match_models_json(model_name: str) -> dict | None:
         return table[model_name]
 
     # Phase 2: wildcard patterns sorted by specificity
-    wildcard_patterns = [
-        p for p in table
-        if any(c in p for c in ("*", "?", "["))
-    ]
+    wildcard_patterns = [p for p in table if any(c in p for c in ("*", "?", "["))]
     wildcard_patterns.sort(key=_pattern_specificity)
 
     for pattern in wildcard_patterns:
@@ -1335,8 +1326,7 @@ def rename_anima_in_config(
             supervisor_count += 1
 
     # 3. Update external_messaging: anima_mapping, app_id_mapping, default_anima
-    for channel_cfg in (config.external_messaging.slack,
-                        config.external_messaging.chatwork):
+    for channel_cfg in (config.external_messaging.slack, config.external_messaging.chatwork):
         for mapping_attr in ("anima_mapping", "app_id_mapping"):
             mapping = getattr(channel_cfg, mapping_attr, {})
             for key, mapped_name in list(mapping.items()):
@@ -1348,6 +1338,8 @@ def rename_anima_in_config(
     save_config(config, config_path)
     logger.debug(
         "Renamed anima '%s' → '%s' in config (%d supervisor refs)",
-        old_name, new_name, supervisor_count,
+        old_name,
+        new_name,
+        supervisor_count,
     )
     return supervisor_count

@@ -16,7 +16,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import shutil
 import sys
 import time
@@ -104,8 +103,7 @@ def _get_whisper_model():
     if _whisper_model is None:
         if WhisperModel is None:
             raise ImportError(
-                "transcribe tool requires 'faster-whisper'. "
-                "Install with: pip install animaworks[transcribe]"
+                "transcribe tool requires 'faster-whisper'. Install with: pip install animaworks[transcribe]"
             )
         device = WHISPER_DEVICE
         if device == "auto":
@@ -138,10 +136,7 @@ def transcribe(
         Dict with raw_text, language, duration, timing info, and segments.
     """
     if WhisperModel is None:
-        raise ImportError(
-            "transcribe tool requires 'faster-whisper'. "
-            "Install with: pip install animaworks[transcribe]"
-        )
+        raise ImportError("transcribe tool requires 'faster-whisper'. Install with: pip install animaworks[transcribe]")
 
     t0 = time.time()
     model = _get_whisper_model()
@@ -167,10 +162,7 @@ def transcribe(
         "load_time": load_time,
         "transcribe_time": transcribe_time,
         "speed": info.duration / transcribe_time if transcribe_time > 0 else 0,
-        "segments": [
-            {"start": s.start, "end": s.end, "text": s.text.strip()}
-            for s in segments_list
-        ],
+        "segments": [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in segments_list],
     }
 
 
@@ -297,14 +289,9 @@ def process_audio(
         result["refine_model"] = llm_result["model"]
 
         if not quiet:
-            total = (
-                whisper_result["load_time"]
-                + whisper_result["transcribe_time"]
-                + llm_result["refine_time"]
-            )
+            total = whisper_result["load_time"] + whisper_result["transcribe_time"] + llm_result["refine_time"]
             print(
-                f"  -> Refine: {llm_result['refine_time']:.1f}s, "
-                f"Total: {total:.1f}s",
+                f"  -> Refine: {llm_result['refine_time']:.1f}s, Total: {total:.1f}s",
                 file=sys.stderr,
             )
 
@@ -337,31 +324,49 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_trans = sub.add_parser("audio", help="Transcribe an audio file")
     p_trans.add_argument("audio_path", help="Path to audio file")
     p_trans.add_argument(
-        "-l", "--language", default=None,
+        "-l",
+        "--language",
+        default=None,
         help="Language code (e.g. ja, en). Auto-detected if omitted.",
     )
     p_trans.add_argument(
-        "-m", "--model", default=None,
+        "-m",
+        "--model",
+        default=None,
         help=f"Ollama model for refinement (default: {DEFAULT_LLM_MODEL})",
     )
     p_trans.add_argument(
-        "--raw", "--raw-only", action="store_true", dest="raw",
+        "--raw",
+        "--raw-only",
+        action="store_true",
+        dest="raw",
         help="Skip LLM refinement, output raw transcription only.",
     )
     p_trans.add_argument(
-        "-p", "--prompt", default=None,
+        "-p",
+        "--prompt",
+        default=None,
         help="Custom refinement instruction.",
     )
     p_trans.add_argument(
-        "-o", "--output", default="text", choices=["text", "json"],
+        "-o",
+        "--output",
+        default="text",
+        choices=["text", "json"],
         help="Output format (default: text).",
     )
     p_trans.add_argument(
-        "-j", "--json", action="store_const", const="json", dest="output",
+        "-j",
+        "--json",
+        action="store_const",
+        const="json",
+        dest="output",
         help="Output as JSON (shorthand for -o json).",
     )
     p_trans.add_argument(
-        "-q", "--quiet", action="store_true",
+        "-q",
+        "--quiet",
+        action="store_true",
         help="Suppress progress messages.",
     )
 

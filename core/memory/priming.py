@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -18,11 +19,10 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass, field
-from datetime import date, timedelta
-from pathlib import Path
-
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, date, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from core.i18n import t
@@ -195,12 +195,15 @@ class PrimingEngine:
         if overflow_files is None:
             # Legacy path: no full injection, run full Channel C
             channel_c_coro = self._channel_c_related_knowledge(
-                keywords, message=message,
+                keywords,
+                message=message,
             )
         elif overflow_files:
             # Overflow path: search only among non-injected files
             channel_c_coro = self._channel_c_related_knowledge(
-                keywords, restrict_to=overflow_files, message=message,
+                keywords,
+                restrict_to=overflow_files,
+                message=message,
             )
         else:
             # All files injected: skip Channel C entirely
@@ -256,16 +259,21 @@ class PrimingEngine:
         truncated_knowledge = self._truncate_head(related_knowledge, budget_knowledge)
         knowledge_used_tokens = len(truncated_knowledge) // _CHARS_PER_TOKEN
         remaining_knowledge_budget = max(0, budget_knowledge - knowledge_used_tokens)
-        truncated_untrusted = self._truncate_head(
-            related_knowledge_untrusted, remaining_knowledge_budget,
-        ) if remaining_knowledge_budget > 0 else ""
+        truncated_untrusted = (
+            self._truncate_head(
+                related_knowledge_untrusted,
+                remaining_knowledge_budget,
+            )
+            if remaining_knowledge_budget > 0
+            else ""
+        )
 
         result = PrimingResult(
             sender_profile=self._truncate_head(sender_profile, budget_profile),
             recent_activity=self._truncate_tail(recent_activity, budget_activity),
             related_knowledge=truncated_knowledge,
             related_knowledge_untrusted=truncated_untrusted,
-            matched_skills=matched_skills[:max(1, budget_skills // 50)],  # ~50 tokens per skill name
+            matched_skills=matched_skills[: max(1, budget_skills // 50)],  # ~50 tokens per skill name
             pending_tasks=self._truncate_head(pending_tasks, budget_tasks),
             recent_outbound=recent_outbound,
             episodes=self._truncate_tail(episodes, budget_episodes),
@@ -308,14 +316,16 @@ class PrimingEngine:
 
         try:
             from core.memory.rag import MemoryRetriever
-            from core.memory.rag.singleton import get_vector_store
             from core.memory.rag.indexer import MemoryIndexer
+            from core.memory.rag.singleton import get_vector_store
 
             anima_name = self.anima_dir.name
             vector_store = get_vector_store(anima_name)
             indexer = MemoryIndexer(vector_store, anima_name, self.anima_dir)
             self._retriever = MemoryRetriever(
-                vector_store, indexer, self.knowledge_dir,
+                vector_store,
+                indexer,
+                self.knowledge_dir,
             )
             logger.debug("Shared MemoryRetriever initialized for %s", anima_name)
         except ImportError:
@@ -358,14 +368,24 @@ class PrimingEngine:
 
     # Event types that are noise for heartbeat/cron priming — tool invocations
     # and heartbeat lifecycle events crowd out actionable messages.
-    _HEARTBEAT_NOISE_TYPES = frozenset({
-        "tool_use", "tool_result",
-        "heartbeat_start", "heartbeat_end", "heartbeat_reflection",
-        "inbox_processing_start", "inbox_processing_end",
-    })
+    _HEARTBEAT_NOISE_TYPES = frozenset(
+        {
+            "tool_use",
+            "tool_result",
+            "heartbeat_start",
+            "heartbeat_end",
+            "heartbeat_reflection",
+            "inbox_processing_start",
+            "inbox_processing_end",
+        }
+    )
 
     async def _channel_b_recent_activity(
-        self, sender_name: str, keywords: list[str], *, channel: str = "",
+        self,
+        sender_name: str,
+        keywords: list[str],
+        *,
+        channel: str = "",
     ) -> str:
         """Channel B: Recent activity from unified activity log.
 
@@ -387,10 +407,7 @@ class PrimingEngine:
         is_background = channel in ("heartbeat",) or channel.startswith("cron:")
 
         if is_background and entries:
-            entries = [
-                e for e in entries
-                if e.type not in self._HEARTBEAT_NOISE_TYPES
-            ]
+            entries = [e for e in entries if e.type not in self._HEARTBEAT_NOISE_TYPES]
 
         # Always read shared channels for cross-Anima visibility
         channel_entries = self._read_shared_channels(limit_per_channel=5)
@@ -417,8 +434,9 @@ class PrimingEngine:
         Returns:
             List of ActivityEntry from shared channels.
         """
-        from core.memory.activity import ActivityEntry
         from datetime import datetime
+
+        from core.memory.activity import ActivityEntry
 
         if not self.shared_dir:
             return []
@@ -493,14 +511,16 @@ class PrimingEngine:
 
                 # Convert to ActivityEntry
                 for entry in selected:
-                    result.append(ActivityEntry(
-                        ts=entry.get("ts", ""),
-                        type="channel_post",
-                        content=entry.get("text", ""),
-                        summary=entry.get("text", "")[:100],
-                        from_person=entry.get("from", ""),
-                        channel=channel_name,
-                    ))
+                    result.append(
+                        ActivityEntry(
+                            ts=entry.get("ts", ""),
+                            type="channel_post",
+                            content=entry.get("text", ""),
+                            summary=entry.get("text", "")[:100],
+                            from_person=entry.get("from", ""),
+                            channel=channel_name,
+                        )
+                    )
 
         except Exception:
             logger.warning("Failed to read shared channels", exc_info=True)
@@ -512,9 +532,14 @@ class PrimingEngine:
 
         return result
 
-    _OWN_ACTION_TYPES = frozenset({
-        "message_sent", "response_sent", "message_received", "tool_use",
-    })
+    _OWN_ACTION_TYPES = frozenset(
+        {
+            "message_sent",
+            "response_sent",
+            "message_received",
+            "tool_use",
+        }
+    )
 
     def _prioritize_entries(
         self,
@@ -531,6 +556,7 @@ class PrimingEngine:
         4. Most recent entries (temporal relevance, timestamp-based)
         """
         from datetime import datetime
+
         from core.memory.activity import ActivityEntry
 
         keywords_lower = {kw.lower() for kw in keywords} if keywords else set()
@@ -539,9 +565,7 @@ class PrimingEngine:
         base_ts: datetime | None = None
         if entries:
             try:
-                base_ts = datetime.fromisoformat(
-                    entries[0].ts.replace("Z", "+00:00")
-                )
+                base_ts = datetime.fromisoformat(entries[0].ts.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 pass
 
@@ -574,9 +598,7 @@ class PrimingEngine:
             # Recency (timestamp-based: 1 point per 10 minutes)
             if base_ts is not None:
                 try:
-                    entry_ts = datetime.fromisoformat(
-                        entry.ts.replace("Z", "+00:00")
-                    )
+                    entry_ts = datetime.fromisoformat(entry.ts.replace("Z", "+00:00"))
                     elapsed_seconds = (entry_ts - base_ts).total_seconds()
                     score += elapsed_seconds / 600
                 except (ValueError, AttributeError):
@@ -712,8 +734,7 @@ class PrimingEngine:
                 src = entry.get("source", "anima")
                 marker = " [human]" if src == "human" else ""
                 channel_parts.append(
-                    f"[{entry.get('ts', '?')}] {entry.get('from', '?')}{marker}: "
-                    f"{entry.get('text', '')}"
+                    f"[{entry.get('ts', '?')}] {entry.get('from', '?')}{marker}: {entry.get('text', '')}"
                 )
 
             if channel_parts:
@@ -784,14 +805,11 @@ class PrimingEngine:
                 from pathlib import Path as _Path
 
                 results = [
-                    r for r in results
-                    if _Path(
-                        str(r.metadata.get("source_file", r.doc_id))
-                    ).stem in restrict_set
+                    r for r in results if _Path(str(r.metadata.get("source_file", r.doc_id))).stem in restrict_set
                 ]
 
             if results:
-                from core.execution._sanitize import resolve_trust, ORIGIN_UNKNOWN
+                from core.execution._sanitize import ORIGIN_UNKNOWN, resolve_trust
 
                 # Record access (Hebbian LTP: memories that fire together wire together)
                 retriever.record_access(results, anima_name)
@@ -805,11 +823,7 @@ class PrimingEngine:
                     chunk_trust = resolve_trust(chunk_origin or ORIGIN_UNKNOWN)
                     source_label = result.metadata.get("anima", anima_name)
                     label = "shared" if source_label == "shared" else "personal"
-                    line = (
-                        f"--- Result {i + 1} [{label}] "
-                        f"(score: {result.score:.3f}) ---\n"
-                        f"{result.content}\n"
-                    )
+                    line = f"--- Result {i + 1} [{label}] (score: {result.score:.3f}) ---\n{result.content}\n"
                     if chunk_trust == "untrusted":
                         untrusted_parts.append(line)
                     else:
@@ -819,13 +833,11 @@ class PrimingEngine:
                 untrusted_output = "\n".join(untrusted_parts)
 
                 logger.debug(
-                    "Channel C: Vector search returned %d results "
-                    "(medium=%d, untrusted=%d)%s",
+                    "Channel C: Vector search returned %d results (medium=%d, untrusted=%d)%s",
                     len(results),
                     len(medium_parts),
                     len(untrusted_parts),
-                    f" (restricted to {len(restrict_to)} overflow files)"
-                    if restrict_to else "",
+                    f" (restricted to {len(restrict_to)} overflow files)" if restrict_to else "",
                 )
                 return (medium_output, untrusted_output)
             else:
@@ -837,7 +849,9 @@ class PrimingEngine:
             return ("", "")
 
     async def _channel_d_skill_match(
-        self, message: str, keywords: list[str],
+        self,
+        message: str,
+        keywords: list[str],
         channel: str = "chat",
     ) -> list[str]:
         """Channel D: Skill matching via description-based 3-tier search.
@@ -861,7 +875,7 @@ class PrimingEngine:
         # Collect all skill/procedure metas from the three sources.
         # File I/O is offloaded to a thread to avoid blocking the event loop.
         all_metas: list = []
-        seen_names: set[str] = set()
+        _seen_names: set[str] = set()
 
         def _collect_metas() -> list:
             """Synchronous helper — runs in thread via run_sync."""
@@ -931,24 +945,31 @@ class PrimingEngine:
 
             if result:
                 logger.debug(
-                    "Channel D: Matched %d skills: %s", len(result), result,
+                    "Channel D: Matched %d skills: %s",
+                    len(result),
+                    result,
                 )
 
             return result
 
         except Exception as e:
             logger.warning(
-                "Channel D: Full skill matching failed, trying Tier 1/2 only: %s", e,
+                "Channel D: Full skill matching failed, trying Tier 1/2 only: %s",
+                e,
             )
             try:
                 matched = match_skills_by_description(
-                    message, all_metas, retriever=None, anima_name="",
+                    message,
+                    all_metas,
+                    retriever=None,
+                    anima_name="",
                 )
                 result = [m.name for m in matched[:_MAX_SKILL_MATCHES]]
                 if result:
                     logger.debug(
                         "Channel D: Tier 1/2 fallback matched %d skills: %s",
-                        len(result), result,
+                        len(result),
+                        result,
                     )
                 return result
             except Exception as e2:
@@ -1001,9 +1022,7 @@ class PrimingEngine:
             for i, result in enumerate(results):
                 source = result.metadata.get("source_file", result.doc_id)
                 parts.append(
-                    f"--- Episode {i + 1} (score: {result.score:.3f}, "
-                    f"source: {source}) ---\n"
-                    f"{result.content}\n"
+                    f"--- Episode {i + 1} (score: {result.score:.3f}, source: {source}) ---\n{result.content}\n"
                 )
 
             logger.debug(
@@ -1033,9 +1052,11 @@ class PrimingEngine:
         # Existing: task queue entries
         try:
             from core.memory.task_queue import TaskQueueManager
+
             manager = TaskQueueManager(self.anima_dir)
             queue_summary = await asyncio.to_thread(
-                manager.format_for_priming, _BUDGET_PENDING_TASKS,
+                manager.format_for_priming,
+                _BUDGET_PENDING_TASKS,
             )
             if queue_summary:
                 parts.append(queue_summary)
@@ -1089,13 +1110,12 @@ class PrimingEngine:
         if not started_at:
             return ""
         try:
-            from datetime import datetime as _dt, timezone as _tz
+            from datetime import datetime as _dt
+
             start = _dt.fromisoformat(started_at)
             if start.tzinfo is None:
-                start = start.replace(tzinfo=_tz.utc)
-            elapsed_s = (
-                _dt.now(_tz.utc) - start
-            ).total_seconds()
+                start = start.replace(tzinfo=UTC)
+            elapsed_s = (_dt.now(UTC) - start).total_seconds()
             if elapsed_s < 60:
                 return f"{int(elapsed_s)}s"
             if elapsed_s < 3600:
@@ -1168,6 +1188,7 @@ class PrimingEngine:
         self._config_loaded = True
         try:
             from core.config.models import load_config
+
             config = load_config()
             p = config.priming
             self._budget_greeting = p.budget_greeting
@@ -1210,16 +1231,36 @@ class PrimingEngine:
 
         # Simple greeting patterns
         greeting_patterns = [
-            "こんにちは", "おはよう", "こんばんは", "よろしく",
-            "hello", "hi", "hey", "good morning", "good evening",
+            "こんにちは",
+            "おはよう",
+            "こんばんは",
+            "よろしく",
+            "hello",
+            "hi",
+            "hey",
+            "good morning",
+            "good evening",
         ]
         if any(p in message_lower for p in greeting_patterns) and len(message) < 50:
             return "greeting"
 
         # Question patterns
         question_patterns = [
-            "?", "？", "教えて", "どう", "なぜ", "いつ", "どこ", "誰",
-            "what", "why", "when", "where", "who", "how", "can you",
+            "?",
+            "？",
+            "教えて",
+            "どう",
+            "なぜ",
+            "いつ",
+            "どこ",
+            "誰",
+            "what",
+            "why",
+            "when",
+            "where",
+            "who",
+            "how",
+            "can you",
         ]
         if any(p in message_lower for p in question_patterns):
             return "question"
@@ -1284,13 +1325,59 @@ class PrimingEngine:
 
         # Remove common Japanese particles and English stopwords
         stopwords = {
-            "の", "に", "は", "を", "が", "で", "と", "から", "まで",
-            "も", "や", "へ", "より", "など", "について",
-            "the", "a", "an", "and", "or", "but", "in", "on", "at",
-            "to", "for", "of", "with", "by", "from", "up", "about",
-            "into", "through", "during", "it", "is", "are", "was",
-            "were", "be", "been", "being", "have", "has", "had",
-            "do", "does", "did", "will", "would", "should", "could",
+            "の",
+            "に",
+            "は",
+            "を",
+            "が",
+            "で",
+            "と",
+            "から",
+            "まで",
+            "も",
+            "や",
+            "へ",
+            "より",
+            "など",
+            "について",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "up",
+            "about",
+            "into",
+            "through",
+            "during",
+            "it",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "should",
+            "could",
         }
 
         # 1. Proper nouns: katakana sequences (2+ chars)
@@ -1305,10 +1392,7 @@ class PrimingEngine:
         words = _RE_WORDS.findall(text)
 
         # Filter stopwords and short words
-        general_keywords = [
-            w for w in words
-            if len(w) >= 1 and w.lower() not in stopwords
-        ]
+        general_keywords = [w for w in words if len(w) >= 1 and w.lower() not in stopwords]
 
         # Entity matches from general keywords
         entity_matches = [w for w in general_keywords if w.lower() in known_entities]
@@ -1345,7 +1429,7 @@ class PrimingEngine:
             truncated.rfind("\n"),
         )
         if last_period > max_chars * 0.8:  # If we're close enough
-            return truncated[:last_period + 1]
+            return truncated[: last_period + 1]
 
         return truncated + "..."
 
@@ -1363,7 +1447,7 @@ class PrimingEngine:
         # Try to start at a clean boundary
         first_newline = truncated.find("\n")
         if first_newline != -1 and first_newline < max_chars * 0.2:
-            return truncated[first_newline + 1:]
+            return truncated[first_newline + 1 :]
 
         return "..." + truncated
 
@@ -1411,21 +1495,32 @@ def format_priming_section(result: PrimingResult, sender_name: str = "human") ->
         parts.append("")
         if result.related_knowledge:
             if result.related_knowledge_untrusted:
-                parts.append(wrap_priming(
-                    "related_knowledge", result.related_knowledge,
-                    trust="medium", origin=ORIGIN_CONSOLIDATION,
-                ))
+                parts.append(
+                    wrap_priming(
+                        "related_knowledge",
+                        result.related_knowledge,
+                        trust="medium",
+                        origin=ORIGIN_CONSOLIDATION,
+                    )
+                )
             else:
-                parts.append(wrap_priming(
-                    "related_knowledge", result.related_knowledge,
-                    trust="medium",
-                ))
+                parts.append(
+                    wrap_priming(
+                        "related_knowledge",
+                        result.related_knowledge,
+                        trust="medium",
+                    )
+                )
             parts.append("")
         if result.related_knowledge_untrusted:
-            parts.append(wrap_priming(
-                "related_knowledge_external", result.related_knowledge_untrusted,
-                trust="untrusted", origin=ORIGIN_EXTERNAL_PLATFORM,
-            ))
+            parts.append(
+                wrap_priming(
+                    "related_knowledge_external",
+                    result.related_knowledge_untrusted,
+                    trust="untrusted",
+                    origin=ORIGIN_EXTERNAL_PLATFORM,
+                )
+            )
             parts.append("")
 
     if result.episodes:

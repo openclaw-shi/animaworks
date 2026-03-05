@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -18,16 +19,21 @@ from collections.abc import AsyncGenerator
 from dataclasses import asdict
 from typing import Any, cast
 
-from core.schemas import ImageData
+from core.execution._litellm_tools import _convert_litellm_tool_calls
 from core.execution._streaming import (
     accumulate_tool_call_chunks,
     parse_accumulated_tool_calls,
     stream_error_boundary,
 )
-from core.execution.base import ExecutionResult, StreamingThinkFilter, TokenUsage, ToolCallRecord, strip_thinking_tags
-from core.execution.reminder import MSG_CONTEXT_THRESHOLD, MSG_FINAL_ITERATION, MSG_OUTPUT_TRUNCATED, SystemReminderQueue
+from core.execution.base import StreamingThinkFilter, TokenUsage, ToolCallRecord, strip_thinking_tags
+from core.execution.reminder import (
+    MSG_CONTEXT_THRESHOLD,
+    MSG_FINAL_ITERATION,
+    MSG_OUTPUT_TRUNCATED,
+    SystemReminderQueue,
+)
 from core.prompt.context import ContextTracker
-from core.execution._litellm_tools import _convert_litellm_tool_calls
+from core.schemas import ImageData
 
 logger = logging.getLogger("animaworks.execution.litellm_loop")
 
@@ -52,6 +58,7 @@ class StreamingMixin:
         not within this method.
         """
         import litellm
+
         # When thinking_blocks are missing from assistant messages on tool-call
         # turns, Anthropic/Bedrock returns 400.  This flag tells LiteLLM to
         # silently drop the thinking param for that turn instead of crashing.
@@ -73,30 +80,24 @@ class StreamingMixin:
         # LiteLLM drops the thinking param for the entire session because
         # the Anthropic API requires thinking_blocks on every assistant
         # turn with tool_use when extended thinking is enabled.
-        _thinking_enabled = (
-            llm_kwargs.get("thinking") or llm_kwargs.get("reasoning_effort")
-        )
+        _thinking_enabled = llm_kwargs.get("thinking") or llm_kwargs.get("reasoning_effort")
         if _thinking_enabled:
             _patched = 0
             for msg in messages:
-                if (
-                    msg.get("role") == "assistant"
-                    and msg.get("tool_calls")
-                    and not msg.get("thinking_blocks")
-                ):
+                if msg.get("role") == "assistant" and msg.get("tool_calls") and not msg.get("thinking_blocks"):
                     msg["thinking_blocks"] = [
                         {"type": "thinking", "thinking": "(resumed session)"},
                     ]
                     _patched += 1
             if _patched:
                 logger.info(
-                    "A stream: injected synthetic thinking_blocks into "
-                    "%d prior assistant message(s)",
+                    "A stream: injected synthetic thinking_blocks into %d prior assistant message(s)",
                     _patched,
                 )
 
         async with stream_error_boundary(
-            all_response_text, executor_name="A-stream",
+            all_response_text,
+            executor_name="A-stream",
         ):
             for iteration in range(max_iterations):
                 if self._check_interrupted():
@@ -105,17 +106,17 @@ class StreamingMixin:
                     yield {"type": "done", "full_text": "[Session interrupted by user]", "result_message": None}
                     return
 
-                is_final_iteration = (
-                    max_iterations > 1 and iteration == max_iterations - 1
-                )
+                is_final_iteration = max_iterations > 1 and iteration == max_iterations - 1
 
                 if is_final_iteration:
-                    messages.append({
-                        "role": "user",
-                        "content": SystemReminderQueue.format_reminder(
-                            MSG_FINAL_ITERATION,
-                        ),
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": SystemReminderQueue.format_reminder(
+                                MSG_FINAL_ITERATION,
+                            ),
+                        }
+                    )
                     logger.info(
                         "A stream final iteration=%d: tools removed",
                         iteration,
@@ -123,20 +124,21 @@ class StreamingMixin:
 
                 logger.debug(
                     "A stream iteration=%d messages=%d",
-                    iteration, len(messages),
+                    iteration,
+                    len(messages),
                 )
 
                 iter_tools = [] if is_final_iteration else tools
 
                 # ── Pre-flight: clamp max_tokens to fit context window ──
                 iter_kwargs = self._preflight_clamp(
-                    llm_kwargs, messages, iter_tools, litellm,
+                    llm_kwargs,
+                    messages,
+                    iter_tools,
+                    litellm,
                 )
                 if iter_kwargs is None:
-                    error_msg = (
-                        f"[Error: prompt too large for "
-                        f"{self._model_config.model}]"
-                    )
+                    error_msg = f"[Error: prompt too large for {self._model_config.model}]"
                     yield {"type": "text_delta", "text": error_msg}
                     yield {
                         "type": "done",
@@ -201,18 +203,18 @@ class StreamingMixin:
                         if not _reasoning_seen:
                             _reasoning_seen = True
                             logger.info(
-                                "A stream: reasoning_content detected "
-                                "(model may be in thinking mode)",
+                                "A stream: reasoning_content detected (model may be in thinking mode)",
                             )
                             yield {"type": "thinking_start"}
                         yield {"type": "thinking_delta", "text": reasoning}
 
                     if delta.tool_calls:
                         new_tool_names = accumulate_tool_call_chunks(
-                            tool_calls_acc, delta.tool_calls,
+                            tool_calls_acc,
+                            delta.tool_calls,
                         )
                         for tool_name in new_tool_names:
-                            for idx, entry in tool_calls_acc.items():
+                            for _, entry in tool_calls_acc.items():
                                 if entry["name"] == tool_name:
                                     yield {
                                         "type": "tool_start",
@@ -243,7 +245,9 @@ class StreamingMixin:
                             _msg_obj = getattr(_choices[0], "message", None)
                             if _msg_obj:
                                 _iter_thinking_blocks = getattr(
-                                    _msg_obj, "thinking_blocks", None,
+                                    _msg_obj,
+                                    "thinking_blocks",
+                                    None,
                                 )
                     # Fallback: build from reasoning_parts when response_uptil_now
                     # doesn't provide thinking_blocks (e.g. Bedrock streaming).
@@ -263,15 +267,22 @@ class StreamingMixin:
                         "A stream: empty response at iteration=%d "
                         "chunks=%d finish_reason=%s reasoning_seen=%s "
                         "usage=%s model=%s",
-                        iteration, _chunk_count, finish_reason,
-                        _reasoning_seen, usage_data,
+                        iteration,
+                        _chunk_count,
+                        finish_reason,
+                        _reasoning_seen,
+                        usage_data,
                         self._model_config.model,
                     )
 
                 # Update context tracker + accumulate usage
                 if usage_data:
-                    _usage_acc.input_tokens += usage_data.get("input_tokens", 0) or usage_data.get("prompt_tokens", 0) or 0
-                    _usage_acc.output_tokens += usage_data.get("output_tokens", 0) or usage_data.get("completion_tokens", 0) or 0
+                    _usage_acc.input_tokens += (
+                        usage_data.get("input_tokens", 0) or usage_data.get("prompt_tokens", 0) or 0
+                    )
+                    _usage_acc.output_tokens += (
+                        usage_data.get("output_tokens", 0) or usage_data.get("completion_tokens", 0) or 0
+                    )
                 if tracker and usage_data:
                     tracker.update_from_usage(usage_data)
 
@@ -280,9 +291,7 @@ class StreamingMixin:
                             ratio = float(tracker.usage_ratio)
                         except (TypeError, ValueError):
                             ratio = 0.0
-                        self.reminder_queue.push_sync(
-                            MSG_CONTEXT_THRESHOLD.format(ratio=ratio)
-                        )
+                        self.reminder_queue.push_sync(MSG_CONTEXT_THRESHOLD.format(ratio=ratio))
 
                 if finish_reason == "length":
                     self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
@@ -300,7 +309,8 @@ class StreamingMixin:
                 if not tool_calls_acc:
                     full_text = "\n".join(all_response_text)
                     logger.debug(
-                        "A stream final response at iteration=%d", iteration,
+                        "A stream final response at iteration=%d",
+                        iteration,
                     )
                     yield {
                         "type": "done",
@@ -322,18 +332,20 @@ class StreamingMixin:
                 # Reconstruct assistant message for conversation history
                 assistant_tool_calls = []
                 for tc in parsed_calls:
-                    assistant_tool_calls.append({
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tc["name"],
-                            "arguments": (
-                                _json.dumps(tc["arguments"], ensure_ascii=False)
-                                if tc["arguments"] is not None
-                                else tc.get("raw_arguments", "")
-                            ),
-                        },
-                    })
+                    assistant_tool_calls.append(
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": (
+                                    _json.dumps(tc["arguments"], ensure_ascii=False)
+                                    if tc["arguments"] is not None
+                                    else tc.get("raw_arguments", "")
+                                ),
+                            },
+                        }
+                    )
                 assistant_msg: dict[str, Any] = {
                     "role": "assistant",
                     "content": iter_text or None,
@@ -348,7 +360,10 @@ class StreamingMixin:
                 messages.append(assistant_msg)
 
                 async for event in self._process_streaming_tool_calls(
-                    parsed_calls, messages, tools, _active_categories,
+                    parsed_calls,
+                    messages,
+                    tools,
+                    _active_categories,
                     context_window=context_window,
                 ):
                     if "record" in event:
@@ -358,10 +373,12 @@ class StreamingMixin:
                 # ── Drain reminder queue after tool results ────
                 reminder = self.reminder_queue.drain_sync()
                 if reminder:
-                    messages.append({
-                        "role": "user",
-                        "content": SystemReminderQueue.format_reminder(reminder),
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": SystemReminderQueue.format_reminder(reminder),
+                        }
+                    )
 
         # If we exit the loop without returning, max iterations reached
         full_text = "\n".join(all_response_text) or "(max iterations reached)"
@@ -407,26 +424,32 @@ class StreamingMixin:
         _usage_acc_ol = TokenUsage()
 
         async with stream_error_boundary(
-            all_response_text, executor_name="A-ollama-stream",
+            all_response_text,
+            executor_name="A-ollama-stream",
         ):
             for iteration in range(max_iterations):
                 if self._check_interrupted():
                     logger.info("LiteLLM streaming interrupted at iteration=%d", iteration)
                     yield {"type": "text_delta", "text": "[Session interrupted by user]"}
-                    yield {"type": "done", "full_text": "[Session interrupted by user]", "result_message": None, "usage": _usage_acc_ol.to_dict()}
+                    yield {
+                        "type": "done",
+                        "full_text": "[Session interrupted by user]",
+                        "result_message": None,
+                        "usage": _usage_acc_ol.to_dict(),
+                    }
                     return
 
-                is_final_iteration = (
-                    max_iterations > 1 and iteration == max_iterations - 1
-                )
+                is_final_iteration = max_iterations > 1 and iteration == max_iterations - 1
 
                 if is_final_iteration:
-                    messages.append({
-                        "role": "user",
-                        "content": SystemReminderQueue.format_reminder(
-                            MSG_FINAL_ITERATION,
-                        ),
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": SystemReminderQueue.format_reminder(
+                                MSG_FINAL_ITERATION,
+                            ),
+                        }
+                    )
                     logger.info(
                         "A ollama stream final iteration=%d: tools removed",
                         iteration,
@@ -434,20 +457,21 @@ class StreamingMixin:
 
                 logger.debug(
                     "A ollama stream iteration=%d messages=%d",
-                    iteration, len(messages),
+                    iteration,
+                    len(messages),
                 )
 
                 iter_tools = [] if is_final_iteration else tools
 
                 # ── Pre-flight: clamp max_tokens to fit context window ──
                 iter_kwargs = self._preflight_clamp(
-                    llm_kwargs, messages, iter_tools, litellm,
+                    llm_kwargs,
+                    messages,
+                    iter_tools,
+                    litellm,
                 )
                 if iter_kwargs is None:
-                    error_msg = (
-                        f"[Error: prompt too large for "
-                        f"{self._model_config.model}]"
-                    )
+                    error_msg = f"[Error: prompt too large for {self._model_config.model}]"
                     yield {"type": "text_delta", "text": error_msg}
                     yield {
                         "type": "done",
@@ -483,9 +507,7 @@ class StreamingMixin:
                             ratio = float(tracker.usage_ratio)
                         except (TypeError, ValueError):
                             ratio = 0.0
-                        self.reminder_queue.push_sync(
-                            MSG_CONTEXT_THRESHOLD.format(ratio=ratio)
-                        )
+                        self.reminder_queue.push_sync(MSG_CONTEXT_THRESHOLD.format(ratio=ratio))
 
                 if choice.finish_reason == "length":
                     self.reminder_queue.push_sync(MSG_OUTPUT_TRUNCATED)
@@ -541,7 +563,10 @@ class StreamingMixin:
                 parsed_calls = _convert_litellm_tool_calls(tool_calls)
 
                 async for event in self._process_streaming_tool_calls(
-                    parsed_calls, messages, tools, _active_categories,
+                    parsed_calls,
+                    messages,
+                    tools,
+                    _active_categories,
                     context_window=context_window,
                 ):
                     if "record" in event:
@@ -551,15 +576,18 @@ class StreamingMixin:
                 # ── Drain reminder queue after tool results ────
                 reminder = self.reminder_queue.drain_sync()
                 if reminder:
-                    messages.append({
-                        "role": "user",
-                        "content": SystemReminderQueue.format_reminder(reminder),
-                    })
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": SystemReminderQueue.format_reminder(reminder),
+                        }
+                    )
 
         # Max iterations reached
         full_text = "\n".join(all_response_text) or "(max iterations reached)"
         logger.warning(
-            "A ollama stream max iterations (%d) reached", max_iterations,
+            "A ollama stream max iterations (%d) reached",
+            max_iterations,
         )
         yield {
             "type": "done",

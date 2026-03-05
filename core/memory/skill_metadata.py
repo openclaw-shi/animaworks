@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import logging
 import re
 import unicodedata
@@ -53,12 +53,44 @@ def _match_tier1(desc_norm: str, message_norm: str) -> bool:
 
 
 # Common English stop words to exclude from Tier 2 vocabulary matching.
-_TIER2_STOP_WORDS: frozenset[str] = frozenset({
-    "the", "and", "for", "with", "this", "that", "from", "use", "used",
-    "when", "into", "also", "can", "are", "was", "has", "have", "had",
-    "not", "but", "its", "any", "all", "each", "more", "such", "than",
-    "tool", "file", "new", "via", "etc", "using", "other",
-})
+_TIER2_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "this",
+        "that",
+        "from",
+        "use",
+        "used",
+        "when",
+        "into",
+        "also",
+        "can",
+        "are",
+        "was",
+        "has",
+        "have",
+        "had",
+        "not",
+        "but",
+        "its",
+        "any",
+        "all",
+        "each",
+        "more",
+        "such",
+        "than",
+        "tool",
+        "file",
+        "new",
+        "via",
+        "etc",
+        "using",
+        "other",
+    }
+)
 
 
 def _match_tier2(desc_norm: str, message_norm: str) -> bool:
@@ -137,7 +169,10 @@ def match_skills_by_description(
     if retriever is not None and anima_name and still_remaining:
         try:
             vector_matched = _match_tier3_vector(
-                message, still_remaining, retriever, anima_name,
+                message,
+                still_remaining,
+                retriever,
+                anima_name,
             )
             for skill in vector_matched:
                 if skill.name not in matched_names:
@@ -259,19 +294,13 @@ class SkillMetadataService:
 
     def list_skill_metas(self) -> list[SkillMeta]:
         """Return SkillMeta for each personal skill."""
-        return [
-            self.extract_skill_meta(f, is_common=False)
-            for f in sorted(self._skills_dir.glob("*/SKILL.md"))
-        ]
+        return [self.extract_skill_meta(f, is_common=False) for f in sorted(self._skills_dir.glob("*/SKILL.md"))]
 
     def list_common_skill_metas(self) -> list[SkillMeta]:
         """Return SkillMeta for each common skill."""
         if not self._common_skills_dir.is_dir():
             return []
-        return [
-            self.extract_skill_meta(f, is_common=True)
-            for f in sorted(self._common_skills_dir.glob("*/SKILL.md"))
-        ]
+        return [self.extract_skill_meta(f, is_common=True) for f in sorted(self._common_skills_dir.glob("*/SKILL.md"))]
 
     def list_skill_summaries(self) -> list[tuple[str, str]]:
         """Return (name, description) for each personal skill."""

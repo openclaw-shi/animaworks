@@ -60,7 +60,7 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "gemini-2.5-flash": 1_048_576,
     # Codex CLI models (same context as OpenAI API models)
     "o4-mini": 200_000,
-    "o3": 200_000,
+    "o3": 200_000,  # noqa: F601
     # GLM (THUDM)
     "glm-4": 131_072,
     # Qwen 3.5 (GDN hybrid — native 262K but 64K practical for 9B)
@@ -132,6 +132,7 @@ def resolve_context_window(
             return size
     return _DEFAULT_CONTEXT_WINDOW
 
+
 # Backward-compatible alias (deprecated)
 _resolve_context_window = resolve_context_window
 
@@ -158,25 +159,27 @@ class ContextTracker:
     def __post_init__(self) -> None:
         if not self.model:
             from core.config.models import AnimaDefaults
+
             self.model = AnimaDefaults().model
 
         # Auto-scale threshold for small context windows.
         original = self.threshold
         self.threshold = resolve_context_threshold(
-            self.threshold, self.context_window,
+            self.threshold,
+            self.context_window,
         )
         if self.threshold != original:
             logger.info(
-                "Context threshold auto-scaled: %.2f → %.2f "
-                "(model=%s, window=%d)",
-                original, self.threshold, self.model, self.context_window,
+                "Context threshold auto-scaled: %.2f → %.2f (model=%s, window=%d)",
+                original,
+                self.threshold,
+                self.model,
+                self.context_window,
             )
 
     @property
     def context_window(self) -> int:
-        return resolve_context_window(
-            self.model, self.context_window_overrides or None
-        )
+        return resolve_context_window(self.model, self.context_window_overrides or None)
 
     @property
     def usage_ratio(self) -> float:
@@ -212,8 +215,7 @@ class ContextTracker:
         if not self._threshold_hit and ratio >= self.threshold:
             self._threshold_hit = True
             logger.warning(
-                "Context threshold %.0f%% exceeded (transcript estimate): "
-                "~%d tokens / %d window (%.1f%%)",
+                "Context threshold %.0f%% exceeded (transcript estimate): ~%d tokens / %d window (%.1f%%)",
                 self.threshold * 100,
                 estimated_tokens,
                 self.context_window,
@@ -252,33 +254,18 @@ class ContextTracker:
             return False
 
         # Normalise keys: LiteLLM uses prompt_tokens / completion_tokens
-        self._input_tokens = (
-            usage.get("input_tokens")
-            or usage.get("prompt_tokens")
-            or 0
-        )
-        self._output_tokens = (
-            usage.get("output_tokens")
-            or usage.get("completion_tokens")
-            or 0
-        )
+        self._input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens") or 0
+        self._output_tokens = usage.get("output_tokens") or usage.get("completion_tokens") or 0
 
-        numerator = (
-            (self._input_tokens + self._output_tokens)
-            if include_output_in_ratio
-            else self._input_tokens
-        )
-        self._last_ratio = (
-            numerator / self.context_window if self.context_window else 0.0
-        )
+        numerator = (self._input_tokens + self._output_tokens) if include_output_in_ratio else self._input_tokens
+        self._last_ratio = numerator / self.context_window if self.context_window else 0.0
 
         newly_crossed = False
         if not self._threshold_hit and self._last_ratio >= self.threshold:
             self._threshold_hit = True
             newly_crossed = True
             logger.warning(
-                "Context threshold %.0f%% exceeded: "
-                "%d tokens / %d window (%.1f%%)",
+                "Context threshold %.0f%% exceeded: %d tokens / %d window (%.1f%%)",
                 self.threshold * 100,
                 numerator,
                 self.context_window,

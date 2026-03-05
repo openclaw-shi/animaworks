@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import hashlib
 import json
 import logging
@@ -12,6 +12,7 @@ logger = logging.getLogger("animaworks.memory")
 
 
 # ── Shared-index change detection helpers ─────────────────
+
 
 def _compute_dir_hash(dir_path: Path, glob_pattern: str = "*.md") -> str:
     """Compute a SHA-256 hash over file relative paths + mtimes in *dir_path*.
@@ -93,11 +94,13 @@ class RAGMemorySearch:
             if procedures_dir.is_dir() and any(procedures_dir.glob("*.md")):
                 try:
                     indexed = self._indexer.index_directory(
-                        procedures_dir, "procedures",
+                        procedures_dir,
+                        "procedures",
                     )
                     if indexed > 0:
                         logger.debug(
-                            "Indexed %d chunks from procedures/", indexed,
+                            "Indexed %d chunks from procedures/",
+                            indexed,
                         )
                 except Exception as e:
                     logger.warning("Failed to index procedures: %s", e)
@@ -108,11 +111,13 @@ class RAGMemorySearch:
             if conv_file.is_file():
                 try:
                     indexed = self._indexer.index_conversation_summary(
-                        state_dir, anima_name,
+                        state_dir,
+                        anima_name,
                     )
                     if indexed > 0:
                         logger.debug(
-                            "Indexed %d chunks from conversation_summary", indexed,
+                            "Indexed %d chunks from conversation_summary",
+                            indexed,
                         )
                 except Exception as e:
                     logger.warning("Failed to index conversation_summary: %s", e)
@@ -176,7 +181,8 @@ class RAGMemorySearch:
             _write_shared_hash(meta_path, "shared_common_knowledge_hash", current_hash)
             if indexed > 0:
                 logger.info(
-                    "Indexed %d chunks into shared_common_knowledge", indexed,
+                    "Indexed %d chunks into shared_common_knowledge",
+                    indexed,
                 )
         except Exception as e:
             logger.warning("Failed to index shared common_knowledge: %s", e)
@@ -214,7 +220,8 @@ class RAGMemorySearch:
             _write_shared_hash(meta_path, "shared_common_skills_hash", current_hash)
             if indexed > 0:
                 logger.info(
-                    "Indexed %d chunks into shared_common_skills", indexed,
+                    "Indexed %d chunks into shared_common_skills",
+                    indexed,
                 )
         except Exception as e:
             logger.warning("Failed to index shared common_skills: %s", e)
@@ -288,8 +295,12 @@ class RAGMemorySearch:
 
         # Hybrid: append vector search results when RAG is available
         if self._indexer is not None and scope in (
-            "knowledge", "episodes", "common_knowledge", "procedures",
-            "conversation_summary", "all",
+            "knowledge",
+            "episodes",
+            "common_knowledge",
+            "procedures",
+            "conversation_summary",
+            "all",
         ):
             try:
                 vector_hits = self._vector_search_memory(query, scope, knowledge_dir)
@@ -321,7 +332,10 @@ class RAGMemorySearch:
         return ["knowledge"]
 
     def _vector_search_memory(
-        self, query: str, scope: str, knowledge_dir: Path,
+        self,
+        query: str,
+        scope: str,
+        knowledge_dir: Path,
     ) -> list[tuple[str, str]]:
         """Perform vector search to augment keyword results."""
         from core.memory.rag.retriever import MemoryRetriever
@@ -374,7 +388,9 @@ class RAGMemorySearch:
         return results
 
     def search_procedures(
-        self, query: str, procedures_dir: Path,
+        self,
+        query: str,
+        procedures_dir: Path,
     ) -> list[tuple[str, str]]:
         """Search procedures/ by keyword (delegates to search_memory_text)."""
         return self.search_memory_text(

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -12,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 
 from core.i18n import t
 from core.time_utils import now_iso
-
 from core.tooling.handler_base import (
     OnMessageSentFn,
     _error_result,
@@ -65,21 +65,22 @@ class CommsToolsMixin:
 
         # ── Resolve recipient ──
         try:
-            from core.outbound import resolve_recipient, send_external
             from core.config.models import load_config
+            from core.outbound import resolve_recipient, send_external
             from core.paths import get_animas_dir
 
             config = load_config()
             animas_dir = get_animas_dir()
-            known_animas = {
-                d.name for d in animas_dir.iterdir() if d.is_dir()
-            } if animas_dir.exists() else set()
+            known_animas = {d.name for d in animas_dir.iterdir() if d.is_dir()} if animas_dir.exists() else set()
 
             resolved = resolve_recipient(
-                to, known_animas, config.external_messaging,
+                to,
+                known_animas,
+                config.external_messaging,
             )
         except (ValueError, Exception) as e:
             from core.exceptions import RecipientNotFoundError
+
             if isinstance(e, (ValueError, RecipientNotFoundError)):
                 session = active_session_type.get()
                 if session == "chat":
@@ -95,7 +96,9 @@ class CommsToolsMixin:
                 )
             logger.warning(
                 "Recipient resolution failed for '%s': %s",
-                to, e, exc_info=True,
+                to,
+                e,
+                exc_info=True,
             )
             return _error_result(
                 "RecipientResolutionError",
@@ -105,14 +108,16 @@ class CommsToolsMixin:
 
         # ── Build outgoing origin_chain (provenance Phase 3) ──
         outgoing_chain = build_outgoing_origin_chain(
-            self._session_origin, self._session_origin_chain,
+            self._session_origin,
+            self._session_origin_chain,
         )
 
         # ── External routing ──
         if resolved is not None and not resolved.is_internal:
             logger.info(
                 "send_message routed externally: to=%s channel=%s",
-                to, resolved.channel,
+                to,
+                resolved.channel,
             )
             self._replied_to.setdefault(active_session_type.get(), set()).add(to)
             self._persist_replied_to(to, success=True)
@@ -128,14 +133,19 @@ class CommsToolsMixin:
             if self._on_message_sent:
                 try:
                     self._on_message_sent(
-                        self._messenger.anima_name, to, content,
+                        self._messenger.anima_name,
+                        to,
+                        content,
                     )
                 except Exception:
                     logger.exception("on_message_sent callback failed")
 
             from core.outbound import send_external
+
             result = send_external(
-                resolved, content, sender_name=self._anima_name,
+                resolved,
+                content,
+                sender_name=self._anima_name,
                 anima_name=self._anima_name,
             )
             return result
@@ -161,7 +171,9 @@ class CommsToolsMixin:
         if self._on_message_sent:
             try:
                 self._on_message_sent(
-                    self._messenger.anima_name, internal_to, content,
+                    self._messenger.anima_name,
+                    internal_to,
+                    content,
                 )
             except Exception:
                 logger.exception("on_message_sent callback failed")
@@ -180,6 +192,7 @@ class CommsToolsMixin:
 
         # ── ACL gate ──
         from core.messenger import is_channel_member
+
         if not is_channel_member(self._messenger.shared_dir, channel, self._anima_name):
             return t("handler.channel_acl_denied", channel=channel)
 
@@ -201,6 +214,7 @@ class CommsToolsMixin:
         # ── Cross-run guard: file-based cooldown check ──
         try:
             from core.config.models import load_config
+
             cooldown = load_config().heartbeat.channel_post_cooldown_s
         except Exception:
             cooldown = 300
@@ -208,7 +222,9 @@ class CommsToolsMixin:
             last = self._messenger.last_post_by(self._anima_name, channel)
             if last:
                 from datetime import datetime
+
                 from core.time_utils import ensure_aware, now_jst
+
                 try:
                     ts = ensure_aware(datetime.fromisoformat(last["ts"]))
                     elapsed = (now_jst() - ts).total_seconds()
@@ -232,7 +248,8 @@ class CommsToolsMixin:
         else:
             logger.info(
                 "Suppressed board fanout for board_mention reply: channel=%s anima=%s",
-                channel, self._anima_name,
+                channel,
+                self._anima_name,
             )
 
         return f"Posted to #{channel}"
@@ -249,6 +266,7 @@ class CommsToolsMixin:
         is_all = "all" in mentions
 
         from core.paths import get_data_dir
+
         sockets_dir = get_data_dir() / "run" / "sockets"
         if sockets_dir.exists():
             running = {p.stem for p in sockets_dir.glob("*.sock")}
@@ -263,22 +281,20 @@ class CommsToolsMixin:
 
         # ── ACL filter: only notify channel members ──
         from core.messenger import is_channel_member
-        targets = {
-            t for t in targets
-            if is_channel_member(self._messenger.shared_dir, channel, t)
-        }
+
+        targets = {t for t in targets if is_channel_member(self._messenger.shared_dir, channel, t)}
 
         if not targets:
             return
 
         from_name = self._anima_name
-        fanout_content = (
-            f"[board_reply:channel={channel},from={from_name}]\n"
-            + t("handler.board_mention_content", from_name=from_name, channel=channel, text=text)
+        fanout_content = f"[board_reply:channel={channel},from={from_name}]\n" + t(
+            "handler.board_mention_content", from_name=from_name, channel=channel, text=text
         )
 
         outgoing_chain = build_outgoing_origin_chain(
-            self._session_origin, self._session_origin_chain,
+            self._session_origin,
+            self._session_origin_chain,
         )
 
         for target in sorted(targets):
@@ -291,11 +307,15 @@ class CommsToolsMixin:
                 )
                 logger.info(
                     "board_mention fanout: %s -> %s (channel=%s)",
-                    from_name, target, channel,
+                    from_name,
+                    target,
+                    channel,
                 )
             except Exception:
                 logger.warning(
-                    "Failed to fanout board_mention to %s", target, exc_info=True,
+                    "Failed to fanout board_mention to %s",
+                    target,
+                    exc_info=True,
                 )
 
     def _handle_read_channel(self, args: dict[str, Any]) -> str:
@@ -313,8 +333,9 @@ class CommsToolsMixin:
             )
 
         # ── ACL gate ──
-        from core.messenger import is_channel_member, _validate_name
         from core.exceptions import RecipientNotFoundError
+        from core.messenger import _validate_name, is_channel_member
+
         try:
             _validate_name(channel, "channel name")
         except RecipientNotFoundError:
@@ -352,14 +373,14 @@ class CommsToolsMixin:
         if not action or not channel:
             return _error_result("InvalidArguments", "action and channel are required")
 
+        from core.exceptions import RecipientNotFoundError
         from core.messenger import (
             ChannelMeta,
+            _validate_name,
+            is_channel_member,
             load_channel_meta,
             save_channel_meta,
-            is_channel_member,
-            _validate_name,
         )
-        from core.exceptions import RecipientNotFoundError
 
         try:
             _validate_name(channel, "channel name")
@@ -480,7 +501,9 @@ class CommsToolsMixin:
 
         try:
             coro = self._human_notifier.notify(
-                subject, body, priority,
+                subject,
+                body,
+                priority,
                 anima_name=self._anima_name,
             )
             try:
@@ -490,6 +513,7 @@ class CommsToolsMixin:
 
             if loop is not None:
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     results = pool.submit(asyncio.run, coro).result(timeout=60)
             else:

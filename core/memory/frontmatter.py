@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
-
 import logging
 import re
 from pathlib import Path
@@ -44,14 +44,14 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 
     # Skip the opening ``---`` line
     first_newline = text.index("\n") if "\n" in text else len(text)
-    rest = text[first_newline + 1:]
+    rest = text[first_newline + 1 :]
 
     m = _FM_FENCE.search(rest)
     if m is None:
         return "", text
 
-    yaml_str = rest[:m.start()]
-    body = rest[m.end():]
+    yaml_str = rest[: m.start()]
+    body = rest[m.end() :]
     # Strip at most two leading newlines (the blank line after ``---``)
     if body.startswith("\n\n"):
         body = body[2:]
@@ -71,6 +71,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         return {}, body
 
     import yaml
+
     try:
         meta = yaml.safe_load(yaml_str)
         if not isinstance(meta, dict):
@@ -104,9 +105,11 @@ def validate_and_complete_frontmatter(yaml_dict: dict[str, Any], path: Path | No
     if "created_at" not in yaml_dict:
         if path is not None and path.exists():
             from datetime import datetime, timedelta, timezone
+
             _JST = timezone(timedelta(hours=9))
             yaml_dict["created_at"] = datetime.fromtimestamp(
-                path.stat().st_mtime, tz=_JST,
+                path.stat().st_mtime,
+                tz=_JST,
             ).isoformat()
         else:
             yaml_dict["created_at"] = now_iso()
@@ -238,7 +241,10 @@ class FrontmatterService:
     # ── Procedure frontmatter ─────────────────────────────
 
     def write_procedure_with_meta(
-        self, path: Path, content: str, metadata: dict,
+        self,
+        path: Path,
+        content: str,
+        metadata: dict,
     ) -> None:
         """Write a procedure file with YAML frontmatter metadata."""
         import yaml
@@ -272,10 +278,7 @@ class FrontmatterService:
 
     def list_procedure_metas(self, extract_skill_meta_fn) -> list[SkillMeta]:
         """Return SkillMeta for each procedure file."""
-        return [
-            extract_skill_meta_fn(f, is_common=False)
-            for f in sorted(self._procedures_dir.glob("*.md"))
-        ]
+        return [extract_skill_meta_fn(f, is_common=False) for f in sorted(self._procedures_dir.glob("*.md"))]
 
     @staticmethod
     def _extract_description(text: str, fallback_name: str) -> str:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -106,6 +107,7 @@ DEFAULT_PRICING: dict[str, dict[str, float]] = {
 
 # ── TokenUsageLogger ──────────────────────────────────────────
 
+
 class TokenUsageLogger:
     """Append-only JSONL logger for per-session token usage."""
 
@@ -203,6 +205,7 @@ class TokenUsageLogger:
         if self._pricing is not None:
             return self._pricing
         from core.paths import get_data_dir
+
         custom = get_data_dir() / "pricing.json"
         if custom.is_file():
             try:

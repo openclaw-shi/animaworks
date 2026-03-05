@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -27,7 +28,7 @@ def _is_forwarded_https(request: Request) -> bool:
     """Detect HTTPS when behind a reverse proxy."""
     if request.headers.get("x-forwarded-proto") == "https":
         return True
-    if request.url.scheme == "https":
+    if request.url.scheme == "https":  # noqa: SIM103
         return True
     return False
 
@@ -75,11 +76,13 @@ def create_auth_router() -> APIRouter:
         token = create_session(auth_config, user.username)
         save_auth(auth_config)
 
-        response = JSONResponse({
-            "username": user.username,
-            "display_name": user.display_name,
-            "role": user.role,
-        })
+        response = JSONResponse(
+            {
+                "username": user.username,
+                "display_name": user.display_name,
+                "role": user.role,
+            }
+        )
         is_https = _is_forwarded_https(request)
         response.set_cookie(
             key="session_token",

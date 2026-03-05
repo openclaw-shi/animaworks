@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -148,7 +149,8 @@ class KnowledgeGraph:
                     target_node = self._resolve_link_target(graph, target_stem)
                     if target_node and target_node != node_id:
                         graph.add_edge(
-                            node_id, target_node,
+                            node_id,
+                            target_node,
                             link_type="explicit",
                             similarity=1.0,
                         )
@@ -245,7 +247,9 @@ class KnowledgeGraph:
                 threshold = getattr(self, "_implicit_link_threshold", IMPLICIT_LINK_THRESHOLD)
                 for result in results:
                     target_node = self._match_result_to_node(
-                        graph, result.document.id, result.score,
+                        graph,
+                        result.document.id,
+                        result.score,
                     )
                     if (
                         target_node is not None
@@ -254,14 +258,17 @@ class KnowledgeGraph:
                         and not graph.has_edge(node_id, target_node)
                     ):
                         graph.add_edge(
-                            node_id, target_node,
+                            node_id,
+                            target_node,
                             link_type="implicit",
                             similarity=result.score,
                         )
                         added_count += 1
                         logger.debug(
                             "Implicit link: %s -> %s (score=%.3f)",
-                            node_id, target_node, result.score,
+                            node_id,
+                            target_node,
+                            result.score,
                         )
 
             except Exception as e:
@@ -438,7 +445,8 @@ class KnowledgeGraph:
 
         logger.info(
             "Incremental graph update for %d files: %s",
-            len(changed_files), changed_node_ids,
+            len(changed_files),
+            changed_node_ids,
         )
 
         # 1. Remove nodes (and their edges) for changed files
@@ -476,7 +484,8 @@ class KnowledgeGraph:
                     target_node = self._resolve_link_target(self.graph, target_stem)
                     if target_node and target_node != source_id:
                         self.graph.add_edge(
-                            source_id, target_node,
+                            source_id,
+                            target_node,
                             link_type="explicit",
                             similarity=1.0,
                         )
@@ -506,7 +515,8 @@ class KnowledgeGraph:
                         and not self.graph.has_edge(node_id, target_node)
                     ):
                         self.graph.add_edge(
-                            node_id, target_node,
+                            node_id,
+                            target_node,
                             link_type="explicit",
                             similarity=1.0,
                         )
@@ -535,7 +545,9 @@ class KnowledgeGraph:
                 threshold = getattr(self, "_implicit_link_threshold", IMPLICIT_LINK_THRESHOLD)
                 for result in results:
                     target_node = self._match_result_to_node(
-                        self.graph, result.document.id, result.score,
+                        self.graph,
+                        result.document.id,
+                        result.score,
                     )
                     if (
                         target_node is not None
@@ -544,7 +556,8 @@ class KnowledgeGraph:
                         and not self.graph.has_edge(node_id, target_node)
                     ):
                         self.graph.add_edge(
-                            node_id, target_node,
+                            node_id,
+                            target_node,
                             link_type="implicit",
                             similarity=result.score,
                         )
@@ -597,9 +610,7 @@ class KnowledgeGraph:
         for node in valid_query_nodes:
             personalization[node] = weight
 
-        logger.debug(
-            "Computing Personalized PageRank from %d query nodes", len(valid_query_nodes)
-        )
+        logger.debug("Computing Personalized PageRank from %d query nodes", len(valid_query_nodes))
 
         try:
             # Compute Personalized PageRank with edge weights
@@ -679,9 +690,7 @@ class KnowledgeGraph:
 
         # Find activated nodes (top K by PageRank score, excluding initial results)
         activated_nodes = [
-            (nid, score)
-            for nid, score in pagerank_scores.items()
-            if nid not in initial_node_ids and score > 0.001
+            (nid, score) for nid, score in pagerank_scores.items() if nid not in initial_node_ids and score > 0.001
         ]
 
         activated_nodes.sort(key=lambda x: x[1], reverse=True)
@@ -727,7 +736,10 @@ class KnowledgeGraph:
         return expanded_results
 
     def _fetch_node_content(
-        self, node_id: str, node_path: Path, memory_type: str = "knowledge",
+        self,
+        node_id: str,
+        node_path: Path,
+        memory_type: str = "knowledge",
     ) -> str:
         """Fetch real content for an activated node.
 
@@ -750,9 +762,7 @@ class KnowledgeGraph:
 
         try:
             collection_name = f"{self.indexer.anima_name}_{memory_type}"
-            stem = node_path.stem if node_path.stem else (
-                node_id.split(":", 1)[-1] if ":" in node_id else node_id
-            )
+            stem = node_path.stem if node_path.stem else (node_id.split(":", 1)[-1] if ":" in node_id else node_id)
 
             # 1st attempt: filter by source_file metadata
             source_file_value = f"{memory_type}/{stem}.md"

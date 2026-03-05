@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -17,7 +18,7 @@ import json
 import logging
 import shutil
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from core.config.models import (
@@ -148,7 +149,8 @@ def sync_org_structure(
         # Skip animas involved in circular references
         if name in circular_animas:
             logger.warning(
-                "Org sync: skipping %s due to circular reference", name,
+                "Org sync: skipping %s due to circular reference",
+                name,
             )
             continue
 
@@ -256,13 +258,15 @@ def _find_orphan_supervisor(
     return None
 
 
-_TRIVIAL_ENTRIES = frozenset({
-    ".orphan_notified",
-    "vectordb",
-    "status.json",
-    "index_meta.json",
-    "identity.md",
-})
+_TRIVIAL_ENTRIES = frozenset(
+    {
+        ".orphan_notified",
+        "vectordb",
+        "status.json",
+        "index_meta.json",
+        "identity.md",
+    }
+)
 
 
 def _is_trivial_orphan(entry: Path) -> bool:
@@ -326,7 +330,7 @@ def _archive_and_remove_orphan(entry: Path) -> bool:
     Returns True on success.
     """
     data_dir = entry.parent.parent  # animas/{name} -> animas -> data_dir
-    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     archive_dir = data_dir / "archive" / "orphans" / f"{entry.name}_{ts}"
 
     try:
@@ -494,24 +498,27 @@ def detect_orphan_animas(
         # Trivial orphans → auto-remove
         if _is_trivial_orphan(entry):
             removed = _auto_cleanup_orphan(entry)
-            results.append({
-                "name": entry.name,
-                "action": "auto_removed" if removed else "skipped",
-            })
+            results.append(
+                {
+                    "name": entry.name,
+                    "action": "auto_removed" if removed else "skipped",
+                }
+            )
             continue
 
         # Non-trivial orphans → archive then remove
         logger.info(
-            "Orphan detection: non-trivial orphan '%s' — archiving "
-            "(contents: %s)",
+            "Orphan detection: non-trivial orphan '%s' — archiving (contents: %s)",
             entry.name,
             ", ".join(sorted(c.name for c in entry.iterdir())),
         )
         archived = _archive_and_remove_orphan(entry)
-        results.append({
-            "name": entry.name,
-            "action": "archived" if archived else "skipped",
-        })
+        results.append(
+            {
+                "name": entry.name,
+                "action": "archived" if archived else "skipped",
+            }
+        )
 
     if results:
         logger.info("Orphan detection: processed %d orphan(s)", len(results))

@@ -36,9 +36,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[test,all-tools]"
 
+      - name: Lint
+        run: |
+          ruff check core/ cli/ server/
+          ruff format --check core/ cli/ server/
+
       - name: Run unit tests
         run: |
-          pytest tests/unit/ -x -q --timeout=30 -m "not live and not azure and not ollama"
+          pytest tests/unit/ -x -q --timeout=30 -m "not live and not azure and not ollama" --cov=core --cov-report=term-missing --cov-report=xml --cov-fail-under=70
 
   e2e-tests:
     runs-on: ubuntu-latest

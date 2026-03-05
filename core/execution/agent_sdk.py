@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -28,20 +29,31 @@ import sys
 import tempfile
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import asdict
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     try:
-        from claude_code_sdk import ClaudeCodeSDKClient as ClaudeSDKClient, ClaudeAgentOptions, ResultMessage
+        from claude_code_sdk import ClaudeAgentOptions, ResultMessage
+        from claude_code_sdk import ClaudeCodeSDKClient as ClaudeSDKClient
     except ImportError:
         pass
 
-from core.prompt.context import CHARS_PER_TOKEN, ContextTracker
-from core.exceptions import ExecutionError, LLMAPIError, MemoryWriteError  # noqa: F401
-from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord
-from core.schemas import ImageData, ModelConfig
-from core.memory.shortterm import ShortTermMemory
 from pathlib import Path
+
+from core.exceptions import ExecutionError, LLMAPIError, MemoryWriteError  # noqa: F401
+from core.execution import _sdk_session
+from core.execution._sdk_hooks import (  # noqa: F401
+    _build_pre_compact_hook,
+    _build_pre_tool_hook,
+    _cache_subordinate_paths,
+    _collect_all_subordinates,
+    _count_active_tasks,
+    _intercept_task_to_delegation,
+    _intercept_task_to_pending,
+    _read_status_json,
+    _role_matches,
+    _select_subordinate,
+)
 
 # ── Re-exports from submodules (backward compatibility) ──────
 from core.execution._sdk_security import (  # noqa: F401
@@ -62,7 +74,6 @@ from core.execution._sdk_security import (  # noqa: F401
     _guard_grep,
     _guard_read,
 )
-from core.execution import _sdk_session
 from core.execution._sdk_session import (  # noqa: F401
     _CONTEXT_AUTOCOMPACT_SAFETY,
     _PROMPT_FILE_THRESHOLD,
@@ -79,18 +90,6 @@ from core.execution._sdk_session import (  # noqa: F401
     _session_file,
     clear_session_ids,
 )
-from core.execution._sdk_hooks import (  # noqa: F401
-    _build_pre_compact_hook,
-    _build_pre_tool_hook,
-    _cache_subordinate_paths,
-    _collect_all_subordinates,
-    _count_active_tasks,
-    _intercept_task_to_delegation,
-    _intercept_task_to_pending,
-    _read_status_json,
-    _role_matches,
-    _select_subordinate,
-)
 from core.execution._sdk_stream import (  # noqa: F401
     _finalize_pending_records,
     _handle_tool_result_block,
@@ -102,6 +101,10 @@ from core.execution._sdk_stream import (  # noqa: F401
     _tool_result_content_len,
 )
 from core.execution._tool_summary import make_tool_detail_chunk
+from core.execution.base import BaseExecutor, ExecutionResult, StreamDisconnectedError, TokenUsage, ToolCallRecord
+from core.memory.shortterm import ShortTermMemory
+from core.prompt.context import CHARS_PER_TOKEN, ContextTracker
+from core.schemas import ImageData, ModelConfig
 
 logger = logging.getLogger("animaworks.execution.agent_sdk")
 
@@ -109,6 +112,7 @@ __all__ = ["AgentSDKExecutor", "StreamDisconnectedError", "clear_session_ids"]
 
 
 # ── AgentSDKExecutor ─────────────────────────────────────────
+
 
 class AgentSDKExecutor(BaseExecutor):
     """Execute via Claude Agent SDK (Mode S).
@@ -186,10 +190,7 @@ class AgentSDKExecutor(BaseExecutor):
                 env["ANTHROPIC_API_KEY"] = api_key
                 logger.info("Mode S auth: API direct (mode_s_auth=api)")
             else:
-                logger.warning(
-                    "Mode S auth: mode_s_auth=api but no api_key found; "
-                    "falling back to Max plan"
-                )
+                logger.warning("Mode S auth: mode_s_auth=api but no api_key found; falling back to Max plan")
                 env["ANTHROPIC_API_KEY"] = ""
         elif auth == "bedrock":
             env["ANTHROPIC_API_KEY"] = ""
@@ -271,7 +272,7 @@ class AgentSDKExecutor(BaseExecutor):
         *,
         resume: str | None = None,
         include_partial_messages: bool = False,
-    ) -> tuple["ClaudeAgentOptions", Path | None]:
+    ) -> tuple[ClaudeAgentOptions, Path | None]:
         """Construct ``ClaudeAgentOptions`` for the Agent SDK client.
 
         Shared by both ``execute()`` and ``execute_streaming()`` (initial
@@ -297,7 +298,8 @@ class AgentSDKExecutor(BaseExecutor):
         extra_args: dict[str, str | None] = {}
         if len(system_prompt.encode("utf-8")) > _PROMPT_FILE_THRESHOLD:
             fd, tmp_path = tempfile.mkstemp(
-                suffix=".txt", prefix="aw-sysprompt-",
+                suffix=".txt",
+                prefix="aw-sysprompt-",
             )
             try:
                 os.write(fd, system_prompt.encode("utf-8"))
@@ -307,8 +309,7 @@ class AgentSDKExecutor(BaseExecutor):
             prompt_kwarg: str | None = None
             extra_args["system-prompt-file"] = tmp_path
             logger.info(
-                "System prompt too large for CLI arg (%d bytes > %d); "
-                "using --system-prompt-file %s",
+                "System prompt too large for CLI arg (%d bytes > %d); using --system-prompt-file %s",
                 len(system_prompt.encode("utf-8")),
                 _PROMPT_FILE_THRESHOLD,
                 tmp_path,
@@ -318,6 +319,7 @@ class AgentSDKExecutor(BaseExecutor):
 
         # ── Resolve effective max_tokens ──────────────────────
         from core.config.models import resolve_max_tokens
+
         _effective_max_tokens = resolve_max_tokens(
             self._model_config.model,
             self._model_config.max_tokens,
@@ -327,8 +329,14 @@ class AgentSDKExecutor(BaseExecutor):
         _has_subs = self._has_subordinates()
 
         _allowed_tools = [
-            "Read", "Write", "Edit", "Bash", "Grep", "Glob",
-            "WebFetch", "WebSearch",
+            "Read",
+            "Write",
+            "Edit",
+            "Bash",
+            "Grep",
+            "Glob",
+            "WebFetch",
+            "WebSearch",
             "mcp__aw__*",
         ]
         _allowed_tools.extend(["Task", "Agent"])
@@ -353,27 +361,34 @@ class AgentSDKExecutor(BaseExecutor):
                 },
             },
             hooks={
-                "PreToolUse": [HookMatcher(
-                    matcher=".*",
-                    hooks=[_build_pre_tool_hook(
-                        self._anima_dir,
-                        max_tokens=_effective_max_tokens,
-                        context_window=_cw,
-                        session_stats=session_stats,
-                        superuser=_is_debug_superuser(self._anima_dir),
-                        on_task_intercepted=self._make_pending_executor_wake_callback(),
-                        has_subordinates=_has_subs,
-                    )],
-                )],
-                "PreCompact": [HookMatcher(
-                    matcher=".*",
-                    hooks=[_build_pre_compact_hook(self._anima_dir)],
-                )],
+                "PreToolUse": [
+                    HookMatcher(
+                        matcher=".*",
+                        hooks=[
+                            _build_pre_tool_hook(
+                                self._anima_dir,
+                                max_tokens=_effective_max_tokens,
+                                context_window=_cw,
+                                session_stats=session_stats,
+                                superuser=_is_debug_superuser(self._anima_dir),
+                                on_task_intercepted=self._make_pending_executor_wake_callback(),
+                                has_subordinates=_has_subs,
+                            )
+                        ],
+                    )
+                ],
+                "PreCompact": [
+                    HookMatcher(
+                        matcher=".*",
+                        hooks=[_build_pre_compact_hook(self._anima_dir)],
+                    )
+                ],
             },
         )
         # ── Adaptive thinking ─────────────────────────────────
         if self._model_config.thinking:
             from core.execution.base import is_adaptive_model, resolve_thinking_effort
+
             if is_adaptive_model(self._model_config.model):
                 kwargs["thinking"] = {"type": "adaptive"}
                 kwargs["effort"] = resolve_thinking_effort(
@@ -387,7 +402,7 @@ class AgentSDKExecutor(BaseExecutor):
 
     async def _process_blocking_messages(
         self,
-        client: "ClaudeSDKClient",
+        client: ClaudeSDKClient,
         prompt: str,
         response_text: list[str],
         pending_records: dict[str, ToolCallRecord],
@@ -396,7 +411,7 @@ class AgentSDKExecutor(BaseExecutor):
         session_type: str = "chat",
         images: list[ImageData] | None = None,
         usage_acc: TokenUsage | None = None,
-    ) -> "ResultMessage | None":
+    ) -> ResultMessage | None:
         """Run query + message loop for blocking (non-streaming) execution.
 
         Sends *prompt* via ``client.query()``, then iterates
@@ -439,7 +454,9 @@ class AgentSDKExecutor(BaseExecutor):
                         response_text.append(block.text)
                     elif isinstance(block, ToolUseBlock):
                         _handle_tool_use_block(
-                            block, pending_records, None,
+                            block,
+                            pending_records,
+                            None,
                             self._model_config.model,
                             cw_overrides=self._resolve_cw_overrides(),
                         )
@@ -447,11 +464,11 @@ class AgentSDKExecutor(BaseExecutor):
                 if isinstance(message.content, list):
                     for block in message.content:
                         if isinstance(block, ToolResultBlock):
-                            session_stats["total_result_bytes"] += (
-                                _tool_result_content_len(block)
-                            )
+                            session_stats["total_result_bytes"] += _tool_result_content_len(block)
                             _handle_tool_result_block(
-                                block, pending_records, None,
+                                block,
+                                pending_records,
+                                None,
                                 self._model_config.model,
                                 anima_dir=self._anima_dir,
                                 cw_overrides=self._resolve_cw_overrides(),
@@ -465,7 +482,8 @@ class AgentSDKExecutor(BaseExecutor):
                         if status != "connected":
                             logger.error(
                                 "MCP server '%s' failed to connect: status=%s",
-                                name, status,
+                                name,
+                                status,
                             )
                         else:
                             logger.info("MCP server '%s' connected successfully", name)
@@ -519,7 +537,10 @@ class AgentSDKExecutor(BaseExecutor):
         session_id_to_resume = _load_session_id(self._anima_dir, session_type)
 
         options, prompt_file = self._build_sdk_options(
-            system_prompt, _max_turns, _cw, session_stats,
+            system_prompt,
+            _max_turns,
+            _cw,
+            session_stats,
             resume=session_id_to_resume,
         )
         _prompt_files: list[Path] = []
@@ -540,8 +561,13 @@ class AgentSDKExecutor(BaseExecutor):
             async with ClaudeSDKClient(options=options) as client:
                 logger.info("ClaudeSDKClient connected")
                 result_message = await self._process_blocking_messages(
-                    client, prompt, response_text, pending_records,
-                    session_stats, tracker, session_type,
+                    client,
+                    prompt,
+                    response_text,
+                    pending_records,
+                    session_stats,
+                    tracker,
+                    session_type,
                     images=images,
                     usage_acc=usage_acc,
                 )
@@ -549,14 +575,17 @@ class AgentSDKExecutor(BaseExecutor):
         except (ProcessError, ClaudeSDKError) as e:
             if session_id_to_resume:
                 logger.warning(
-                    "SDK session resume failed (session_id=%s): %s. "
-                    "Retrying with fresh session.",
-                    session_id_to_resume, e,
+                    "SDK session resume failed (session_id=%s): %s. Retrying with fresh session.",
+                    session_id_to_resume,
+                    e,
                 )
                 _sdk_session._clear_session_id(self._anima_dir, session_type)
                 # Retry without resume
                 options, pf = self._build_sdk_options(
-                    system_prompt, _max_turns, _cw, session_stats,
+                    system_prompt,
+                    _max_turns,
+                    _cw,
+                    session_stats,
                     resume=None,
                 )
                 if pf:
@@ -565,8 +594,13 @@ class AgentSDKExecutor(BaseExecutor):
                     async with ClaudeSDKClient(options=options) as client:
                         logger.info("ClaudeSDKClient connected (fresh session retry)")
                         result_message = await self._process_blocking_messages(
-                            client, prompt, response_text, pending_records,
-                            session_stats, tracker, session_type,
+                            client,
+                            prompt,
+                            response_text,
+                            pending_records,
+                            session_stats,
+                            tracker,
+                            session_type,
                             images=images,
                             usage_acc=usage_acc,
                         )
@@ -598,7 +632,9 @@ class AgentSDKExecutor(BaseExecutor):
         all_tool_records = _finalize_pending_records(pending_records)
         logger.debug(
             "Agent SDK completed, messages=%d text_blocks=%d tools=%d",
-            message_count, len(response_text), len(all_tool_records),
+            message_count,
+            len(response_text),
+            len(all_tool_records),
         )
         replied_to = self._read_replied_to_file()
         return ExecutionResult(
@@ -667,7 +703,10 @@ class AgentSDKExecutor(BaseExecutor):
         session_id_to_resume = _load_session_id(self._anima_dir, session_type)
 
         options, prompt_file = self._build_sdk_options(
-            system_prompt, _max_turns, _cw, session_stats,
+            system_prompt,
+            _max_turns,
+            _cw,
+            session_stats,
             resume=session_id_to_resume,
             include_partial_messages=True,
         )
@@ -753,12 +792,16 @@ class AgentSDKExecutor(BaseExecutor):
                             response_text.append(block.text)
                         elif isinstance(block, ToolUseBlock):
                             _handle_tool_use_block(
-                                block, pending_records, None,
+                                block,
+                                pending_records,
+                                None,
                                 self._model_config.model,
                                 cw_overrides=self._resolve_cw_overrides(),
                             )
                             detail_chunk = make_tool_detail_chunk(
-                                block.name, block.id, block.input or {},
+                                block.name,
+                                block.id,
+                                block.input or {},
                             )
                             if detail_chunk:
                                 yield detail_chunk
@@ -776,11 +819,11 @@ class AgentSDKExecutor(BaseExecutor):
                     if isinstance(message.content, list):
                         for block in message.content:
                             if isinstance(block, ToolResultBlock):
-                                session_stats["total_result_bytes"] += (
-                                    _tool_result_content_len(block)
-                                )
+                                session_stats["total_result_bytes"] += _tool_result_content_len(block)
                                 _handle_tool_result_block(
-                                    block, pending_records, None,
+                                    block,
+                                    pending_records,
+                                    None,
                                     self._model_config.model,
                                     anima_dir=self._anima_dir,
                                     cw_overrides=self._resolve_cw_overrides(),
@@ -810,7 +853,8 @@ class AgentSDKExecutor(BaseExecutor):
                             if status != "connected":
                                 logger.error(
                                     "MCP server '%s' failed to connect: status=%s",
-                                    name, status,
+                                    name,
+                                    status,
                                 )
                             else:
                                 logger.info("MCP server '%s' connected successfully", name)
@@ -818,7 +862,10 @@ class AgentSDKExecutor(BaseExecutor):
         async def _run_fresh_session() -> AsyncGenerator[dict[str, Any], None]:
             """Run a fresh (no-resume) streaming session and yield events."""
             fresh_options, pf = self._build_sdk_options(
-                system_prompt, _max_turns, _cw, session_stats,
+                system_prompt,
+                _max_turns,
+                _cw,
+                session_stats,
                 resume=None,
                 include_partial_messages=True,
             )
@@ -835,7 +882,8 @@ class AgentSDKExecutor(BaseExecutor):
                 if not isinstance(retry_exc, Exception):
                     logger.critical(
                         "Agent SDK raised %s during streaming retry: %s",
-                        type(retry_exc).__name__, retry_exc,
+                        type(retry_exc).__name__,
+                        retry_exc,
                     )
                 else:
                     logger.exception("Agent SDK streaming error (fresh session retry)")
@@ -873,22 +921,20 @@ class AgentSDKExecutor(BaseExecutor):
                             return await stream_gen.__anext__()
 
                         try:
-                            first_event = await asyncio.wait_for(
-                                _get_first_event(), timeout=RESUME_TIMEOUT_SEC
-                            )
-                        except asyncio.TimeoutError:
+                            first_event = await asyncio.wait_for(_get_first_event(), timeout=RESUME_TIMEOUT_SEC)
+                        except TimeoutError:
                             logger.warning(
                                 "Resume timed out after %.1fs (SDK Issue #387, "
                                 "session_id=%s), falling back to fresh session.",
-                                RESUME_TIMEOUT_SEC, session_id_to_resume,
+                                RESUME_TIMEOUT_SEC,
+                                session_id_to_resume,
                             )
                             await stream_gen.aclose()
                             _sdk_session._clear_session_id(self._anima_dir, session_type)
                             fell_back = True
                         except StopAsyncIteration:
                             logger.warning(
-                                "Resume stream empty (session_id=%s), "
-                                "falling back to fresh session.",
+                                "Resume stream empty (session_id=%s), falling back to fresh session.",
                                 session_id_to_resume,
                             )
                             _sdk_session._clear_session_id(self._anima_dir, session_type)
@@ -899,9 +945,9 @@ class AgentSDKExecutor(BaseExecutor):
                                 yield event
                 except (ProcessError, ClaudeSDKError) as e:
                     logger.warning(
-                        "SDK session resume failed (session_id=%s): %s. "
-                        "Retrying with fresh session.",
-                        session_id_to_resume, e,
+                        "SDK session resume failed (session_id=%s): %s. Retrying with fresh session.",
+                        session_id_to_resume,
+                        e,
                     )
                     _sdk_session._clear_session_id(self._anima_dir, session_type)
                     fell_back = True
@@ -921,7 +967,8 @@ class AgentSDKExecutor(BaseExecutor):
             if not isinstance(e, Exception):
                 logger.critical(
                     "Agent SDK raised %s during streaming: %s",
-                    type(e).__name__, e,
+                    type(e).__name__,
+                    e,
                 )
             else:
                 logger.exception("Agent SDK streaming error")
@@ -937,7 +984,9 @@ class AgentSDKExecutor(BaseExecutor):
         all_tool_records = _finalize_pending_records(pending_records)
         logger.debug(
             "Agent SDK streaming completed, messages=%d text_blocks=%d tools=%d",
-            message_count, len(response_text), len(all_tool_records),
+            message_count,
+            len(response_text),
+            len(all_tool_records),
         )
         full_text = "\n".join(response_text) or "(no response)"
         replied_to = self._read_replied_to_file()

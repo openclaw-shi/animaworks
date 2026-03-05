@@ -6,12 +6,14 @@
 # See LICENSE for the full license text.
 
 """Async compatibility helpers for tools with synchronous HTTP clients."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 

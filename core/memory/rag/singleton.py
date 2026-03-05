@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -12,12 +13,12 @@ model loading (~6 seconds per initialization).
 
 import logging
 import threading
-from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.memory.rag.store import ChromaVectorStore
     from sentence_transformers import SentenceTransformer
+
+    from core.memory.rag.store import ChromaVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,10 @@ def get_vector_store(anima_name: str | None = None) -> ChromaVectorStore:
         with _lock:
             if anima_name not in _vector_stores:
                 from core.memory.rag.store import ChromaVectorStore
+
                 if anima_name:
                     from core.paths import get_anima_vectordb_dir
+
                     persist_dir = get_anima_vectordb_dir(anima_name)
                 else:
                     persist_dir = None  # ChromaVectorStore defaults to ~/.animaworks/vectordb
@@ -51,6 +54,7 @@ def _get_configured_model_name() -> str:
     """Read embedding model name from config.json, falling back to default."""
     try:
         from core.config import load_config
+
         config = load_config()
         return config.rag.embedding_model
     except Exception:
@@ -85,23 +89,25 @@ def get_embedding_model(model_name: str | None = None) -> SentenceTransformer:
         if _embedding_model is not None and _embedding_model_name != resolved_name:
             logger.info(
                 "Embedding model changed: %s → %s; reloading",
-                _embedding_model_name, resolved_name,
+                _embedding_model_name,
+                resolved_name,
             )
 
         from sentence_transformers import SentenceTransformer
+
         from core.paths import get_data_dir
+
         cache_dir = get_data_dir() / "models"
         cache_dir.mkdir(parents=True, exist_ok=True)
         try:
             from core.config import load_config
+
             _use_gpu = load_config().rag.use_gpu
         except Exception:
             _use_gpu = False
         device = "cuda" if _use_gpu else "cpu"
         logger.info("Loading embedding model (singleton): %s on %s", resolved_name, device)
-        _embedding_model = SentenceTransformer(
-            resolved_name, cache_folder=str(cache_dir), device=device
-        )
+        _embedding_model = SentenceTransformer(resolved_name, cache_folder=str(cache_dir), device=device)
         _embedding_model_name = resolved_name
         logger.info("Embedding model loaded (singleton)")
     return _embedding_model

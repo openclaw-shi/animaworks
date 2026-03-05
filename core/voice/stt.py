@@ -53,8 +53,7 @@ class VoiceSTT:
         if _whisper_model is None:
             if WhisperModel is None:
                 raise ImportError(
-                    "Voice STT requires 'faster-whisper'. "
-                    "Install with: pip install animaworks[transcribe]"
+                    "Voice STT requires 'faster-whisper'. Install with: pip install animaworks[transcribe]"
                 )
             device = self._device
             if device == "auto":
@@ -62,9 +61,7 @@ class VoiceSTT:
             compute = self._compute_type
             if compute == "default":
                 compute = "float16" if device == "cuda" else "int8"
-            _whisper_model = WhisperModel(
-                self._model_name, device=device, compute_type=compute
-            )
+            _whisper_model = WhisperModel(self._model_name, device=device, compute_type=compute)
         return _whisper_model
 
     def transcribe_buffer(
@@ -88,14 +85,9 @@ class VoiceSTT:
         import numpy as np
 
         if WhisperModel is None:
-            raise ImportError(
-                "Voice STT requires 'faster-whisper'. "
-                "Install with: pip install animaworks[transcribe]"
-            )
+            raise ImportError("Voice STT requires 'faster-whisper'. Install with: pip install animaworks[transcribe]")
         model = self._ensure_model()
-        audio_np = (
-            np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-        )
+        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
         segments, info = model.transcribe(
             audio_np,
             beam_size=1,
@@ -111,10 +103,7 @@ class VoiceSTT:
             "raw_text": raw_text,
             "language": info.language,
             "duration": info.duration,
-            "segments": [
-                {"start": s.start, "end": s.end, "text": s.text.strip()}
-                for s in segments_list
-            ],
+            "segments": [{"start": s.start, "end": s.end, "text": s.text.strip()} for s in segments_list],
         }
 
     async def transcribe_buffer_async(

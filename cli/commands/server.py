@@ -104,9 +104,7 @@ def _find_server_pid_by_process() -> int | None:
             stat = entry.stat()
             if stat.st_uid != my_uid:
                 continue
-            cmdline = (entry / "cmdline").read_bytes().decode(
-                "utf-8", errors="replace"
-            ).replace("\x00", " ")
+            cmdline = (entry / "cmdline").read_bytes().decode("utf-8", errors="replace").replace("\x00", " ")
             if any(m in cmdline for m in _SERVER_CMD_MARKERS):
                 pid = int(entry.name)
                 if pid in exclude_pids:
@@ -260,9 +258,15 @@ def _kill_orphan_runners() -> int:
             stat = entry.stat()
             if stat.st_uid != my_uid:
                 continue
-            cmdline = (entry / "cmdline").read_bytes().decode(
-                "utf-8", errors="replace",
-            ).replace("\x00", " ")
+            cmdline = (
+                (entry / "cmdline")
+                .read_bytes()
+                .decode(
+                    "utf-8",
+                    errors="replace",
+                )
+                .replace("\x00", " ")
+            )
             if _RUNNER_CMD_MARKER not in cmdline:
                 continue
             if data_prefix not in cmdline:
@@ -322,8 +326,7 @@ def _spawn_daemon(args: argparse.Namespace) -> None:
         print("Use 'animaworks stop' first, or 'animaworks restart'.")
         sys.exit(1)
 
-    cmd = [sys.executable, "-m", "cli", "start", "--foreground",
-           "--host", args.host, "--port", str(args.port)]
+    cmd = [sys.executable, "-m", "cli", "start", "--foreground", "--host", args.host, "--port", str(args.port)]
 
     log_path = _get_daemon_log_path()
     log_file = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
@@ -362,7 +365,7 @@ def _spawn_daemon(args: argparse.Namespace) -> None:
     print(f"  Dashboard: http://{display_host}:{args.port}/")
     print(f"  Logs:      {log_path}")
     print(f"  Data:      {config_data_dir}")
-    print(f"  Stop:      animaworks stop")
+    print("  Stop:      animaworks stop")
 
 
 # ── Server commands ───────────────────────────────────────
@@ -387,9 +390,9 @@ def _start_pid_watchdog() -> None:
                     continue
                 # PID file missing, empty, or pointing at a different/dead process
                 logger.warning(
-                    "PID file watchdog: file missing or stale (read=%s, expected=%d). "
-                    "Re-creating.",
-                    current, my_pid,
+                    "PID file watchdog: file missing or stale (read=%s, expected=%d). Re-creating.",
+                    current,
+                    my_pid,
                 )
                 _write_pid_file()
             except Exception:

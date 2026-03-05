@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -20,10 +21,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
+from core.exceptions import ToolExecutionError
 from core.execution._sanitize import TOOL_TRUST_LEVELS, wrap_tool_result
 from core.execution._tool_summary import make_tool_detail_chunk
 from core.execution.base import ToolCallRecord, _truncate_for_record, tool_input_save_budget, tool_result_save_budget
-from core.exceptions import ToolExecutionError
 from core.tooling.schemas import (
     build_tool_list,
     to_litellm_format,
@@ -107,24 +108,33 @@ def _convert_litellm_tool_calls(
             args = _json.loads(tc.function.arguments)
         except (_json.JSONDecodeError, TypeError):
             args = None
-        result.append({
-            "id": tc.id,
-            "name": tc.function.name,
-            "arguments": args,
-            "raw_arguments": tc.function.arguments if args is None else None,
-        })
+        result.append(
+            {
+                "id": tc.id,
+                "name": tc.function.name,
+                "arguments": args,
+                "raw_arguments": tc.function.arguments if args is None else None,
+            }
+        )
     return result
 
 
 class ToolProcessingMixin:
     """Mixin providing tool discovery, activation, and execution for LiteLLMExecutor."""
 
-    _BG_POOL_TOOLS = frozenset({
-        "generate_character_assets",
-        "generate_fullbody", "generate_bustup", "generate_chibi",
-        "generate_3d_model", "generate_rigged_model", "generate_animations",
-        "local_llm", "run_command",
-    })
+    _BG_POOL_TOOLS = frozenset(
+        {
+            "generate_character_assets",
+            "generate_fullbody",
+            "generate_bustup",
+            "generate_chibi",
+            "generate_3d_model",
+            "generate_rigged_model",
+            "generate_animations",
+            "local_llm",
+            "run_command",
+        }
+    )
 
     def _build_base_tools(self) -> list[dict[str, Any]]:
         """Build the base LiteLLM-format tool list."""
@@ -149,8 +159,8 @@ class ToolProcessingMixin:
 
     def _refresh_tools_inline(self, tools: list[dict[str, Any]]) -> str:
         """Re-discover personal/common tools and update the tools list in-place."""
-        from core.tools import discover_common_tools, discover_personal_tools
         from core.tooling.schemas import load_personal_tool_schemas
+        from core.tools import discover_common_tools, discover_personal_tools
 
         personal = discover_personal_tools(self._anima_dir)
         common = discover_common_tools()
@@ -165,13 +175,8 @@ class ToolProcessingMixin:
         new_schemas = load_personal_tool_schemas(merged)
         new_litellm = to_litellm_format(new_schemas)
 
-        dynamic_names = {
-            s["name"] for s in new_schemas
-        }
-        tools[:] = [
-            t for t in tools
-            if t.get("function", {}).get("name") not in dynamic_names
-        ] + new_litellm
+        dynamic_names = {s["name"] for s in new_schemas}
+        tools[:] = [t for t in tools if t.get("function", {}).get("name") not in dynamic_names] + new_litellm
 
         names = ", ".join(sorted(merged.keys()))
         return f"Refreshed tools ({len(merged)} discovered): {names}"
@@ -185,11 +190,7 @@ class ToolProcessingMixin:
         background thread pool to avoid starving quick tool calls.
         """
         loop = asyncio.get_running_loop()
-        executor = (
-            _bg_tool_executor
-            if tc.function.name in self._BG_POOL_TOOLS
-            else _tool_executor
-        )
+        executor = _bg_tool_executor if tc.function.name in self._BG_POOL_TOOLS else _tool_executor
         result = await loop.run_in_executor(
             executor,
             self._tool_handler.handle,
@@ -201,7 +202,8 @@ class ToolProcessingMixin:
         trust = TOOL_TRUST_LEVELS.get(tc.function.name, "untrusted")
         trust_rank = self._TRUST_ORDER.get(trust, 0)
         self._tool_handler._min_trust_seen = min(
-            self._tool_handler._min_trust_seen, trust_rank,
+            self._tool_handler._min_trust_seen,
+            trust_rank,
         )
 
         return {"role": "tool", "tool_call_id": tc.id, "content": wrap_tool_result(tc.function.name, result)}
@@ -233,24 +235,34 @@ class ToolProcessingMixin:
 
             # Handle unparseable arguments
             if fn_args is None:
-                error_content = _json.dumps({
-                    "status": "error",
-                    "error_type": "InvalidArguments",
-                    "message": "Failed to parse tool arguments",
-                    "context": {"raw_arguments": (tc.get("raw_arguments") or "")[:500]},
-                    "suggestion": "Ensure arguments are valid JSON",
-                }, ensure_ascii=False)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": wrap_tool_result(fn_name, error_content),
-                })
+                error_content = _json.dumps(
+                    {
+                        "status": "error",
+                        "error_type": "InvalidArguments",
+                        "message": "Failed to parse tool arguments",
+                        "context": {"raw_arguments": (tc.get("raw_arguments") or "")[:500]},
+                        "suggestion": "Ensure arguments are valid JSON",
+                    },
+                    ensure_ascii=False,
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": wrap_tool_result(fn_name, error_content),
+                    }
+                )
                 yield {
-                    "type": "tool_end", "tool_id": tc_id, "tool_name": fn_name,
+                    "type": "tool_end",
+                    "tool_id": tc_id,
+                    "tool_name": fn_name,
                     "record": ToolCallRecord(
-                        tool_name=fn_name, tool_id=tc_id,
+                        tool_name=fn_name,
+                        tool_id=tc_id,
                         input_summary="(invalid arguments)",
-                        result_summary=_truncate_for_record(error_content, tool_result_save_budget(fn_name, context_window)),
+                        result_summary=_truncate_for_record(
+                            error_content, tool_result_save_budget(fn_name, context_window)
+                        ),
                     ),
                 }
                 continue
@@ -258,15 +270,20 @@ class ToolProcessingMixin:
             # Handle refresh_tools inline
             if fn_name == "refresh_tools":
                 result = self._refresh_tools_inline(tools)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": wrap_tool_result(fn_name, result),
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": wrap_tool_result(fn_name, result),
+                    }
+                )
                 yield {
-                    "type": "tool_end", "tool_id": tc_id, "tool_name": fn_name,
+                    "type": "tool_end",
+                    "tool_id": tc_id,
+                    "tool_name": fn_name,
                     "record": ToolCallRecord(
-                        tool_name=fn_name, tool_id=tc_id,
+                        tool_name=fn_name,
+                        tool_id=tc_id,
                         input_summary=_truncate_for_record(str(fn_args), tool_input_save_budget(context_window)),
                         result_summary=_truncate_for_record(result, tool_result_save_budget(fn_name, context_window)),
                     ),
@@ -284,11 +301,7 @@ class ToolProcessingMixin:
                 id=tc["id"],
                 function=_ToolCallShim._Function(
                     name=tc["name"],
-                    arguments=(
-                        _json.dumps(tc["arguments"], ensure_ascii=False)
-                        if tc["arguments"] is not None
-                        else ""
-                    ),
+                    arguments=(_json.dumps(tc["arguments"], ensure_ascii=False) if tc["arguments"] is not None else ""),
                 ),
             )
             for tc, _ in pending_calls
@@ -298,32 +311,40 @@ class ToolProcessingMixin:
         parallel, serial_batches = _partition_tool_calls(shims)
 
         if parallel:
-            coros = [
-                self._execute_tool_call(shim, args_map[shim.id])
-                for shim in parallel
-            ]
+            coros = [self._execute_tool_call(shim, args_map[shim.id]) for shim in parallel]
             results = await asyncio.gather(*coros, return_exceptions=True)
             for i, r in enumerate(results):
                 shim = parallel[i]
                 if isinstance(r, BaseException):
                     logger.warning("Parallel tool execution error: %s", r)
-                    error_content = _json.dumps({
-                        "status": "error",
-                        "error_type": "ExecutionError",
-                        "message": str(r),
-                    }, ensure_ascii=False)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": shim.id,
-                        "content": wrap_tool_result(shim.function.name, error_content),
-                    })
-                    result_summary = _truncate_for_record(error_content, tool_result_save_budget(shim.function.name, context_window))
+                    error_content = _json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": "ExecutionError",
+                            "message": str(r),
+                        },
+                        ensure_ascii=False,
+                    )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": shim.id,
+                            "content": wrap_tool_result(shim.function.name, error_content),
+                        }
+                    )
+                    result_summary = _truncate_for_record(
+                        error_content, tool_result_save_budget(shim.function.name, context_window)
+                    )
                 elif isinstance(r, dict):
                     messages.append(r)
-                    result_summary = _truncate_for_record(r.get("content", ""), tool_result_save_budget(shim.function.name, context_window))
+                    result_summary = _truncate_for_record(
+                        r.get("content", ""), tool_result_save_budget(shim.function.name, context_window)
+                    )
                 else:
                     messages.append({"role": "tool", "tool_call_id": shim.id, "content": str(r)})
-                    result_summary = _truncate_for_record(str(r), tool_result_save_budget(shim.function.name, context_window))
+                    result_summary = _truncate_for_record(
+                        str(r), tool_result_save_budget(shim.function.name, context_window)
+                    )
                 yield {
                     "type": "tool_end",
                     "tool_id": shim.id,
@@ -331,7 +352,9 @@ class ToolProcessingMixin:
                     "record": ToolCallRecord(
                         tool_name=shim.function.name,
                         tool_id=shim.id,
-                        input_summary=_truncate_for_record(str(args_map[shim.id]), tool_input_save_budget(context_window)),
+                        input_summary=_truncate_for_record(
+                            str(args_map[shim.id]), tool_input_save_budget(context_window)
+                        ),
                         result_summary=result_summary,
                     ),
                 }
@@ -341,33 +364,49 @@ class ToolProcessingMixin:
                 try:
                     r = await self._execute_tool_call(shim, args_map[shim.id])
                     messages.append(r)
-                    result_summary = _truncate_for_record(r.get("content", ""), tool_result_save_budget(shim.function.name, context_window))
+                    result_summary = _truncate_for_record(
+                        r.get("content", ""), tool_result_save_budget(shim.function.name, context_window)
+                    )
                 except ToolExecutionError as e:
                     logger.warning("Serial tool execution error: %s", e)
-                    error_content = _json.dumps({
-                        "status": "error",
-                        "error_type": "ToolExecutionError",
-                        "message": str(e),
-                    }, ensure_ascii=False)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": shim.id,
-                        "content": wrap_tool_result(shim.function.name, error_content),
-                    })
-                    result_summary = _truncate_for_record(error_content, tool_result_save_budget(shim.function.name, context_window))
+                    error_content = _json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": "ToolExecutionError",
+                            "message": str(e),
+                        },
+                        ensure_ascii=False,
+                    )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": shim.id,
+                            "content": wrap_tool_result(shim.function.name, error_content),
+                        }
+                    )
+                    result_summary = _truncate_for_record(
+                        error_content, tool_result_save_budget(shim.function.name, context_window)
+                    )
                 except Exception as e:
                     logger.warning("Serial tool execution error (unexpected): %s", e)
-                    error_content = _json.dumps({
-                        "status": "error",
-                        "error_type": type(e).__name__,
-                        "message": str(e),
-                    }, ensure_ascii=False)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": shim.id,
-                        "content": wrap_tool_result(shim.function.name, error_content),
-                    })
-                    result_summary = _truncate_for_record(error_content, tool_result_save_budget(shim.function.name, context_window))
+                    error_content = _json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": type(e).__name__,
+                            "message": str(e),
+                        },
+                        ensure_ascii=False,
+                    )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": shim.id,
+                            "content": wrap_tool_result(shim.function.name, error_content),
+                        }
+                    )
+                    result_summary = _truncate_for_record(
+                        error_content, tool_result_save_budget(shim.function.name, context_window)
+                    )
                 yield {
                     "type": "tool_end",
                     "tool_id": shim.id,
@@ -375,7 +414,9 @@ class ToolProcessingMixin:
                     "record": ToolCallRecord(
                         tool_name=shim.function.name,
                         tool_id=shim.id,
-                        input_summary=_truncate_for_record(str(args_map[shim.id]), tool_input_save_budget(context_window)),
+                        input_summary=_truncate_for_record(
+                            str(args_map[shim.id]), tool_input_save_budget(context_window)
+                        ),
                         result_summary=result_summary,
                     ),
                 }

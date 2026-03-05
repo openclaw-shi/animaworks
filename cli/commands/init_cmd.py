@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-
 # ── Init ──────────────────────────────────────────────────
 
 
@@ -15,14 +14,14 @@ def cmd_init(args: argparse.Namespace) -> None:
     """Initialize the runtime data directory from templates."""
     from pathlib import Path
 
-    from core.init import ensure_runtime_dir, merge_templates
-    from core.paths import get_data_dir
     from core.anima_factory import (
         create_blank,
         create_from_md,
         create_from_template,
         validate_anima_name,
     )
+    from core.init import ensure_runtime_dir, merge_templates
+    from core.paths import get_data_dir
 
     data_dir = get_data_dir()
 
@@ -58,9 +57,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         ensure_runtime_dir(skip_animas=True)
         animas_dir.mkdir(parents=True, exist_ok=True)
         md_path = Path(args.from_md).resolve()
-        anima_dir = create_from_md(
-            animas_dir, md_path, name=getattr(args, "name", None)
-        )
+        anima_dir = create_from_md(animas_dir, md_path, name=getattr(args, "name", None))
         _register_anima_in_config(data_dir, anima_dir.name)
         print(f"Created anima '{anima_dir.name}' from {md_path.name}")
         return
@@ -97,9 +94,6 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 def cmd_reset(args: argparse.Namespace) -> None:
     """Delete runtime directory and re-initialize infrastructure."""
-    from core.init import reset_runtime_dir
-    from core.paths import get_data_dir
-
     from cli.commands.server import (
         _clear_pycache,
         _is_process_alive,
@@ -107,6 +101,8 @@ def cmd_reset(args: argparse.Namespace) -> None:
         _stop_server,
         cmd_start,
     )
+    from core.init import reset_runtime_dir
+    from core.paths import get_data_dir
 
     data_dir = get_data_dir()
 

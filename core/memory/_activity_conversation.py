@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -31,9 +32,13 @@ class ConversationMixin:
     """Mixin providing conversation view methods for ActivityLogger."""
 
     _CONVERSATION_TYPES = {
-        "message_received", "message_sent", "response_sent",
-        "tool_use", "tool_result",
-        "heartbeat_start", "heartbeat_end",
+        "message_received",
+        "message_sent",
+        "response_sent",
+        "tool_use",
+        "tool_result",
+        "heartbeat_start",
+        "heartbeat_end",
         "cron_executed",
         "error",
     }
@@ -126,7 +131,8 @@ class ConversationMixin:
             day_entries: list[ActivityEntry] = []
             try:
                 for line_num, line in enumerate(
-                    path.read_text(encoding="utf-8").splitlines(), start=1,
+                    path.read_text(encoding="utf-8").splitlines(),
+                    start=1,
                 ):
                     line = line.strip()
                     if not line:
@@ -156,10 +162,7 @@ class ConversationMixin:
                         raw["from_person"] = raw.pop("from")
                     if "to" in raw:
                         raw["to_person"] = raw.pop("to")
-                    entry = ActivityEntry(**{
-                        k: v for k, v in raw.items()
-                        if k in ActivityEntry.__dataclass_fields__
-                    })
+                    entry = ActivityEntry(**{k: v for k, v in raw.items() if k in ActivityEntry.__dataclass_fields__})
                     entry._line_number = line_num
                     day_entries.append(entry)
             except Exception:
@@ -193,24 +196,28 @@ class ConversationMixin:
         for e in entries:
             if e.type == "message_received":
                 self._flush_tool_calls(messages, pending_tool_calls)
-                messages.append({
-                    "ts": e.ts,
-                    "role": "human",
-                    "content": e.content,
-                    "from_person": e.from_person,
-                    "tool_calls": [],
-                })
+                messages.append(
+                    {
+                        "ts": e.ts,
+                        "role": "human",
+                        "content": e.content,
+                        "from_person": e.from_person,
+                        "tool_calls": [],
+                    }
+                )
 
             elif e.type == "message_sent":
                 self._flush_tool_calls(messages, pending_tool_calls)
-                messages.append({
-                    "ts": e.ts,
-                    "role": "assistant",
-                    "content": e.content,
-                    "from_person": "",
-                    "to_person": e.to_person,
-                    "tool_calls": [],
-                })
+                messages.append(
+                    {
+                        "ts": e.ts,
+                        "role": "assistant",
+                        "content": e.content,
+                        "from_person": "",
+                        "to_person": e.to_person,
+                        "tool_calls": [],
+                    }
+                )
 
             elif e.type == "response_sent":
                 msg = {
@@ -240,10 +247,7 @@ class ConversationMixin:
                     "tool_name": e.tool,
                     "input": e.meta.get("args", e.content),
                     "result": result_entry.content if result_entry else "",
-                    "is_error": (
-                        result_entry.meta.get("is_error", False)
-                        if result_entry else False
-                    ),
+                    "is_error": (result_entry.meta.get("is_error", False) if result_entry else False),
                 }
                 if e.meta.get("blocked"):
                     tc["is_error"] = True
@@ -255,48 +259,56 @@ class ConversationMixin:
 
             elif e.type == "heartbeat_start":
                 self._flush_tool_calls(messages, pending_tool_calls)
-                messages.append({
-                    "ts": e.ts,
-                    "role": "system",
-                    "content": e.summary or t("activity.heartbeat_start"),
-                    "from_person": "",
-                    "tool_calls": [],
-                    "_trigger": "heartbeat",
-                })
+                messages.append(
+                    {
+                        "ts": e.ts,
+                        "role": "system",
+                        "content": e.summary or t("activity.heartbeat_start"),
+                        "from_person": "",
+                        "tool_calls": [],
+                        "_trigger": "heartbeat",
+                    }
+                )
 
             elif e.type == "heartbeat_end":
                 self._flush_tool_calls(messages, pending_tool_calls)
-                messages.append({
-                    "ts": e.ts,
-                    "role": "system",
-                    "content": e.summary or e.content or t("activity.heartbeat_end"),
-                    "from_person": "",
-                    "tool_calls": [],
-                    "_trigger": "heartbeat",
-                })
+                messages.append(
+                    {
+                        "ts": e.ts,
+                        "role": "system",
+                        "content": e.summary or e.content or t("activity.heartbeat_end"),
+                        "from_person": "",
+                        "tool_calls": [],
+                        "_trigger": "heartbeat",
+                    }
+                )
 
             elif e.type == "cron_executed":
                 self._flush_tool_calls(messages, pending_tool_calls)
                 task_name = e.meta.get("task_name", "")
                 content = e.summary or e.content or task_name or t("activity.cron_task_exec")
-                messages.append({
-                    "ts": e.ts,
-                    "role": "system",
-                    "content": content,
-                    "from_person": "",
-                    "tool_calls": [],
-                    "_trigger": "cron",
-                })
+                messages.append(
+                    {
+                        "ts": e.ts,
+                        "role": "system",
+                        "content": content,
+                        "from_person": "",
+                        "tool_calls": [],
+                        "_trigger": "cron",
+                    }
+                )
 
             elif e.type == "error":
                 self._flush_tool_calls(messages, pending_tool_calls)
-                messages.append({
-                    "ts": e.ts,
-                    "role": "system",
-                    "content": t("activity.error_prefix") + (e.content or e.summary or ""),
-                    "from_person": "",
-                    "tool_calls": [],
-                })
+                messages.append(
+                    {
+                        "ts": e.ts,
+                        "role": "system",
+                        "content": t("activity.error_prefix") + (e.content or e.summary or ""),
+                        "from_person": "",
+                        "tool_calls": [],
+                    }
+                )
 
         self._flush_tool_calls(messages, pending_tool_calls)
 
@@ -339,23 +351,27 @@ class ConversationMixin:
             if current_msgs:
                 prev_ts = current_msgs[-1]["ts"]
                 if time_diff(prev_ts, msg["ts"]) >= gap_seconds:
-                    sessions.append({
-                        "session_start": current_msgs[0]["ts"],
-                        "session_end": current_msgs[-1]["ts"],
-                        "trigger": current_trigger,
-                        "messages": current_msgs,
-                    })
+                    sessions.append(
+                        {
+                            "session_start": current_msgs[0]["ts"],
+                            "session_end": current_msgs[-1]["ts"],
+                            "trigger": current_trigger,
+                            "messages": current_msgs,
+                        }
+                    )
                     current_msgs = []
                     current_trigger = msg_trigger or "chat"
 
             current_msgs.append(msg)
 
         if current_msgs:
-            sessions.append({
-                "session_start": current_msgs[0]["ts"],
-                "session_end": current_msgs[-1]["ts"],
-                "trigger": current_trigger,
-                "messages": current_msgs,
-            })
+            sessions.append(
+                {
+                    "session_start": current_msgs[0]["ts"],
+                    "session_end": current_msgs[-1]["ts"],
+                    "trigger": current_trigger,
+                    "messages": current_msgs,
+                }
+            )
 
         return sessions

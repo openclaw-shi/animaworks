@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -16,7 +17,7 @@ import json
 import logging
 import shutil
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,7 @@ _CONTEXT_AUTOCOMPACT_SAFETY = 2
 
 # ── Debug helpers ────────────────────────────────────────────
 
+
 def _is_debug_superuser(anima_dir: Path) -> bool:
     """Check if an anima has debug_superuser flag in status.json."""
     status_path = anima_dir / "status.json"
@@ -65,6 +67,7 @@ def _is_debug_superuser(anima_dir: Path) -> bool:
 
 
 # ── Prompt file cleanup ──────────────────────────────────────
+
 
 def _cleanup_prompt_files(files: list[Path]) -> None:
     """Remove temp prompt files created for --system-prompt-file."""
@@ -81,6 +84,7 @@ def _cleanup_prompt_files(files: list[Path]) -> None:
 # than this, start fresh instead of resuming (avoids immediate compaction
 # when the restored transcript + new system prompt exceed context limits).
 SESSION_RESUME_TIMEOUT_MIN = 10
+
 
 def _session_file(session_type: str, thread_id: str = "default") -> str:
     """Return the session file name for the given session type."""
@@ -109,12 +113,15 @@ def _load_session_id(anima_dir: Path, session_type: str = "chat", thread_id: str
         if ts_str:
             saved = datetime.fromisoformat(ts_str)
             if saved.tzinfo is None:
-                saved = saved.replace(tzinfo=timezone.utc)
-            elapsed_min = (datetime.now(timezone.utc) - saved).total_seconds() / 60
+                saved = saved.replace(tzinfo=UTC)
+            elapsed_min = (datetime.now(UTC) - saved).total_seconds() / 60
             if elapsed_min > SESSION_RESUME_TIMEOUT_MIN:
                 logger.info(
                     "Session resume skipped (%s/%s): idle %.1f min > %d min threshold",
-                    session_type, anima_dir.name, elapsed_min, SESSION_RESUME_TIMEOUT_MIN,
+                    session_type,
+                    anima_dir.name,
+                    elapsed_min,
+                    SESSION_RESUME_TIMEOUT_MIN,
                 )
                 return None
 
@@ -128,10 +135,16 @@ def _save_session_id(anima_dir: Path, session_id: str, session_type: str = "chat
     """Persist session ID for future SDK session resume."""
     path = anima_dir / "state" / _session_file(session_type, thread_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
-        "session_id": session_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }, ensure_ascii=False), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "session_id": session_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _clear_session_id(anima_dir: Path, session_type: str = "chat", thread_id: str = "default") -> None:
@@ -152,6 +165,7 @@ def clear_session_ids(anima_dir: Path, thread_id: str = "default") -> None:
 
 # ── SDK query input construction ─────────────────────────────
 
+
 async def _image_prompt_messages(
     prompt: str,
     images: list[ImageData],
@@ -164,14 +178,16 @@ async def _image_prompt_messages(
     """
     content_blocks: list[dict[str, Any]] = []
     for img in images:
-        content_blocks.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": img["media_type"],
-                "data": img["data"],
-            },
-        })
+        content_blocks.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img["media_type"],
+                    "data": img["data"],
+                },
+            }
+        )
     content_blocks.append({"type": "text", "text": prompt})
     yield {
         "type": "user",
@@ -196,6 +212,7 @@ def _build_sdk_query_input(
 
 
 # ── Tool output cleanup ──────────────────────────────────────
+
 
 def _cleanup_tool_outputs(anima_dir: Path) -> None:
     """Remove temporary tool output files created during the session."""

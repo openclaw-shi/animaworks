@@ -37,13 +37,7 @@ def _is_private_or_local_host(host: str) -> bool:
         return True
     try:
         ip = ipaddress.ip_address(host_l)
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-        )
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
     except ValueError:
         pass
 
@@ -57,13 +51,7 @@ def _is_private_or_local_host(host: str) -> bool:
             ip = ipaddress.ip_address(addr)
         except ValueError:
             return True
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-        ):
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
             return True
     return False
 
@@ -78,10 +66,7 @@ def _validate_proxy_target(url: str, proxy_config: MediaProxyConfig) -> str:
         raise HTTPException(status_code=400, detail="Invalid URL host")
     if _is_private_or_local_host(host):
         raise HTTPException(status_code=400, detail="Blocked private/local address")
-    if (
-        proxy_config.mode == "allowlist"
-        and not _is_host_allowed(host, proxy_config.allowed_domains)
-    ):
+    if proxy_config.mode == "allowlist" and not _is_host_allowed(host, proxy_config.allowed_domains):
         raise HTTPException(status_code=403, detail="Host is not in allowlist")
     return parsed.geturl()
 

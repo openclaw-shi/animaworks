@@ -102,8 +102,7 @@ class VaultManager:
         """
         if not _HAS_NACL:
             logger.warning(
-                "PyNaCl is not installed; vault key generation skipped. "
-                "Install with: pip install PyNaCl>=1.5.0"
+                "PyNaCl is not installed; vault key generation skipped. Install with: pip install PyNaCl>=1.5.0"
             )
             return False
 
@@ -129,9 +128,7 @@ class VaultManager:
         if not _HAS_NACL or not self._key_path.is_file():
             return None
         try:
-            raw = base64.b64decode(
-                self._key_path.read_text(encoding="utf-8").strip()
-            )
+            raw = base64.b64decode(self._key_path.read_text(encoding="utf-8").strip())
             self._private_key = PrivateKey(raw)
             return self._private_key
         except Exception as exc:
@@ -344,9 +341,7 @@ class VaultManager:
         try:
             creds = json.loads(shared_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(
-                "Failed to read shared/credentials.json for migration: %s", exc
-            )
+            logger.warning("Failed to read shared/credentials.json for migration: %s", exc)
             return 0
 
         if not isinstance(creds, dict) or not creds:
@@ -371,8 +366,7 @@ class VaultManager:
         try:
             shared_path.rename(bak_path)
             logger.info(
-                "Migrated %d entries from shared/credentials.json → vault.json "
-                "(backup: %s)",
+                "Migrated %d entries from shared/credentials.json → vault.json (backup: %s)",
                 count,
                 bak_path,
             )

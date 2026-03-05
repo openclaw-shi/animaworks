@@ -6,6 +6,7 @@
 # See LICENSE for the full license text.
 
 """Shared SQLite message cache base class for communication tools."""
+
 from __future__ import annotations
 
 import logging
@@ -59,9 +60,7 @@ class BaseMessageCache:
 
         Subclasses may override to add domain-specific stats.
         """
-        tables = self.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         stats: dict[str, int] = {}
         for (tbl_name,) in tables:
             if tbl_name.startswith("sqlite_"):

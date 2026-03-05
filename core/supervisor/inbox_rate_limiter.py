@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from core.config.models import load_config
 
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from core.supervisor.scheduler_manager import SchedulerManager
 
 logger = logging.getLogger(__name__)
+
 
 class InboxRateLimiter:
     """Inbox rate limiting, cascade detection, and deferred trigger management."""
@@ -73,7 +74,10 @@ class InboxRateLimiter:
                 logger.warning(
                     "CASCADE DETECTED: %s <-> %s (%d round-trips in %ds window). "
                     "Suppressing message-triggered heartbeat.",
-                    self._anima_name, sender, total, self._cascade_window_s,
+                    self._anima_name,
+                    sender,
+                    total,
+                    self._cascade_window_s,
                 )
                 return True
         return False
@@ -113,9 +117,7 @@ class InboxRateLimiter:
         """
         if self._deferred_timer is not None:
             return  # already scheduled
-        remaining = self._cooldown_sec - (
-            time.monotonic() - self._last_msg_heartbeat_end
-        )
+        remaining = self._cooldown_sec - (time.monotonic() - self._last_msg_heartbeat_end)
         # If not in cooldown (e.g. lock-only), use a short retry delay
         delay = max(remaining, 2.0)
         loop = asyncio.get_running_loop()
@@ -125,7 +127,8 @@ class InboxRateLimiter:
         )
         logger.debug(
             "Deferred trigger scheduled for %s in %.1fs",
-            self._anima_name, delay,
+            self._anima_name,
+            delay,
         )
 
     async def try_deferred_trigger(self) -> None:
@@ -178,9 +181,7 @@ class InboxRateLimiter:
         cfg = load_config()
         has_human = any(m.source == "human" for m in inbox_messages)
         has_external = any(m.source in EXTERNAL_PLATFORM_SOURCES for m in inbox_messages)
-        has_actionable = any(
-            m.intent in cfg.heartbeat.actionable_intents for m in inbox_messages
-        )
+        has_actionable = any(m.intent in cfg.heartbeat.actionable_intents for m in inbox_messages)
         if not has_human and not has_external and not has_actionable:
             logger.info(
                 "Intent filter: %s — no actionable messages, deferring to scheduled heartbeat",
@@ -199,7 +200,8 @@ class InboxRateLimiter:
             await self._anima.process_inbox_message()
         except Exception:
             logger.exception(
-                "Message-triggered inbox failed: %s", self._anima_name,
+                "Message-triggered inbox failed: %s",
+                self._anima_name,
             )
         finally:
             self._scheduler_mgr.heartbeat_running = False
@@ -250,7 +252,9 @@ class InboxRateLimiter:
                 break
             except Exception as e:
                 logger.error(
-                    "Error in inbox watcher for %s: %s", self._anima_name, e,
+                    "Error in inbox watcher for %s: %s",
+                    self._anima_name,
+                    e,
                 )
                 await asyncio.sleep(2.0)
 

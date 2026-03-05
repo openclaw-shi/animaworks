@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -12,6 +13,7 @@ import json
 import logging
 import os
 import secrets
+from datetime import UTC
 from pathlib import Path
 
 from pwdlib import PasswordHash
@@ -29,12 +31,14 @@ _hasher = PasswordHash((Argon2Hasher(),))
 
 # ── Path helpers ──────────────────────────────────────────────
 
+
 def get_auth_path() -> Path:
     """Return the path to the auth.json configuration file."""
     return get_data_dir() / _AUTH_FILENAME
 
 
 # ── Load / Save ──────────────────────────────────────────────
+
 
 def load_auth() -> AuthConfig:
     """Load auth configuration from disk, returning defaults if not found."""
@@ -64,6 +68,7 @@ def save_auth(config: AuthConfig) -> None:
 
 # ── Password hashing ────────────────────────────────────────
 
+
 def hash_password(password: str) -> str:
     """Hash a plaintext password with Argon2id."""
     return _hasher.hash(password)
@@ -77,6 +82,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 # ── Session management ──────────────────────────────────────
 
 MAX_SESSIONS_PER_USER = 10
+
 
 def _ensure_secret_key(config: AuthConfig) -> None:
     """Generate secret_key if not yet set (reserved for future HMAC signing)."""
@@ -95,17 +101,16 @@ def create_session(config: AuthConfig, username: str) -> str:
     _ensure_secret_key(config)
 
     # Evict oldest sessions if user exceeds limit
-    user_sessions = [
-        (tok, sess) for tok, sess in config.sessions.items()
-        if sess.username == username
-    ]
+    user_sessions = [(tok, sess) for tok, sess in config.sessions.items() if sess.username == username]
     if len(user_sessions) >= MAX_SESSIONS_PER_USER:
         user_sessions.sort(key=lambda x: x[1].created_at)
         excess = len(user_sessions) - MAX_SESSIONS_PER_USER + 1
         for tok, _ in user_sessions[:excess]:
             del config.sessions[tok]
         logger.info(
-            "Evicted %d oldest session(s) for user '%s'", excess, username,
+            "Evicted %d oldest session(s) for user '%s'",
+            excess,
+            username,
         )
 
     token = secrets.token_urlsafe(48)
@@ -122,7 +127,7 @@ def validate_session(token: str | None) -> Session | None:
     if session is None:
         return None
 
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from core.config.models import load_config
 
@@ -130,9 +135,9 @@ def validate_session(token: str | None) -> Session | None:
     if ttl_days is not None:
         created = session.created_at
         if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
+            created = created.replace(tzinfo=UTC)
         expiry = created + timedelta(days=ttl_days)
-        if datetime.now(timezone.utc) > expiry:
+        if datetime.now(UTC) > expiry:
             del config.sessions[token]
             save_auth(config)
             logger.info("Session expired (TTL=%d days)", ttl_days)
@@ -153,9 +158,7 @@ def revoke_all_sessions(username: str | None = None) -> None:
     """Revoke all sessions, or only those belonging to *username*."""
     config = load_auth()
     if username:
-        config.sessions = {
-            t: s for t, s in config.sessions.items() if s.username != username
-        }
+        config.sessions = {t: s for t, s in config.sessions.items() if s.username != username}
     else:
         config.sessions = {}
     save_auth(config)
@@ -163,6 +166,7 @@ def revoke_all_sessions(username: str | None = None) -> None:
 
 
 # ── User lookup ─────────────────────────────────────────────
+
 
 def find_user(config: AuthConfig, username: str) -> AuthUser | None:
     """Find a user by username (checks owner first, then users list)."""

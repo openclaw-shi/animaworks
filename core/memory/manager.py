@@ -1,12 +1,11 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # This file is part of AnimaWorks core/server, licensed under Apache-2.0.
 # See LICENSE for the full license text.
-
-
 import logging
 import os
 import re
@@ -15,29 +14,28 @@ from pathlib import Path
 
 from core.i18n import t
 from core.memory._io import atomic_write_text
-from core.paths import get_common_knowledge_dir, get_common_skills_dir, get_company_dir, get_shared_dir
-from core.schemas import ModelConfig, SkillMeta
+from core.memory.config_reader import ConfigReader
+from core.memory.cron_logger import CronLogger
+from core.memory.frontmatter import FrontmatterService
+from core.memory.rag_search import RAGMemorySearch
+from core.memory.resolution_tracker import ResolutionTracker
 
 # ── Re-exports for backward compatibility ─────────────────
 # These were originally defined in this module.  External code
 # (builder.py, priming.py, tests) may import them from here.
 from core.memory.skill_metadata import (  # noqa: F401
-    match_skills_by_description,
-    _normalize_text,
+    _TIER2_STOP_WORDS,
+    SkillMetadataService,
     _extract_bracket_keywords,
     _extract_comma_keywords,
     _match_tier1,
     _match_tier2,
     _match_tier3_vector,
-    _TIER2_STOP_WORDS,
+    _normalize_text,
+    match_skills_by_description,
 )
-
-from core.memory.cron_logger import CronLogger
-from core.memory.resolution_tracker import ResolutionTracker
-from core.memory.config_reader import ConfigReader
-from core.memory.skill_metadata import SkillMetadataService
-from core.memory.rag_search import RAGMemorySearch
-from core.memory.frontmatter import FrontmatterService
+from core.paths import get_common_knowledge_dir, get_common_skills_dir, get_company_dir, get_shared_dir
+from core.schemas import ModelConfig, SkillMeta
 
 logger = logging.getLogger("animaworks.memory")
 
@@ -250,9 +248,7 @@ class MemoryManager:
         return [f.stem for f in sorted(self.knowledge_dir.glob("*.md"))]
 
     def list_episode_files(self) -> list[str]:
-        return [
-            f.stem for f in sorted(self.episodes_dir.glob("*.md"), reverse=True)
-        ]
+        return [f.stem for f in sorted(self.episodes_dir.glob("*.md"), reverse=True)]
 
     def list_procedure_files(self) -> list[str]:
         return [f.stem for f in sorted(self.procedures_dir.glob("*.md"))]
@@ -371,7 +367,9 @@ class MemoryManager:
         self._rag._ensure_shared_skills_indexed(vector_store)
 
     def _vector_search_memory(
-        self, query: str, scope: str,
+        self,
+        query: str,
+        scope: str,
     ) -> list[tuple[str, str]]:
         return self._rag._vector_search_memory(query, scope, self.knowledge_dir)
 
@@ -415,7 +413,11 @@ class MemoryManager:
     # ── Facade: CronLogger ────────────────────────────────
 
     def append_cron_log(
-        self, task_name: str, *, summary: str, duration_ms: int,
+        self,
+        task_name: str,
+        *,
+        summary: str,
+        duration_ms: int,
     ) -> None:
         """Facade: CronLogger.append_cron_log."""
         self._cron.append_cron_log(task_name, summary=summary, duration_ms=duration_ms)
@@ -431,8 +433,11 @@ class MemoryManager:
     ) -> None:
         """Facade: CronLogger.append_cron_command_log."""
         self._cron.append_cron_command_log(
-            task_name, exit_code=exit_code, stdout=stdout,
-            stderr=stderr, duration_ms=duration_ms,
+            task_name,
+            exit_code=exit_code,
+            stdout=stdout,
+            stderr=stderr,
+            duration_ms=duration_ms,
         )
 
     def read_cron_log(self, days: int = 1) -> str:
@@ -452,11 +457,14 @@ class MemoryManager:
     # ── Facade: RAGMemorySearch ───────────────────────────
 
     def search_memory_text(
-        self, query: str, scope: str = "all",
+        self,
+        query: str,
+        scope: str = "all",
     ) -> list[tuple[str, str]]:
         """Facade: RAGMemorySearch.search_memory_text."""
         return self._rag.search_memory_text(
-            query, scope,
+            query,
+            scope,
             knowledge_dir=self.knowledge_dir,
             episodes_dir=self.episodes_dir,
             procedures_dir=self.procedures_dir,
@@ -490,7 +498,10 @@ class MemoryManager:
         self._frontmatter.update_knowledge_metadata(path, updates)
 
     def write_procedure_with_meta(
-        self, path: Path, content: str, metadata: dict,
+        self,
+        path: Path,
+        content: str,
+        metadata: dict,
     ) -> None:
         """Facade: FrontmatterService.write_procedure_with_meta."""
         self._frontmatter.write_procedure_with_meta(path, content, metadata)
@@ -564,7 +575,8 @@ class MemoryManager:
                         knowledge.append(entry)
                 except Exception:
                     logger.warning(
-                        "Failed to read %s for knowledge injection", f,
+                        "Failed to read %s for knowledge injection",
+                        f,
                     )
         procedures.sort(key=lambda d: d["confidence"], reverse=True)
         knowledge.sort(key=lambda d: d["confidence"], reverse=True)

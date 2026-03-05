@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -6,7 +7,6 @@ from __future__ import annotations
 """ntfy push notification channel."""
 
 import logging
-from typing import Any
 
 import httpx
 
@@ -55,7 +55,9 @@ class NtfyChannel(NotificationChannel):
 
         # Optional auth token (env → vault/shared)
         token = self._resolve_credential_with_vault(
-            "token_env", anima_name=anima_name, fallback_env="NTFY_TOKEN",
+            "token_env",
+            anima_name=anima_name,
+            fallback_env="NTFY_TOKEN",
         )
         if token:
             headers["Authorization"] = f"Bearer {token}"

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -16,8 +17,8 @@ and a context-manager helper for converting API errors into
 
 import json as _json
 import logging
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from core.execution.base import StreamDisconnectedError
@@ -84,12 +85,14 @@ def parse_accumulated_tool_calls(
             args = _json.loads(entry["arguments"])
         except (_json.JSONDecodeError, TypeError):
             args = None
-        result.append({
-            "id": entry["id"],
-            "name": entry["name"],
-            "arguments": args,
-            "raw_arguments": entry["arguments"] if args is None else None,
-        })
+        result.append(
+            {
+                "id": entry["id"],
+                "name": entry["name"],
+                "arguments": args,
+                "raw_arguments": entry["arguments"] if args is None else None,
+            }
+        )
     return result
 
 

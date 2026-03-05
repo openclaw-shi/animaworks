@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -47,8 +48,23 @@ AVAILABLE_PROVIDERS = [
 ]
 
 AVAILABLE_LOCALES = [
-    "en", "ja", "zh-CN", "zh-TW", "ko", "es", "fr", "de",
-    "pt", "it", "ru", "ar", "hi", "tr", "vi", "th", "id",
+    "en",
+    "ja",
+    "zh-CN",
+    "zh-TW",
+    "ko",
+    "es",
+    "fr",
+    "de",
+    "pt",
+    "it",
+    "ru",
+    "ar",
+    "hi",
+    "tr",
+    "vi",
+    "th",
+    "id",
 ]
 
 
@@ -143,8 +159,8 @@ def create_setup_router() -> APIRouter:
     ) -> dict[str, Any]:
         """Finalize setup: save config, create anima, mark complete."""
         from core.config import (
-            CredentialConfig,
             AnimaModelConfig,
+            CredentialConfig,
             invalidate_cache,
             load_config,
             save_config,
@@ -176,11 +192,7 @@ def create_setup_router() -> APIRouter:
                 from core.config import read_anima_supervisor
 
                 anima_dir = animas_dir / anima_name
-                supervisor = (
-                    read_anima_supervisor(anima_dir)
-                    if anima_dir.exists()
-                    else None
-                )
+                supervisor = read_anima_supervisor(anima_dir) if anima_dir.exists() else None
                 config.animas[anima_name] = AnimaModelConfig(
                     supervisor=supervisor,
                 )

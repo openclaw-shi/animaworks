@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -24,8 +25,8 @@ from core.time_utils import ensure_aware, now_jst
 logger = logging.getLogger("animaworks.cascade_limiter")
 
 # Kept for backward compatibility; authoritative values now live in HeartbeatConfig.
-_DEPTH_WINDOW_S = 600      # 10 minutes
-_MAX_DEPTH_DEFAULT = 6     # 6 turns = 3 round-trips
+_DEPTH_WINDOW_S = 600  # 10 minutes
+_MAX_DEPTH_DEFAULT = 6  # 6 turns = 3 round-trips
 
 
 class ConversationDepthLimiter:
@@ -242,8 +243,7 @@ class ConversationDepthLimiter:
             stacklevel=2,
         )
         logger.debug(
-            "Deprecated check_and_record() called for %s -> %s; "
-            "use check_depth() with sender_anima_dir instead",
+            "Deprecated check_and_record() called for %s -> %s; use check_depth() with sender_anima_dir instead",
             sender,
             receiver,
         )

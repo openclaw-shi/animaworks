@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -58,10 +59,7 @@ def apply_db_descriptions(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
 MEMORY_TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_memory",
-        "description": (
-            "Search the anima's long-term memory "
-            "(knowledge, episodes, procedures) by keyword."
-        ),
+        "description": ("Search the anima's long-term memory (knowledge, episodes, procedures) by keyword."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -475,8 +473,7 @@ USE_TOOL: list[dict[str, Any]] = [
                 "action": {
                     "type": "string",
                     "description": (
-                        "Action/subcommand to execute within the tool "
-                        "(e.g. 'send', 'read', 'search', 'query', 'list')"
+                        "Action/subcommand to execute within the tool (e.g. 'send', 'read', 'search', 'query', 'list')"
                     ),
                 },
                 "args": {
@@ -586,10 +583,7 @@ ADMIN_TOOLS: list[dict[str, Any]] = [
 SUPERVISOR_TOOLS: list[dict[str, Any]] = [
     {
         "name": "disable_subordinate",
-        "description": (
-            "部下のAnimaを休止させる（プロセス停止 + 自動復帰防止）。"
-            "自分の直属部下のみ操作可能。"
-        ),
+        "description": ("部下のAnimaを休止させる（プロセス停止 + 自動復帰防止）。自分の直属部下のみ操作可能。"),
         "parameters": {
             "type": "object",
             "properties": {
@@ -607,10 +601,7 @@ SUPERVISOR_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "enable_subordinate",
-        "description": (
-            "休止中の部下のAnimaを復帰させる。"
-            "自分の直属部下のみ操作可能。"
-        ),
+        "description": ("休止中の部下のAnimaを復帰させる。自分の直属部下のみ操作可能。"),
         "parameters": {
             "type": "object",
             "properties": {
@@ -902,16 +893,12 @@ KNOWLEDGE_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": (
-                        "Relative path to the knowledge file "
-                        "(e.g. 'knowledge/deployment-notes.md')"
-                    ),
+                    "description": ("Relative path to the knowledge file (e.g. 'knowledge/deployment-notes.md')"),
                 },
                 "success": {
                     "type": "boolean",
                     "description": (
-                        "Whether the knowledge was useful/accurate (true) "
-                        "or inaccurate/irrelevant (false)"
+                        "Whether the knowledge was useful/accurate (true) or inaccurate/irrelevant (false)"
                     ),
                 },
                 "notes": {
@@ -1211,8 +1198,7 @@ TASK_TOOLS: list[dict[str, Any]] = [
     {
         "name": "update_task",
         "description": (
-            "タスクのステータスを更新する。"
-            "完了時は status='done'、中断時は status='cancelled' に設定する。"
+            "タスクのステータスを更新する。完了時は status='done'、中断時は status='cancelled' に設定する。"
         ),
         "parameters": {
             "type": "object",
@@ -1236,10 +1222,7 @@ TASK_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_tasks",
-        "description": (
-            "タスクキューの一覧を取得する。"
-            "ステータスでフィルタリング可能。"
-        ),
+        "description": ("タスクキューの一覧を取得する。ステータスでフィルタリング可能。"),
         "parameters": {
             "type": "object",
             "properties": {
@@ -1342,7 +1325,7 @@ def to_text_format(
             "If you don't need to use a tool, respond with plain text.",
             "Only one tool call per message.",
             "**Important**: NEVER fabricate command output, file contents, or system information. Always use a tool to retrieve real data.",
-            "Do NOT just say \"I'll check\" without actually calling a tool.",
+            'Do NOT just say "I\'ll check" without actually calling a tool.',
         ]
         fewshot_header = "### Examples"
         fewshot_items = [
@@ -1550,7 +1533,8 @@ def load_personal_tool_schemas(
     for tool_name, file_path in personal_tools.items():
         try:
             spec = importlib.util.spec_from_file_location(
-                f"animaworks_personal_tool_{tool_name}", file_path,
+                f"animaworks_personal_tool_{tool_name}",
+                file_path,
             )
             if spec is None or spec.loader is None:
                 continue
@@ -1563,7 +1547,8 @@ def load_personal_tool_schemas(
         except Exception:
             logger.debug(
                 "Failed to load personal tool schemas: %s",
-                tool_name, exc_info=True,
+                tool_name,
+                exc_info=True,
             )
     return schemas
 

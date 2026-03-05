@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -135,6 +136,7 @@ class KnowledgeValidator:
         """
         if not model:
             from core.config.models import ConsolidationConfig
+
             model = ConsolidationConfig().llm_model
         if self._nli_pipeline is None and self._nli_available:
             self._load_nli_model()
@@ -152,12 +154,14 @@ class KnowledgeValidator:
                 results.append(item)
                 logger.debug(
                     "Knowledge accepted (NLI entailment, score=%.2f): %s",
-                    score, content[:100],
+                    score,
+                    content[:100],
                 )
             elif label == "contradiction" and score >= self.CONTRADICTION_THRESHOLD:
                 logger.warning(
                     "Knowledge rejected (NLI contradiction, score=%.2f): %s",
-                    score, content[:100],
+                    score,
+                    content[:100],
                 )
             else:
                 # Uncertain — fall back to LLM review
@@ -166,16 +170,19 @@ class KnowledgeValidator:
                     item["confidence"] = 0.7
                     results.append(item)
                     logger.debug(
-                        "Knowledge accepted (LLM review): %s", content[:100],
+                        "Knowledge accepted (LLM review): %s",
+                        content[:100],
                     )
                 else:
                     logger.warning(
-                        "Knowledge rejected (LLM review): %s", content[:100],
+                        "Knowledge rejected (LLM review): %s",
+                        content[:100],
                     )
 
         logger.info(
             "Validation complete: %d/%d items accepted",
-            len(results), len(knowledge_items),
+            len(results),
+            len(knowledge_items),
         )
         return results
 
@@ -207,11 +214,14 @@ class KnowledgeValidator:
         )
 
         try:
-            response = cast(Any, await litellm.acompletion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=256,
-            ))
+            response = cast(
+                Any,
+                await litellm.acompletion(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=256,
+                ),
+            )
             text = response.choices[0].message.content or ""
             # Extract JSON from response
             json_match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -221,7 +231,8 @@ class KnowledgeValidator:
                 reason = result.get("reason", "")
                 logger.debug(
                     "LLM review result: valid=%s reason=%s",
-                    valid, reason[:200],
+                    valid,
+                    reason[:200],
                 )
                 return bool(valid)
         except Exception as e:
