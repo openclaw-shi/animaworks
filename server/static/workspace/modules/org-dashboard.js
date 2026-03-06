@@ -10,7 +10,11 @@ import { createLogger } from "../../shared/logger.js";
 import { escapeHtml } from "./utils.js";
 import { getState } from "./state.js";
 import { animaHashColor } from "../../shared/avatar-utils.js";
-import { bustupCandidates, resolveCachedAvatar } from "../../modules/avatar-resolver.js";
+import {
+  bustupCandidates,
+  bustupExpressionCandidates,
+  resolveCachedAvatar,
+} from "../../modules/avatar-resolver.js";
 
 const logger = createLogger("org-dashboard");
 
@@ -43,6 +47,31 @@ let _panStartX = 0;
 let _panStartY = 0;
 let _panScrollLeft = 0;
 let _panScrollTop = 0;
+
+// ── Message Line State ──────────────────────
+let _connectionsGroup = null;
+let _msgLinesGroup = null;
+let _msgLineCounter = 0;
+
+// ── Avatar Variant State ──────────────────────
+const MESSAGE_LINE_DURATION = 2000;
+const MESSAGE_LINE_FADE = 500;
+
+const _avatarExpressions = new Map();
+const EXPRESSIONS = ["neutral", "smile", "laugh", "troubled", "surprised", "thinking", "embarrassed"];
+
+const STATUS_TO_EXPRESSION = {
+  idle: "neutral",
+  thinking: "thinking",
+  working: "thinking",
+  chatting: "smile",
+  talking: "smile",
+  error: "troubled",
+  sleeping: "neutral",
+  bootstrapping: "thinking",
+  heartbeat: "smile",
+  reporting: "smile",
+};
 
 // ── Org Tree Builder ──────────────────────
 
@@ -175,7 +204,19 @@ function _getCardDimensions() {
 
 function _updateConnections() {
   if (!_svgLayer) return;
-  _svgLayer.innerHTML = "";
+
+  if (!_connectionsGroup) {
+    _connectionsGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    _connectionsGroup.setAttribute("class", "org-connections-group");
+    _svgLayer.prepend(_connectionsGroup);
+  }
+  _connectionsGroup.innerHTML = "";
+
+  if (!_msgLinesGroup) {
+    _msgLinesGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    _msgLinesGroup.setAttribute("class", "org-msg-lines-group");
+    _svgLayer.appendChild(_msgLinesGroup);
+  }
 
   const { w: cardW, h: cardH } = _getCardDimensions();
 
@@ -194,7 +235,7 @@ function _updateConnections() {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
     path.setAttribute("class", "org-connection-line");
-    _svgLayer.appendChild(path);
+    _connectionsGroup.appendChild(path);
   }
 }
 
@@ -378,7 +419,64 @@ function _resizeSvg() {
   _nodesLayer.style.height = `${maxY}px`;
 }
 
-// ── Avatar Loading ──────────────────────
+// ── Message Line Drawing ──────────────────────
+
+export function showMessageLine(fromName, toName, _summary) {
+  if (!_svgLayer || !_msgLinesGroup) return;
+  const fromPos = _positions.get(fromName);
+  const toPos = _positions.get(toName);
+  if (!fromPos || !toPos) return;
+
+  const { w: cardW, h: cardH } = _getCardDimensions();
+  const x1 = fromPos.x + cardW / 2;
+  const y1 = fromPos.y + cardH / 2;
+  const x2 = toPos.x + cardW / 2;
+  const y2 = toPos.y + cardH / 2;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1) return;
+
+  const offsetScale = Math.min(len * 0.3, 80);
+  const sign = (++_msgLineCounter % 2 === 0) ? 1 : -1;
+  const jitter = (Math.random() - 0.5) * 20;
+  const nx = (-dy / len) * (offsetScale + jitter) * sign;
+  const ny = (dx / len) * (offsetScale + jitter) * sign;
+  const cx1 = (x1 + x2) / 2 + nx;
+  const cy1 = (y1 + y2) / 2 + ny;
+
+  const pathD = `M${x1},${y1} Q${cx1},${cy1} ${x2},${y2}`;
+
+  const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  group.classList.add("org-msg-line-group");
+
+  const trail = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  trail.setAttribute("d", pathD);
+  trail.setAttribute("class", "org-msg-trail");
+  group.appendChild(trail);
+
+  const packet = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  packet.setAttribute("r", "5");
+  packet.setAttribute("class", "org-msg-packet");
+
+  const anim = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+  anim.setAttribute("dur", `${MESSAGE_LINE_DURATION}ms`);
+  anim.setAttribute("repeatCount", "1");
+  anim.setAttribute("fill", "freeze");
+  anim.setAttribute("path", pathD);
+  packet.appendChild(anim);
+  group.appendChild(packet);
+
+  _msgLinesGroup.appendChild(group);
+
+  setTimeout(() => {
+    group.classList.add("org-msg-line--fading");
+    setTimeout(() => group.remove(), MESSAGE_LINE_FADE);
+  }, MESSAGE_LINE_DURATION);
+}
+
+// ── Avatar Loading & Variants ──────────────────────
 
 async function _loadOrgAvatars(animas) {
   const candidates = bustupCandidates();
@@ -394,6 +492,56 @@ async function _loadOrgAvatars(animas) {
       img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:6px;";
       img.onload = () => { el.textContent = ""; el.appendChild(img); };
     } catch { /* skip */ }
+  }
+}
+
+async function _preloadAvatarExpressions(animas) {
+  for (const p of animas) {
+    const exprs = {};
+    for (const expr of EXPRESSIONS) {
+      try {
+        const candidates = bustupExpressionCandidates(expr);
+        const url = await resolveCachedAvatar(p.name, candidates, "S");
+        if (url) exprs[expr] = url;
+      } catch { /* skip */ }
+    }
+    if (Object.keys(exprs).length > 0) {
+      _avatarExpressions.set(p.name, exprs);
+    }
+  }
+}
+
+let _avatarUpdateRafPending = new Set();
+
+export function updateAvatarExpression(name, status) {
+  if (_avatarUpdateRafPending.has(name)) return;
+  _avatarUpdateRafPending.add(name);
+
+  requestAnimationFrame(() => {
+    _avatarUpdateRafPending.delete(name);
+    _applyAvatarExpression(name, status);
+  });
+}
+
+function _applyAvatarExpression(name, status) {
+  const exprs = _avatarExpressions.get(name);
+  const avatarEl = _container?.querySelector(`.org-card-avatar[data-anima="${CSS.escape(name)}"] img`);
+  if (!avatarEl) return;
+
+  const expression = STATUS_TO_EXPRESSION[status] || "neutral";
+  const url = exprs?.[expression] || exprs?.neutral;
+
+  if (url && avatarEl.src !== url) {
+    avatarEl.classList.add("org-avatar--transitioning");
+    avatarEl.src = url;
+    avatarEl.onload = () => avatarEl.classList.remove("org-avatar--transitioning");
+  }
+
+  const card = avatarEl.closest(".org-card");
+  if (!exprs?.[expression] && expression !== "neutral") {
+    if (card) card.dataset.expression = expression;
+  } else {
+    if (card) delete card.dataset.expression;
   }
 }
 
@@ -482,6 +630,9 @@ export async function initOrgDashboard(container, animas, { onNodeClick } = {}) 
   _loadOrgAvatars(animas);
   _loadKpiStats();
 
+  // Lazy-preload expression variants after neutral avatars are loaded
+  requestIdleCallback(() => _preloadAvatarExpressions(animas), { timeout: 5000 });
+
   logger.info("Org dashboard initialized (canvas mode)", { animaCount: animas.length });
 }
 
@@ -502,6 +653,8 @@ export function disposeOrgDashboard() {
   _cardEls.clear();
   _nodeData.clear();
   _positions.clear();
+  _avatarExpressions.clear();
+  _avatarUpdateRafPending.clear();
   _container = null;
   _viewport = null;
   _svgLayer = null;
@@ -511,6 +664,9 @@ export function disposeOrgDashboard() {
   _draggingCard = null;
   _didDrag = false;
   _panActive = false;
+  _connectionsGroup = null;
+  _msgLinesGroup = null;
+  _msgLineCounter = 0;
   if (_resizeRafId) { cancelAnimationFrame(_resizeRafId); _resizeRafId = null; }
 }
 

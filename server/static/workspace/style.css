@@ -3473,5 +3473,79 @@ html, body {
   z-index: 1;
 }
 
+/* ── Message Line Animation ─────────────────────── */
+
+.org-msg-trail {
+  fill: none;
+  stroke: var(--aw-color-accent, #3b82f6);
+  stroke-width: 2;
+  stroke-opacity: 0.3;
+  filter: drop-shadow(0 0 4px var(--aw-color-accent, #3b82f6));
+}
+
+.org-msg-packet {
+  fill: var(--aw-color-accent, #3b82f6);
+  filter: drop-shadow(0 0 6px var(--aw-color-accent, #3b82f6))
+          drop-shadow(0 0 12px var(--aw-color-accent, #3b82f6));
+}
+
+.org-msg-line-group {
+  transition: opacity 0.5s ease;
+}
+
+.org-msg-line--fading {
+  opacity: 0;
+}
+
+/* ── Avatar Variants ─────────────────────── */
+
+.org-card-avatar img {
+  transition: opacity 0.3s ease;
+}
+
+.org-avatar--transitioning {
+  opacity: 0.7;
+}
+
+/* CSS filter fallback for missing expression images */
+.org-card[data-expression="troubled"] .org-card-avatar img {
+  filter: hue-rotate(-20deg) brightness(0.9);
+}
+
+.org-card[data-expression="thinking"] .org-card-avatar img {
+  filter: saturate(0.7) brightness(1.05);
+}
+
+.org-card[data-expression="smile"] .org-card-avatar img {
+  filter: brightness(1.08) contrast(1.05);
+}
+
+.org-card[data-expression="laugh"] .org-card-avatar img {
+  filter: brightness(1.1) saturate(1.1);
+}
+
+.org-card[data-expression="surprised"] .org-card-avatar img {
+  filter: brightness(1.05) contrast(1.1);
+}
+
+.org-card[data-expression="embarrassed"] .org-card-avatar img {
+  filter: hue-rotate(10deg) brightness(1.02) saturate(1.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .org-msg-line-group {
+    transition: none;
+  }
+  .org-msg-packet animateMotion {
+    display: none;
+  }
+  .org-msg-trail {
+    stroke-dasharray: 8 4;
+  }
+  .org-card-avatar img {
+    transition: none;
+  }
+}
+
 /* ── Realistic Mode Overrides ─────────────────────── */
 /* (avatar display is now handled by avatar-resolver regardless of mode) */

@@ -12,7 +12,7 @@ import { showMessageEffect } from "./interactions.js";
 import { addTimelineEvent, localISOString } from "./timeline.js";
 import { addActivity } from "./activity.js";
 import { getSelectedBoard, appendBoardMessage } from "./board.js";
-import { updateAnimaStatus } from "./org-dashboard.js";
+import { updateAnimaStatus, showMessageLine, updateAvatarExpression } from "./org-dashboard.js";
 import { playReveal } from "./reveal.js";
 import { createLogger } from "../../shared/logger.js";
 import { bustupCandidates, resolveAvatar, invalidateAvatarCache } from "../../modules/avatar-resolver.js";
@@ -72,6 +72,10 @@ export function setupWebSocket(deps) {
     }
     if (getCurrentView() === "org") {
       updateAnimaStatus(data.name, data.status || data);
+      const state = typeof data.status === "object"
+        ? (data.status.state || data.status.status || "idle")
+        : String(data.status || "idle");
+      updateAvatarExpression(data.name, state.toLowerCase());
     }
   }));
 
@@ -82,6 +86,9 @@ export function setupWebSocket(deps) {
 
     if (data.type === "message") {
       showMessageEffect(data.from_person, data.to_person, data.summary || "");
+      if (getCurrentView() === "org") {
+        showMessageLine(data.from_person, data.to_person, data.summary || "");
+      }
     }
 
     addTimelineEvent({
