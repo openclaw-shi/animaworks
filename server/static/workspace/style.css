@@ -626,6 +626,7 @@ html, body {
 }
 
 .chat-bubble.assistant {
+  position: relative;
   margin-right: auto;
   background: transparent;
   color: var(--aw-color-text-primary, #1a1a1a);
@@ -636,6 +637,64 @@ html, body {
 .chat-bubble.assistant.streaming {
   border-left: 3px solid var(--aw-color-accent-light, #93c5fd);
   min-height: 2em;
+}
+
+/* ── Bubble Action Bar ──────────────── */
+
+.bubble-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.chat-bubble.assistant:hover .bubble-actions,
+.chat-bubble.assistant:focus-within .bubble-actions,
+.chat-bubble.assistant .bubble-actions.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chat-bubble.assistant.streaming .bubble-actions {
+  display: none;
+}
+
+.bubble-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--aw-color-bg-secondary);
+  color: var(--aw-color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+@supports (backdrop-filter: blur(4px)) {
+  .bubble-action-btn {
+    background: color-mix(in srgb, var(--aw-color-bg-primary) 80%, transparent 20%);
+    backdrop-filter: blur(4px);
+  }
+}
+
+.bubble-action-btn:hover,
+.bubble-action-btn:active {
+  background: var(--aw-color-bg-primary);
+  color: var(--aw-color-text-primary);
+}
+
+.bubble-action-btn [data-lucide] {
+  width: 14px;
+  height: 14px;
 }
 
 /* Markdown inside assistant bubbles */
@@ -1520,6 +1579,11 @@ html, body {
   height: 34px;
   min-width: 34px;
   min-height: 34px;
+}
+
+.ws-conv-input-area .voice-controls-slot {
+  width: 34px;
+  height: 34px;
 }
 
 .ws-conv-input-area .voice-mic-btn {

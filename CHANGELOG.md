@@ -7,6 +7,117 @@ adhering to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- add Slack notification icons for all Animas
+- workspace dashboard live status, KPI polling, and activity streams
+- replace tier-based prompt scaling with linear budget allocation
+- implement live activity cards for workspace org-dashboard
+- add message lines & avatar variants to org dashboard
+- replace org-dashboard with canvas node graph layout
+- progress-aware busy hang detection replacing counter-based kill
+- unified hot-reload system for config and connections
+- add copy/download action buttons to assistant chat bubbles
+- eliminate Any types with Protocol/TypedDict replacements
+- add `animaworks anima rename` CLI command
+- fix silent failures in task lifecycle and memory I/O
+- unify tool visibility across all execution modes (S/A/B)
+- unified housekeeping engine for disk rotation
+- auto-inject reply instruction metadata for external platform inbox messages
+- enforce MUST task creation in heartbeat/inbox prompts
+- config thread-safety and cleanup fixes
+- notification channel vault/shared credential support and robustness fixes
+- use os.replace for atomic writes and atomic truncation in cron_logger
+- handle Slack app_mention events with ts-based dedup and thread reply context
+- auto-assign intent on Slack mention/DM for immediate inbox processing
+- align skill-creator with Agent Skills spec and fix path resolution
+- document external message reception in messaging-guide (ja/en)
+- add call_human guide to common_knowledge (ja/en)
+- resync prompt DB sections migration + behavior_rules memory-backed advice rule
+- add --force flag to stop/restart commands
+- validate/repair broken knowledge frontmatter on write and startup
+- improve _fetch_node_content fallback and update_graph_incremental type inference
+- add LLM API retry for 429/5xx/network errors
+- write recovery_note on heartbeat process crash and fix unread_count
+- pending task failure safety — file move lifecycle and failure notifications
+- per-Anima Slack bot token resolution
+- add background_model override for heartbeat/inbox/cron cost reduction
+- expose credential vault tools (vault_get/vault_store/vault_list) to Animas
+- shared common_knowledge per-anima index with hash-based change detection
+- search_memory OR-split and priming keyword fallback
+- add AI-speed task deadline guidelines to environment.md
+- fix Agent tool intercept and add heartbeat task results visibility
+- spreading activation repair + episodes support
+- expose all supervisor tools in Mode S MCP + add CLI audit subcommand
+- consolidation quality improvements — frontmatter repair, REFLECTION extraction, smart activity filtering
+- incremental sync of common_skills/common_knowledge on startup
+- add gmail inbox, sent, and search subcommands
+
+### Fixed
+- always show amber spinner for any running stream entry
+- detect active groups on init so workspace spinners reflect ongoing tasks
+- replace silent except-pass with debug logging in reconciliation
+- org-dashboard spinner only spins during active tasks, not idle Running
+- address review feedback (iteration 1)
+- resolve ruff lint errors and time-dependent test failures
+- repair 3 broken unit tests
+- pass execution mode explicitly to _estimate_tool_overhead
+- add :active parity for .org-card:hover selector
+- address review feedback (iteration 1)
+- prevent error handler double-fault, fix exception hierarchy and restore fallbacks
+- address review feedback (iteration 1)
+- 7 bugfix batch — error handling, activity log, health check, client lifecycle
+- update regression tests for new exception propagation
+- resolve per-anima Slack token in CLI path
+- MCP supervisor safe fallback + executor context window overrides
+- address review feedback (iteration 2)
+- remove stale lastChunkTime reference in chat-stream.js
+- address review feedback (iteration 1)
+- replace broad except Exception with specific custom exceptions
+- address review feedback (iteration 1)
+- address review feedback (iteration 2)
+- replace inbox file creation with activity log for external sends
+- address review feedback (iteration 1)
+- use _thread.LockType for Python 3.12 isinstance compatibility
+- resolve all 8 failing tests on main
+- rename E2E test to clarify regression guard intent
+- address review feedback (iteration 1)
+- correct test mocking targets for CLI staleness tests
+- CLI staleness — log path, --local deprecation, exit code, env var unification
+- use getattr for record.result_summary robustness
+- cron logger data integrity — KeyError on command entries and timezone mismatch
+- use record.result_summary for tool_end completed_tools summary
+- prevent broadcast() race condition with list snapshot
+- use Date comparison for liveIsNewer to handle UTC/JST timezone mismatch
+- route call_human replies back to originating Anima
+- add num_retries to Mode B LLM calls for transient error resilience
+- align repair metadata with ensure_knowledge_frontmatter
+- address review feedback (iteration 1)
+- address review feedback (iteration 2)
+- add defensive type check for reply_to in failure notification path
+- update base tool count 27→30 for vault tools addition
+- update E2E outbound test for per-Anima slack _send_via_slack signature
+- add vault tools to dispatch dict test expectations
+- resolve CI test failures — vault MCP schemas and vibe reference realistic path
+- disable spreading activation in RAGFilter tests
+- resolve review regressions — test alignment, silent exception, code quality
+- address review findings — result.id bug, C-method, config params, threading lock
+- remove Chatwork-specific Bash blocks and update S-mode tool docs
+- address review findings — remove dead imports, fix parse-fail path, include E2E test updates
+
+### Changed
+- apply ruff format to server/routes/system.py
+- apply ruff format to 3 remaining files
+- introduce ruff linting/formatting and improve CI pipeline
+- remove deprecated modules and simplify architecture
+- unify external platform source constants and deduplicate _detect_slack_intent
+- unify claude-opus-4-20250514 refs to claude-opus-4-6
+- simplify gmail tool — extract _fetch_emails, Email.to_dict, constants
+
+### Performance
+- reduce markdown re-render interval to 30ms / 10 chars
+- fix chat streaming stutter — incremental markdown, ASGI middleware, log reduction
+- fix streaming chat display jank — RAF batching, log reduction, SSE flush
+
 ## [0.4.10] - 2026-03-04
 
 ### Added
