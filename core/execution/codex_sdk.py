@@ -441,6 +441,7 @@ class CodexSDKExecutor(BaseExecutor):
         images: list[ImageData] | None = None,
         prior_messages: list[dict[str, Any]] | None = None,
         max_turns_override: int | None = None,
+        thread_id: str = "default",
     ) -> ExecutionResult:
         """Run a session via Codex SDK (blocking mode)."""
         if self._check_interrupted():
@@ -535,6 +536,7 @@ class CodexSDKExecutor(BaseExecutor):
         prior_messages: list[dict[str, Any]] | None = None,
         max_turns_override: int | None = None,
         trigger: str = "",
+        thread_id: str = "default",
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream events from Codex SDK.
 

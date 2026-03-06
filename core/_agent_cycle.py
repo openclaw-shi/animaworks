@@ -235,6 +235,7 @@ class CycleMixin:
                 trigger=trigger,
                 images=images,
                 max_turns_override=max_turns_override,
+                thread_id=thread_id,
             )
             _save_prompt_log_end(
                 self.anima_dir,
@@ -275,6 +276,7 @@ class CycleMixin:
                 trigger=trigger,
                 images=images,
                 max_turns_override=max_turns_override,
+                thread_id=thread_id,
             )
             if result.replied_to_from_transcript:
                 self._tool_handler.merge_replied_to(result.replied_to_from_transcript)
@@ -320,6 +322,7 @@ class CycleMixin:
                 images=images,
                 prior_messages=prior_messages,
                 max_turns_override=max_turns_override,
+                thread_id=thread_id,
             )
             _save_prompt_log_end(
                 self.anima_dir,
@@ -377,6 +380,7 @@ class CycleMixin:
                 images=images,
                 prior_messages=prior_messages,
                 max_turns_override=max_turns_override,
+                thread_id=thread_id,
             )
         else:
             result = await self._executor.execute(
@@ -385,6 +389,7 @@ class CycleMixin:
                 tracker=tracker,
                 images=images,
                 max_turns_override=max_turns_override,
+                thread_id=thread_id,
             )
         # Merge transcript-parsed replied_to for S mode
         if result.replied_to_from_transcript:
@@ -464,6 +469,7 @@ class CycleMixin:
                     system_prompt=system_prompt_2,
                     tracker=tracker,
                     max_turns_override=max_turns_override,
+                    thread_id=thread_id,
                 )
                 # Merge from chained session too
                 if result_2.replied_to_from_transcript:
@@ -720,6 +726,7 @@ class CycleMixin:
                     prior_messages=prior_messages,
                     max_turns_override=max_turns_override,
                     trigger=trigger,
+                    thread_id=thread_id,
                 ):
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
@@ -939,6 +946,7 @@ class CycleMixin:
                     tracker,
                     max_turns_override=max_turns_override,
                     trigger=trigger,
+                    thread_id=thread_id,
                 ):
                     if chunk["type"] == "done":
                         full_text_parts.append(chunk["full_text"])
