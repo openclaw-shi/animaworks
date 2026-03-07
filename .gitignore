@@ -48,12 +48,31 @@ archive/
 # Dev tools (internal debug scripts)
 tools/
 
-# Documentation (only docs/images/, docs/paper/, docs/release/ are public)
+# Documentation (all ignored, then whitelist specific files)
 docs/*
 !docs/images/
 !docs/paper/
 docs/paper/evaluation_results.md
 !docs/release/
+!docs/index.md
+!docs/api-reference.md
+!docs/api-reference.ja.md
+!docs/brain-mapping.md
+!docs/brain-mapping.ja.md
+!docs/cli-reference.md
+!docs/cli-reference.ja.md
+!docs/features.md
+!docs/features.ja.md
+!docs/memory.md
+!docs/memory.ja.md
+!docs/security.md
+!docs/security.ja.md
+!docs/slack-socket-mode-setup.md
+!docs/slack-socket-mode-setup.ja.md
+!docs/spec.md
+!docs/spec.ja.md
+!docs/vision.md
+!docs/vision.ja.md
 
 # Experiments
 experiments/
