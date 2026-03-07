@@ -5,7 +5,7 @@
 > Created: 2026-02-14
 > Updated: 2026-03-05
 > Related: [vision.md](vision.md), [spec.md](spec.md), [implemented/20260214_priming-layer_design.md](implemented/20260214_priming-layer_design.md)
-> Research: [AI Agent Memory Architecture Survey](research/20260212_AI_Agent記憶アーキテクチャ調査.md) Section 10
+
 
 ---
 
@@ -843,4 +843,4 @@ The memory subsystem is implemented as a set of specialized modules under `core/
 - [implemented/20260218_procedural-memory-auto-distillation-20260218.md](implemented/20260218_procedural-memory-auto-distillation-20260218.md) — Procedural memory auto-distillation
 - [implemented/20260218_procedural-memory-reconsolidation-20260218.md](implemented/20260218_procedural-memory-reconsolidation-20260218.md) — Prediction-error-based reconsolidation
 - [implemented/20260218_procedural-memory-utility-forgetting-20260218.md](implemented/20260218_procedural-memory-utility-forgetting-20260218.md) — Procedural memory utility-based forgetting
-- [AI Agent Memory Architecture Survey](research/20260212_AI_Agent記憶アーキテクチャ調査.md) — Neuroscience survey and prior research review
+

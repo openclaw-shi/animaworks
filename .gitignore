@@ -73,6 +73,29 @@ docs/paper/evaluation_results.md
 !docs/spec.ja.md
 !docs/vision.md
 !docs/vision.ja.md
+!docs/implemented/
+docs/implemented/*
+!docs/implemented/20260214_priming-layer_design.md
+!docs/implemented/20260215_memory-write-security-20260216.md
+!docs/implemented/20260218_activity-log-spec-compliance-fixes-implemented-20260218.md
+!docs/implemented/20260218_consolidation-validation-pipeline-20260218.md
+!docs/implemented/20260218_episode-dedup-state-autoupdate-resolution-propagation.md
+!docs/implemented/20260218_knowledge-contradiction-detection-resolution-20260218.md
+!docs/implemented/20260218_memory-system-enhancement-checklist-20260218.md
+!docs/implemented/20260218_priming-format-redesign_implemented-20260218.md
+!docs/implemented/20260218_procedural-memory-auto-distillation-20260218.md
+!docs/implemented/20260218_procedural-memory-foundation-20260218.md
+!docs/implemented/20260218_procedural-memory-reconsolidation-20260218.md
+!docs/implemented/20260218_procedural-memory-utility-forgetting-20260218.md
+!docs/implemented/20260218_streaming-journal-implemented-20260218.md
+!docs/implemented/20260218_unified-activity-log-implemented-20260218.md
+!docs/implemented/20260228_provenance-1-foundation.md
+!docs/implemented/20260228_provenance-2-input-boundary.md
+!docs/implemented/20260228_provenance-3-propagation.md
+!docs/implemented/20260228_provenance-4-rag-provenance.md
+!docs/implemented/20260228_provenance-5-mode-s-trust.md
+!docs/implemented/20260228_security-command-injection-fix.md
+!docs/implemented/20260228_security-path-traversal-fix.md
 
 # Experiments
 experiments/
