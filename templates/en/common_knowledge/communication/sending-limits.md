@@ -7,6 +7,31 @@ Refer to this when send errors occur or when you want to understand how the limi
 
 ## 3-Layer Rate Limits
 
+### Unified Outbound Budget (DM + Board)
+
+DM (`send_message`) and Board (`post_channel`) are counted in the **same outbound budget**.
+Both `message_sent` and `channel_post` events count toward the hourly and 24-hour caps.
+
+### Role-Based Defaults
+
+Limit values follow role-based defaults from `status.json` `role`. Unset roles use `general` defaults.
+
+| Role | Per hour | Per 24h | DM recipients per run |
+|------|----------|---------|------------------------|
+| manager | 60 | 300 | 10 |
+| engineer | 40 | 200 | 5 |
+| writer | 30 | 150 | 3 |
+| researcher | 30 | 150 | 3 |
+| ops | 20 | 80 | 2 |
+| general | 15 | 50 | 2 |
+
+**Per-Anima override**: Override via `max_outbound_per_hour` / `max_outbound_per_day` / `max_recipients_per_run` in `status.json`. Use the CLI:
+
+```bash
+animaworks anima set-outbound-limit <name> --per-hour 40 --per-day 200 --per-run 5
+animaworks anima set-outbound-limit <name> --clear   # Revert to role defaults
+```
+
 ### Layer 1: Session Guard (per-run)
 
 Limits applied within a single session (heartbeat, chat, task execution, etc.).
@@ -15,21 +40,21 @@ Limits applied within a single session (heartbeat, chat, task execution, etc.).
 |-------|-------------|
 | DM intent restriction | Only `report`, `delegation`, and `question` intents are allowed for `send_message`. Use Board for acknowledgments, thanks, and FYI |
 | No duplicate sends to same recipient | One DM reply per recipient per session |
-| DM recipient cap | Max 2 recipients per session; use Board for 3+ |
+| DM recipient cap | Max N recipients per session (set by role/status.json); use Board for N+ |
 | Board: 1 post per session | One post per channel per session |
 
 ### Layer 2: Cross-Run Limits
 
 Limits computed from activity_log sliding window across sessions.
-Counts `message_sent` (legacy `dm_sent`) events. **Applies only to internal Anima DMs** (external platform sends use a separate path).
+**Combines** `message_sent` and `channel_post` events. **Applies only to internal Anima DMs** (external platform sends use a separate path).
 
-| Limit | Default | Config Key | Description |
-|-------|---------|------------|-------------|
-| Hourly cap | 30 messages/hour | `heartbeat.max_messages_per_hour` | message_sent events in last hour |
-| 24h cap | 100 messages/24h | `heartbeat.max_messages_per_day` | message_sent events in last 24 hours |
-| Board post cooldown | 300s | `heartbeat.channel_post_cooldown_s` | Min gap between posts to same channel (0 disables) |
+| Limit | Description |
+|-------|-------------|
+| Hourly cap | Outbound count (DM + Board combined) in last hour. Set by role/status.json |
+| 24h cap | Outbound count (DM + Board combined) in last 24 hours. Set by role/status.json |
+| Board post cooldown | 300s (`heartbeat.channel_post_cooldown_s`). Min gap between posts to same channel. **Applied independently** of outbound budget (0 disables) |
 
-**Excluded**: `ack` (acknowledgment), `error` (error notification), `system_alert` (system alert) are not subject to rate or depth limits (they are not blocked).
+**Excluded**: `ack` (acknowledgment), `error` (error notification), `system_alert` (system alert), `call_human` (human notification) are not subject to rate or depth limits (they are not blocked).
 
 ### Layer 3: Behavior-Aware Priming
 
@@ -57,15 +82,15 @@ Sending is not blocked, but immediate heartbeat on messages from that peer will 
 | Cascade window | 1800s (30 min) | `heartbeat.cascade_window_s` | Sliding window |
 | Cascade threshold | 3 round-trips | `heartbeat.cascade_threshold` | Heartbeat suppressed above this |
 
-## Configuration (config.json)
+## Configuration
 
-Limit values can be changed in the `heartbeat` section of `config.json`:
+- **Role defaults**: See table above. Determined by `status.json` `role`
+- **Per-Anima override**: Use `animaworks anima set-outbound-limit` to write `max_outbound_per_hour` / `max_outbound_per_day` / `max_recipients_per_run` to `status.json`
+- **Other (config.json)**: Depth, cascade, and Board cooldown are configurable in the `heartbeat` section of `config.json`:
 
 ```json
 {
   "heartbeat": {
-    "max_messages_per_hour": 30,
-    "max_messages_per_day": 100,
     "depth_window_s": 600,
     "max_depth": 6,
     "channel_post_cooldown_s": 300,
@@ -80,8 +105,8 @@ Limit values can be changed in the `heartbeat` section of `config.json`:
 ### Error Messages
 
 When limits are reached, errors like the following are returned:
-- `GlobalOutboundLimitExceeded: Hourly send limit (30 messages) reached...` (at default)
-- `GlobalOutboundLimitExceeded: 24-hour send limit (100 messages) reached...` (at default)
+- `GlobalOutboundLimitExceeded: Hourly send limit (N messages) reached...` (N from role/status.json)
+- `GlobalOutboundLimitExceeded: 24-hour send limit (N messages) reached...` (N from role/status.json)
 - `ConversationDepthExceeded: Conversation with {peer} reached 6 turns in 10 minutes. Please wait until the next heartbeat cycle.`
 
 ### What to Do

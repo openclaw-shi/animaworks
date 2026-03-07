@@ -60,8 +60,14 @@ class CommsToolsMixin:
         if to in current_replied:
             return t("handler.dm_already_sent", to=to)
 
-        if len(current_replied) >= 2 and to not in current_replied:
-            return t("handler.dm_max_recipients")
+        from core.config.models import resolve_outbound_limits
+        from core.paths import get_animas_dir as _get_animas_dir
+
+        _anima_dir = _get_animas_dir() / self._anima_name if _get_animas_dir().exists() else None
+        limits = resolve_outbound_limits(self._anima_name, _anima_dir)
+        max_recipients = limits["max_recipients_per_run"]
+        if len(current_replied) >= max_recipients and to not in current_replied:
+            return t("handler.dm_max_recipients", limit=max_recipients)
 
         # ── Resolve recipient ──
         try:
@@ -202,6 +208,16 @@ class CommsToolsMixin:
                 channel=channel,
                 alt_hint=alt_hint,
             )
+
+        # ── Unified outbound budget check (DM + Board share the same pool) ──
+        from core.cascade_limiter import get_depth_limiter
+        from core.paths import get_animas_dir as _get_animas_dir
+
+        _limiter = get_depth_limiter()
+        _anima_dir_for_budget = getattr(self, "_anima_dir", None) or (_get_animas_dir() / self._anima_name)
+        outbound_check = _limiter.check_global_outbound(self._anima_name, _anima_dir_for_budget)
+        if outbound_check is not True:
+            return str(outbound_check)
 
         # ── Cross-run guard: file-based cooldown check ──
         try:

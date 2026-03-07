@@ -48,8 +48,8 @@ class ConversationDepthLimiter:
         cfg = load_config()
         self._window_s = window_s if window_s is not None else cfg.heartbeat.depth_window_s
         self._max_depth = max_depth if max_depth is not None else cfg.heartbeat.max_depth
-        self._max_per_hour = max_per_hour if max_per_hour is not None else cfg.heartbeat.max_messages_per_hour
-        self._max_per_day = max_per_day if max_per_day is not None else cfg.heartbeat.max_messages_per_day
+        self._max_per_hour_override = max_per_hour
+        self._max_per_day_override = max_per_day
 
     def check_global_outbound(
         self,
@@ -58,11 +58,28 @@ class ConversationDepthLimiter:
     ) -> bool | str:
         """Check if sender has exceeded global outbound message limit.
 
-        Counts all dm_sent / message_sent events from sender
-        in the last hour and last 24 hours.
+        Counts all dm_sent / message_sent / channel_post events from sender
+        in the last hour and last 24 hours. Uses per-Anima limits resolved
+        from status.json → role defaults → general fallback.
 
         Returns True if allowed, or a descriptive error string if blocked.
         """
+        from core.config.models import resolve_outbound_limits
+
+        if self._max_per_hour_override is not None and self._max_per_day_override is not None:
+            max_per_hour = self._max_per_hour_override
+            max_per_day = self._max_per_day_override
+        else:
+            limits = resolve_outbound_limits(sender, sender_anima_dir)
+            max_per_hour = (
+                self._max_per_hour_override
+                if self._max_per_hour_override is not None
+                else limits["max_outbound_per_hour"]
+            )
+            max_per_day = (
+                self._max_per_day_override if self._max_per_day_override is not None else limits["max_outbound_per_day"]
+            )
+
         try:
             from core.memory.activity import ActivityLogger
 
@@ -70,7 +87,7 @@ class ConversationDepthLimiter:
             entries = activity.recent(
                 days=2,
                 limit=500,
-                types=["dm_sent", "message_sent"],
+                types=["dm_sent", "message_sent", "channel_post"],
             )
         except Exception:
             logger.warning(
@@ -99,7 +116,7 @@ class ConversationDepthLimiter:
             except (ValueError, TypeError):
                 continue
 
-        if hourly_count >= self._max_per_hour:
+        if hourly_count >= max_per_hour:
             logger.warning(
                 "GLOBAL HOURLY LIMIT: %s blocked (%d msgs in last hour)",
                 sender,
@@ -111,13 +128,13 @@ class ConversationDepthLimiter:
                 reset_at = f" 次の送信可能時刻（目安）: {reset_time.strftime('%H:%M')}"
             return (
                 f"GlobalOutboundLimitExceeded: 1時間あたりの送信上限"
-                f"（{self._max_per_hour}通）に到達しています"
+                f"（{max_per_hour}通）に到達しています"
                 f"（現在{hourly_count}通/1h, {daily_count}通/24h）。"
                 f"{reset_at}"
                 f" このターンではsend_messageを使わず、送信内容を"
                 f"current_task.mdに記録して次のセッションで送信してください。"
             )
-        if daily_count >= self._max_per_day:
+        if daily_count >= max_per_day:
             logger.warning(
                 "GLOBAL DAILY LIMIT: %s blocked (%d msgs in last 24h)",
                 sender,
@@ -125,7 +142,7 @@ class ConversationDepthLimiter:
             )
             return (
                 f"GlobalOutboundLimitExceeded: 24時間あたりの送信上限"
-                f"（{self._max_per_day}通）に到達しています"
+                f"（{max_per_day}通）に到達しています"
                 f"（現在{daily_count}通/24h）。"
                 f" このターンではsend_messageを使わず、送信内容を"
                 f"current_task.mdに記録して次のセッションで送信してください。"

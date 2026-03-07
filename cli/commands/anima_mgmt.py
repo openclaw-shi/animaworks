@@ -720,6 +720,57 @@ def cmd_anima_set_background_model(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_anima_set_outbound_limit(args: argparse.Namespace) -> None:
+    """Set or clear per-Anima outbound message limits in status.json."""
+    from core.i18n import t
+    from core.paths import get_data_dir
+
+    data_dir = get_data_dir()
+    name = args.name
+    anima_dir = data_dir / "animas" / name
+    status_path = anima_dir / "status.json"
+
+    if not anima_dir.exists():
+        print(f"Error: Anima '{name}' not found")
+        sys.exit(1)
+
+    if not status_path.is_file():
+        print(f"Error: status.json not found for '{name}'")
+        sys.exit(1)
+
+    data = json.loads(status_path.read_text(encoding="utf-8"))
+    fields = ("max_outbound_per_hour", "max_outbound_per_day", "max_recipients_per_run")
+
+    if args.clear:
+        for f in fields:
+            data.pop(f, None)
+        tmp = status_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp.replace(status_path)
+        print(t("cli.set_outbound_limit_cleared", name=name))
+        return
+
+    if args.per_hour is None and args.per_day is None and args.per_run is None:
+        print("Error: Specify at least one of --per-hour, --per-day, --per-run, or --clear")
+        sys.exit(1)
+
+    details = []
+    if args.per_hour is not None:
+        data["max_outbound_per_hour"] = args.per_hour
+        details.append(f"per_hour={args.per_hour}")
+    if args.per_day is not None:
+        data["max_outbound_per_day"] = args.per_day
+        details.append(f"per_day={args.per_day}")
+    if args.per_run is not None:
+        data["max_recipients_per_run"] = args.per_run
+        details.append(f"per_run={args.per_run}")
+
+    tmp = status_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.replace(status_path)
+    print(t("cli.set_outbound_limit_success", name=name, details=", ".join(details)))
+
+
 def cmd_anima_audit(args: argparse.Namespace) -> None:
     """Audit a subordinate anima's recent activity."""
     from collections import Counter

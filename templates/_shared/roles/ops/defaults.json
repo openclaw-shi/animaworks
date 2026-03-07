@@ -3,5 +3,8 @@
   "context_threshold": 0.50,
   "max_turns": 30,
   "max_chains": 2,
-  "conversation_history_threshold": 0.30
+  "conversation_history_threshold": 0.30,
+  "max_outbound_per_hour": 20,
+  "max_outbound_per_day": 80,
+  "max_recipients_per_run": 2
 }

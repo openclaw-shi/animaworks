@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # AnimaWorks - Digital Anima Framework
 # Copyright (C) 2026 AnimaWorks Authors
 # SPDX-License-Identifier: Apache-2.0
@@ -166,10 +167,7 @@ class TestCheckGlobalOutbound:
         """At/above daily limit → returns False."""
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
-        entries = [
-            _make_dm_entry("dm_sent", "alice", f"user{i}")
-            for i in range(5)
-        ]
+        entries = [_make_dm_entry("dm_sent", "alice", f"user{i}") for i in range(5)]
         _write_activity_entries(anima_dir, entries)
 
         limiter = ConversationDepthLimiter(max_per_hour=10, max_per_day=5)
@@ -213,10 +211,7 @@ class TestCheckGlobalOutbound:
         anima_dir = tmp_path / "animas" / "alice"
         anima_dir.mkdir(parents=True)
         old_ts = (now_jst() - timedelta(hours=25)).isoformat()
-        entries = [
-            _make_dm_entry("dm_sent", "alice", f"user{i}", ts=old_ts)
-            for i in range(5)
-        ]
+        entries = [_make_dm_entry("dm_sent", "alice", f"user{i}", ts=old_ts) for i in range(5)]
         entries.append(_make_dm_entry("dm_sent", "alice", "bob"))
         _write_activity_entries(anima_dir, entries)
 
@@ -261,16 +256,86 @@ class TestLegacyCheckAndRecord:
             assert limiter.check_and_record("alice", "bob") is True
 
 
+class TestUnifiedBudgetChannelPost:
+    """Test that channel_post entries are counted in global outbound budget."""
+
+    def test_channel_posts_counted(self, tmp_path: Path, _patch_config):
+        """Board posts (channel_post) are counted toward global outbound budget."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+        # Write status.json with general role so limits are 15/hour, 50/day
+        (anima_dir / "status.json").write_text(json.dumps({"role": "general"}), encoding="utf-8")
+        entries = [
+            {"ts": now_jst().isoformat(), "type": "channel_post", "content": "hello", "channel": "general"},
+        ] * 15
+        _write_activity_entries(anima_dir, entries)
+
+        limiter = ConversationDepthLimiter()
+        result = limiter.check_global_outbound("alice", anima_dir)
+        assert result is not True
+        assert "GlobalOutboundLimitExceeded" in result
+
+    def test_mixed_dm_and_board(self, tmp_path: Path, _patch_config):
+        """DM + Board posts combined count toward the same budget."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+        (anima_dir / "status.json").write_text(json.dumps({"role": "general"}), encoding="utf-8")
+        entries = [
+            {"ts": now_jst().isoformat(), "type": "dm_sent", "content": "hello", "to_person": f"user{i}"}
+            for i in range(10)
+        ] + [
+            {"ts": now_jst().isoformat(), "type": "channel_post", "content": "board", "channel": "general"}
+            for _ in range(5)
+        ]
+        _write_activity_entries(anima_dir, entries)
+
+        limiter = ConversationDepthLimiter()
+        result = limiter.check_global_outbound("alice", anima_dir)
+        assert result is not True  # 15 total >= general's 15/hour
+
+    def test_role_based_limits_applied(self, tmp_path: Path, _patch_config):
+        """Manager role has higher limits than general."""
+        anima_dir = tmp_path / "animas" / "rin"
+        anima_dir.mkdir(parents=True)
+        (anima_dir / "status.json").write_text(json.dumps({"role": "manager"}), encoding="utf-8")
+        entries = [
+            {"ts": now_jst().isoformat(), "type": "dm_sent", "content": "hello", "to_person": f"user{i}"}
+            for i in range(30)
+        ]
+        _write_activity_entries(anima_dir, entries)
+
+        limiter = ConversationDepthLimiter()
+        result = limiter.check_global_outbound("rin", anima_dir)
+        assert result is True  # 30 < manager's 60/hour
+
+    def test_override_max_per_hour_still_works(self, tmp_path: Path, _patch_config):
+        """Constructor override (for tests) still takes priority."""
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+        (anima_dir / "status.json").write_text(json.dumps({"role": "manager"}), encoding="utf-8")
+        entries = [
+            {"ts": now_jst().isoformat(), "type": "dm_sent", "content": "hello", "to_person": f"user{i}"}
+            for i in range(3)
+        ]
+        _write_activity_entries(anima_dir, entries)
+
+        limiter = ConversationDepthLimiter(max_per_hour=3, max_per_day=5)
+        result = limiter.check_global_outbound("alice", anima_dir)
+        assert result is not True  # constructor override: 3/hour
+
+
 class TestModuleSingleton:
     """Test the factory function returns correct type."""
 
     def test_get_depth_limiter_returns_instance(self):
         """get_depth_limiter() returns a ConversationDepthLimiter."""
         from core.cascade_limiter import get_depth_limiter
+
         limiter = get_depth_limiter()
         assert isinstance(limiter, ConversationDepthLimiter)
 
     def test_backward_compat_alias_exists(self):
         """Module-level depth_limiter alias still exists."""
         from core.cascade_limiter import depth_limiter
+
         assert isinstance(depth_limiter, ConversationDepthLimiter)

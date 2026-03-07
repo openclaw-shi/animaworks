@@ -100,6 +100,60 @@ class AnimaDefaults(BaseModel):
     thinking_effort: str | None = None  # "low"/"medium"/"high"/"max" (default: "high")
     llm_timeout: int = 600  # default LLM API timeout (seconds)
     mode_s_auth: str | None = None  # Mode S auth: "max"|"api"|"bedrock"|"vertex"|None(=max)
+    max_outbound_per_hour: int | None = None
+    max_outbound_per_day: int | None = None
+    max_recipients_per_run: int | None = None
+
+
+# ── Outbound budget defaults per role ─────────────────────────────────────────
+ROLE_OUTBOUND_DEFAULTS: dict[str, dict[str, int]] = {
+    "manager": {"max_outbound_per_hour": 60, "max_outbound_per_day": 300, "max_recipients_per_run": 10},
+    "engineer": {"max_outbound_per_hour": 40, "max_outbound_per_day": 200, "max_recipients_per_run": 5},
+    "writer": {"max_outbound_per_hour": 30, "max_outbound_per_day": 150, "max_recipients_per_run": 3},
+    "researcher": {"max_outbound_per_hour": 30, "max_outbound_per_day": 150, "max_recipients_per_run": 3},
+    "ops": {"max_outbound_per_hour": 20, "max_outbound_per_day": 80, "max_recipients_per_run": 2},
+    "general": {"max_outbound_per_hour": 15, "max_outbound_per_day": 50, "max_recipients_per_run": 2},
+}
+
+
+def resolve_outbound_limits(
+    anima_name: str,
+    anima_dir: Path | None = None,
+) -> dict[str, int]:
+    """Resolve outbound limits for an Anima.
+
+    Resolution order:
+      1. status.json (per-Anima override)
+      2. Role defaults from ROLE_OUTBOUND_DEFAULTS (based on status.json "role")
+      3. "general" role as final fallback
+    """
+    _FIELDS = ("max_outbound_per_hour", "max_outbound_per_day", "max_recipients_per_run")
+    fallback = ROLE_OUTBOUND_DEFAULTS["general"]
+
+    if anima_dir is None:
+        return dict(fallback)
+
+    status_path = anima_dir / "status.json"
+    if not status_path.is_file():
+        return dict(fallback)
+
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return dict(fallback)
+
+    role = data.get("role", "general")
+    role_defaults = ROLE_OUTBOUND_DEFAULTS.get(role, fallback)
+
+    result: dict[str, int] = {}
+    for field in _FIELDS:
+        val = data.get(field)
+        if isinstance(val, int) and val > 0:
+            result[field] = val
+        else:
+            result[field] = role_defaults.get(field, fallback[field])
+
+    return result
 
 
 class RAGConfig(BaseModel):
@@ -306,8 +360,8 @@ class HeartbeatConfig(BaseModel):
         False  # Send read-receipt ACK to message senders (disabled by default to prevent gratitude loops)
     )
     channel_post_cooldown_s: int = 300  # Min seconds between board posts per Anima (0 = no limit)
-    max_messages_per_hour: int = 30  # Global outbound DM limit per Anima per hour
-    max_messages_per_day: int = 100  # Global outbound DM limit per Anima per day
+    max_messages_per_hour: int = 30  # Deprecated: use ROLE_OUTBOUND_DEFAULTS + status.json override
+    max_messages_per_day: int = 100  # Deprecated: use ROLE_OUTBOUND_DEFAULTS + status.json override
     idle_compaction_minutes: float = Field(
         default=10.0,
         ge=1.0,
@@ -556,6 +610,9 @@ def _load_status_json(anima_dir: Path) -> dict[str, Any]:
         "thinking_effort": "thinking_effort",
         "llm_timeout": "llm_timeout",
         "mode_s_auth": "mode_s_auth",
+        "max_outbound_per_hour": "max_outbound_per_hour",
+        "max_outbound_per_day": "max_outbound_per_day",
+        "max_recipients_per_run": "max_recipients_per_run",
     }
     # Fields where None is a valid explicit value (e.g. supervisor=null
     # means "top-level / no supervisor").  Empty string is still "not set".

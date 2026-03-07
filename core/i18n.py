@@ -92,8 +92,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Error: Message already sent to {to} in this run. Use Board for additional communication.",
     },
     "handler.dm_max_recipients": {
-        "ja": "Error: 1回のrunでDMを送れるのは最大2人までです。3人以上への伝達はBoardを使用してください（post_channel ツール）。",
-        "en": "Error: Maximum 2 DM recipients per run. Use Board (post_channel tool) for 3+ recipients.",
+        "ja": "Error: 1回のrunでDMを送れるのは最大{limit}人までです。{limit}人以上への伝達はBoardを使用してください（post_channel ツール）。",
+        "en": "Error: Maximum {limit} DM recipients per run. Use Board (post_channel tool) for {limit}+ recipients.",
     },
     "handler.post_alt_hint": {
         "ja": " 別のチャネル（{channels}）への投稿、またはsend_message（intent: question/report）は可能です。",
@@ -620,6 +620,14 @@ _STRINGS: dict[str, dict[str, str]] = {
     "cli.migrate_cron_skipped": {
         "ja": "No migration needed — all cron.md files are already in standard format.",
         "en": "No migration needed — all cron.md files are already in standard format.",
+    },
+    "cli.set_outbound_limit_success": {
+        "ja": "{name} のアウトバウンド制限を更新しました: {details}",
+        "en": "Updated outbound limits for {name}: {details}",
+    },
+    "cli.set_outbound_limit_cleared": {
+        "ja": "{name} のアウトバウンド制限をクリアしました（ロールデフォルトにフォールバック）",
+        "en": "Cleared outbound limits for {name} (falling back to role defaults)",
     },
     # ── memory/manager.py ──
     "manager.action_log_header": {"ja": "# {date} 行動ログ\n\n", "en": "# {date} Action log\n\n"},

@@ -421,6 +421,37 @@ def cli_main() -> None:
     p_bg.add_argument("--clear", action="store_true", help="Remove background model override")
     p_bg.set_defaults(func=_lazy_anima_set_background_model)
 
+    # anima set-outbound-limit
+    p_set_outbound = anima_sub.add_parser(
+        "set-outbound-limit",
+        help="Set per-Anima outbound message limits",
+    )
+    p_set_outbound.add_argument("name", help="Anima name")
+    p_set_outbound.add_argument(
+        "--per-hour",
+        type=int,
+        default=None,
+        help="Max outbound messages per hour",
+    )
+    p_set_outbound.add_argument(
+        "--per-day",
+        type=int,
+        default=None,
+        help="Max outbound messages per day",
+    )
+    p_set_outbound.add_argument(
+        "--per-run",
+        type=int,
+        default=None,
+        help="Max DM recipients per run",
+    )
+    p_set_outbound.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear overrides (fallback to role defaults)",
+    )
+    p_set_outbound.set_defaults(func=_lazy_anima_set_outbound_limit)
+
     # anima reload
     p_anima_reload = anima_sub.add_parser("reload", help="Hot-reload anima config from status.json")
     p_anima_reload.add_argument(
@@ -736,6 +767,12 @@ def _lazy_anima_set_background_model(args: argparse.Namespace) -> None:
     from cli.commands.anima_mgmt import cmd_anima_set_background_model
 
     cmd_anima_set_background_model(args)
+
+
+def _lazy_anima_set_outbound_limit(args: argparse.Namespace) -> None:
+    from cli.commands.anima_mgmt import cmd_anima_set_outbound_limit
+
+    cmd_anima_set_outbound_limit(args)
 
 
 def _lazy_anima_reload(args: argparse.Namespace) -> None:

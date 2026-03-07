@@ -538,6 +538,9 @@ def _create_status_json(
         "max_turns",
         "max_chains",
         "conversation_history_threshold",
+        "max_outbound_per_hour",
+        "max_outbound_per_day",
+        "max_recipients_per_run",
     ):
         if key in role_defaults:
             status[key] = role_defaults[key]
