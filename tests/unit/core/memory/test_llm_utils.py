@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -121,3 +121,181 @@ class TestEnsureCredentialsInEnv:
         with patch("core.config.load_config", side_effect=RuntimeError("config error")):
             llm_utils.ensure_credentials_in_env()
         # No exception raised; function returns normally
+
+
+# ── one_shot_completion and helpers ──────────────────────────────────────────
+
+
+class TestOneShotCompletion:
+    """Tests for one_shot_completion() and its fallback behavior."""
+
+    @pytest.mark.asyncio
+    @patch("core.memory._llm_utils.get_consolidation_llm_kwargs")
+    @patch("core.memory._llm_utils._try_agent_sdk")
+    @patch("core.memory._llm_utils._try_litellm")
+    async def test_litellm_success(
+        self,
+        mock_try_litellm: MagicMock,
+        mock_try_agent_sdk: MagicMock,
+        mock_get_kwargs: MagicMock,
+    ) -> None:
+        """Mock litellm to succeed; verify function returns text and Agent SDK is NOT called."""
+        mock_get_kwargs.return_value = {"model": "anthropic/claude-sonnet-4-6"}
+        mock_try_litellm.return_value = "LLM response text"
+
+        result = await llm_utils.one_shot_completion("Hello")
+
+        assert result == "LLM response text"
+        mock_try_litellm.assert_called_once()
+        mock_try_agent_sdk.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("core.memory._llm_utils.get_consolidation_llm_kwargs")
+    @patch("core.memory._llm_utils._try_agent_sdk")
+    @patch("core.memory._llm_utils._try_litellm")
+    async def test_litellm_fails_sdk_success(
+        self,
+        mock_try_litellm: MagicMock,
+        mock_try_agent_sdk: MagicMock,
+        mock_get_kwargs: MagicMock,
+    ) -> None:
+        """LiteLLM raises; Agent SDK succeeds; verify fallback returns text."""
+        mock_get_kwargs.return_value = {"model": "anthropic/claude-sonnet-4-6"}
+        mock_try_litellm.side_effect = RuntimeError("LiteLLM failed")
+        mock_try_agent_sdk.return_value = "SDK fallback text"
+
+        result = await llm_utils.one_shot_completion("Hello")
+
+        assert result == "SDK fallback text"
+        mock_try_litellm.assert_called_once()
+        mock_try_agent_sdk.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("core.memory._llm_utils.get_consolidation_llm_kwargs")
+    @patch("core.memory._llm_utils._try_agent_sdk")
+    @patch("core.memory._llm_utils._try_litellm")
+    async def test_both_fail_returns_none(
+        self,
+        mock_try_litellm: MagicMock,
+        mock_try_agent_sdk: MagicMock,
+        mock_get_kwargs: MagicMock,
+    ) -> None:
+        """Both LiteLLM and Agent SDK fail; verify function returns None."""
+        mock_get_kwargs.return_value = {"model": "anthropic/claude-sonnet-4-6"}
+        mock_try_litellm.side_effect = RuntimeError("LiteLLM failed")
+        mock_try_agent_sdk.return_value = None
+
+        result = await llm_utils.one_shot_completion("Hello")
+
+        assert result is None
+        mock_try_litellm.assert_called_once()
+        mock_try_agent_sdk.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("core.memory._llm_utils.litellm", create=True)
+    async def test_system_prompt_passed_to_litellm(
+        self,
+        mock_litellm: MagicMock,
+    ) -> None:
+        """Verify system_prompt is included as system message in LiteLLM call."""
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message.content = "ok"
+        mock_litellm.acompletion = AsyncMock(return_value=mock_resp)
+
+        with patch("core.memory._llm_utils.litellm", mock_litellm):
+            # Import litellm inside _try_litellm; patch at module level
+            pass
+        # Patch where litellm is used - it's imported inside _try_litellm
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = mock_resp
+            result = await llm_utils._try_litellm(
+                "user prompt",
+                system_prompt="You are a helpful assistant.",
+                model="anthropic/claude-sonnet-4-6",
+                max_tokens=1024,
+                llm_kwargs={},
+            )
+        assert result == "ok"
+        call_kwargs = mock_acompletion.call_args
+        messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
+        assert messages is not None
+        assert messages[0] == {"role": "system", "content": "You are a helpful assistant."}
+        assert messages[1] == {"role": "user", "content": "user prompt"}
+
+    @pytest.mark.asyncio
+    @patch("core.memory._llm_utils.get_consolidation_llm_kwargs")
+    @patch("core.memory._llm_utils._try_agent_sdk")
+    @patch("core.memory._llm_utils._try_litellm")
+    async def test_default_model_from_config(
+        self,
+        mock_try_litellm: MagicMock,
+        mock_try_agent_sdk: MagicMock,
+        mock_get_kwargs: MagicMock,
+    ) -> None:
+        """When model='' (default), model is resolved from get_consolidation_llm_kwargs()."""
+        mock_get_kwargs.return_value = {"model": "anthropic/claude-sonnet-4-6"}
+        mock_try_litellm.return_value = "ok"
+
+        await llm_utils.one_shot_completion("Hi", model="")
+
+        mock_get_kwargs.assert_called()
+        mock_try_litellm.assert_called_once()
+        call_kwargs = mock_try_litellm.call_args[1]
+        assert call_kwargs["model"] == "anthropic/claude-sonnet-4-6"
+
+    @pytest.mark.asyncio
+    @patch("core.memory._llm_utils.get_consolidation_llm_kwargs")
+    @patch("core.memory._llm_utils._try_agent_sdk")
+    @patch("core.memory._llm_utils._try_litellm")
+    async def test_non_anthropic_model_skips_sdk(
+        self,
+        mock_try_litellm: MagicMock,
+        mock_try_agent_sdk: MagicMock,
+        mock_get_kwargs: MagicMock,
+    ) -> None:
+        """Non-Anthropic model (e.g. openai/gpt-4.1): LiteLLM failure returns None without SDK."""
+        mock_get_kwargs.return_value = {"model": "openai/gpt-4.1"}
+        mock_try_litellm.side_effect = RuntimeError("LiteLLM failed")
+
+        result = await llm_utils.one_shot_completion("Hi", model="openai/gpt-4.1")
+
+        assert result is None
+        mock_try_litellm.assert_called_once()
+        mock_try_agent_sdk.assert_not_called()
+
+
+class TestIsAnthropicModel:
+    """Tests for _is_anthropic_model() helper."""
+
+    def test_is_anthropic_model_true(self) -> None:
+        """Various Anthropic model patterns return True."""
+        assert llm_utils._is_anthropic_model("anthropic/claude-sonnet-4-6") is True
+        assert llm_utils._is_anthropic_model("bedrock/claude-sonnet-4-6") is True
+        assert llm_utils._is_anthropic_model("vertex_ai/claude-sonnet-4-6") is True
+        assert llm_utils._is_anthropic_model("claude-sonnet-4-6") is True
+
+    def test_is_anthropic_model_false(self) -> None:
+        """Non-Anthropic models return False."""
+        assert llm_utils._is_anthropic_model("openai/gpt-4.1") is False
+        assert llm_utils._is_anthropic_model("ollama/gemma3") is False
+        assert llm_utils._is_anthropic_model("google/gemini-2.0") is False
+
+
+class TestStripProviderPrefix:
+    """Tests for _strip_provider_prefix() helper."""
+
+    def test_strip_provider_prefix(self) -> None:
+        """Provider prefix is stripped for Agent SDK model name."""
+        assert (
+            llm_utils._strip_provider_prefix("anthropic/claude-sonnet-4-6")
+            == "claude-sonnet-4-6"
+        )
+        assert (
+            llm_utils._strip_provider_prefix("bedrock/jp.anthropic.claude-sonnet-4-6")
+            == "claude-sonnet-4-6"
+        )
+        assert (
+            llm_utils._strip_provider_prefix("vertex_ai/claude-sonnet-4-6")
+            == "claude-sonnet-4-6"
+        )

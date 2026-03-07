@@ -22,7 +22,6 @@ Pipeline:
 import json
 import logging
 import re
-from typing import Any, cast
 
 from core.paths import load_prompt
 
@@ -205,8 +204,6 @@ class KnowledgeValidator:
             True if the knowledge is judged valid, False otherwise.
             Returns True on LLM failure (conservative: let items through).
         """
-        import litellm
-
         prompt = load_prompt(
             "memory/knowledge_validation",
             episodes=episodes[:3000],
@@ -214,15 +211,9 @@ class KnowledgeValidator:
         )
 
         try:
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=256,
-                ),
-            )
-            text = response.choices[0].message.content or ""
+            from core.memory._llm_utils import one_shot_completion
+
+            text = await one_shot_completion(prompt, model=model, max_tokens=256) or ""
             # Extract JSON from response
             json_match = re.search(r"\{.*\}", text, re.DOTALL)
             if json_match:

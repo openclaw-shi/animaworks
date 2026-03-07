@@ -23,7 +23,6 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, cast
 
 from core.i18n import t
 from core.paths import load_prompt
@@ -107,17 +106,9 @@ class ProceduralDistiller:
         )
 
         try:
-            import litellm
+            from core.memory._llm_utils import one_shot_completion
 
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=3072,
-                ),
-            )
-            text = response.choices[0].message.content or ""
+            text = await one_shot_completion(prompt, model=model, max_tokens=3072) or ""
             text = self._strip_code_fence(text)
             result["raw_response"] = text
 
@@ -288,17 +279,12 @@ class ProceduralDistiller:
         )
 
         try:
-            import litellm
+            from core.memory._llm_utils import one_shot_completion
 
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2048,
-                ),
-            )
-            text = response.choices[0].message.content or "[]"
+            text = await one_shot_completion(prompt, model=model, max_tokens=2048)
+            if text is None:
+                raise RuntimeError("LLM failed")
+            text = text or "[]"
             procedures = self._parse_procedures(text)
 
             saved_paths: list[str] = []

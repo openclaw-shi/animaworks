@@ -26,7 +26,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from core.i18n import t
 from core.paths import load_prompt
@@ -359,8 +359,6 @@ class ContradictionDetector:
         Returns:
             ContradictionResult with detection and resolution info
         """
-        import litellm
-
         prompt = load_prompt(
             "memory/contradiction_detection",
             file_a=file_a,
@@ -370,15 +368,9 @@ class ContradictionDetector:
         )
 
         try:
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2048,
-                ),
-            )
-            text = response.choices[0].message.content or ""
+            from core.memory._llm_utils import one_shot_completion
+
+            text = await one_shot_completion(prompt, model=model, max_tokens=2048) or ""
 
             # Extract JSON from response
             json_match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -886,8 +878,6 @@ class ContradictionDetector:
         Returns:
             Merged content string, or None on failure
         """
-        import litellm
-
         prompt = load_prompt(
             "memory/contradiction_merge",
             file_a=file_a,
@@ -897,15 +887,9 @@ class ContradictionDetector:
         )
 
         try:
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=4096,
-                ),
-            )
-            result = response.choices[0].message.content or ""
+            from core.memory._llm_utils import one_shot_completion
+
+            result = await one_shot_completion(prompt, model=model, max_tokens=4096) or ""
 
             # Strip code fences
             result = re.sub(r"^```(?:markdown|md)?\s*\n", "", result, flags=re.MULTILINE)

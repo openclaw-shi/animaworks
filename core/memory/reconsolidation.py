@@ -27,7 +27,7 @@ import logging
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from core.paths import load_prompt
 
@@ -263,17 +263,12 @@ class ReconsolidationEngine:
                     existing_procedures=existing_procedures[:2000],
                 )
 
-                import litellm
+                from core.memory._llm_utils import one_shot_completion
 
-                response = cast(
-                    Any,
-                    await litellm.acompletion(
-                        model=model,
-                        messages=[{"role": "user", "content": prompt}],
-                        max_tokens=2048,
-                    ),
-                )
-                text = response.choices[0].message.content or ""
+                text = await one_shot_completion(prompt, model=model, max_tokens=2048)
+                if text is None:
+                    raise RuntimeError("LLM failed")
+                text = text or ""
 
                 # Sanitize and parse
                 from core.memory.consolidation import ConsolidationEngine
@@ -350,18 +345,9 @@ class ReconsolidationEngine:
         )
 
         try:
-            import litellm
+            from core.memory._llm_utils import one_shot_completion
 
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2048,
-                ),
-            )
-
-            text = response.choices[0].message.content or ""
+            text = await one_shot_completion(prompt, model=model, max_tokens=2048) or ""
 
             # Sanitize LLM output
             from core.memory.consolidation import ConsolidationEngine
@@ -563,18 +549,9 @@ class ReconsolidationEngine:
         )
 
         try:
-            import litellm
+            from core.memory._llm_utils import one_shot_completion
 
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2048,
-                ),
-            )
-
-            text = response.choices[0].message.content or ""
+            text = await one_shot_completion(prompt, model=model, max_tokens=2048) or ""
 
             # Sanitize LLM output
             from core.memory.consolidation import ConsolidationEngine

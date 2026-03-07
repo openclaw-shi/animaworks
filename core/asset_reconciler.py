@@ -14,11 +14,10 @@ assets using the ImageGenPipeline with ``skip_existing=True``.
 
 import asyncio
 import logging
-import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from core.exceptions import AnimaWorksError  # noqa: F401
 from core.i18n import t
@@ -504,7 +503,7 @@ async def _synthesize_prompt_via_llm(
     try:
         from core.config.models import load_model_config
 
-        model_config = load_model_config(anima_dir)
+        load_model_config(anima_dir)
     except Exception:
         logger.warning(
             "Cannot load model config for %s — skipping LLM synthesis",
@@ -519,32 +518,13 @@ async def _synthesize_prompt_via_llm(
         system_prompt_name = "fragments/asset_synthesis_system"
         user_prompt_key = "asset_reconciler.llm_user_prompt"
 
-    from core.memory._llm_utils import get_consolidation_llm_kwargs
+    from core.memory._llm_utils import one_shot_completion
 
-    llm_kw = get_consolidation_llm_kwargs()
-    llm_model = llm_kw["model"]
-    api_key = llm_kw.get("api_key") or os.environ.get(model_config.api_key_env)
-    kwargs: dict[str, Any] = {
-        "model": llm_model,
-        "messages": [
-            {"role": "system", "content": load_prompt(system_prompt_name)},
-            {
-                "role": "user",
-                "content": t(user_prompt_key, character_text=character_text),
-            },
-        ],
-        "max_tokens": 256,
-    }
-    if api_key:
-        kwargs["api_key"] = api_key
-    if llm_kw.get("api_base"):
-        kwargs["api_base"] = llm_kw["api_base"]
+    system_content = load_prompt(system_prompt_name)
+    user_content = t(user_prompt_key, character_text=character_text)
 
     try:
-        import litellm
-
-        response = cast(Any, await litellm.acompletion(**kwargs))
-        result = (response.choices[0].message.content or "").strip()
+        result = (await one_shot_completion(user_content, system_prompt=system_content, max_tokens=256) or "").strip()
     except Exception as exc:
         logger.warning(
             "LLM prompt synthesis failed for %s (%s): %s",

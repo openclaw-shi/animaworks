@@ -24,7 +24,7 @@ import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from core.paths import load_prompt
 from core.time_utils import ensure_aware, now_jst
@@ -473,17 +473,9 @@ class ForgettingEngine:
         )
 
         try:
-            import litellm
+            from core.memory._llm_utils import one_shot_completion
 
-            response = cast(
-                Any,
-                await litellm.acompletion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1024,
-                ),
-            )
-            return response.choices[0].message.content or None
+            return await one_shot_completion(prompt, model=model, max_tokens=1024)
         except Exception as e:
             logger.warning("LLM merge failed: %s", e)
             return None
