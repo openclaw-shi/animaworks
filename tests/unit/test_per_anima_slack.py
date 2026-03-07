@@ -329,7 +329,7 @@ class TestWebhookPerAnimaRouting:
                 "channel": "C_ANY",
                 "user": "U_USER",
                 "text": "Message for Kotoha",
-                "ts": "1234567890.123456",
+                "ts": "9999999999.999999",
             },
         })
         body = payload.encode("utf-8")

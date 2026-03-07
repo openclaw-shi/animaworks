@@ -167,15 +167,18 @@ class TestCollectPendingHumanNotifications:
 
     @pytest.mark.asyncio
     async def test_multiple_notifications_chronological(self, anima_dir: Path):
+        from core.time_utils import now_jst
+
+        today = now_jst().date().isoformat()
         _write_activity(anima_dir, [
             {
-                "ts": "2026-03-06T10:00:00+09:00",
+                "ts": f"{today}T10:00:00+09:00",
                 "type": "human_notify",
                 "content": "First notification",
                 "via": "slack",
             },
             {
-                "ts": "2026-03-06T11:00:00+09:00",
+                "ts": f"{today}T11:00:00+09:00",
                 "type": "human_notify",
                 "content": "Second notification",
                 "via": "ntfy",
