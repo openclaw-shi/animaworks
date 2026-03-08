@@ -196,6 +196,8 @@ class ConsolidationConfig(BaseModel):
     episode_retention_days: int = 30  # Days to retain uncompressed episodes
     monthly_enabled: bool = True  # Monthly forgetting toggle
     monthly_time: str = "1:04:00"  # Format: day:HH:MM (day of month)
+    indexing_enabled: bool = True  # Daily RAG indexing toggle
+    indexing_time: str = "04:00"  # Format: HH:MM
 
 
 class ImageGenConfig(BaseModel):

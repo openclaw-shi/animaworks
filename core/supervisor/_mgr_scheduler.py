@@ -143,6 +143,23 @@ class SchedulerMixin:
                 minute,
             )
 
+        indexing_enabled = True
+        indexing_time = "04:00"
+        if consolidation_cfg:
+            indexing_enabled = getattr(consolidation_cfg, "indexing_enabled", True)
+            indexing_time = getattr(consolidation_cfg, "indexing_time", "04:00")
+
+        if indexing_enabled:
+            idx_hour, idx_minute = (int(x) for x in indexing_time.split(":"))
+            self.scheduler.add_job(
+                self._run_daily_indexing,
+                CronTrigger(hour=idx_hour, minute=idx_minute),
+                id="system_daily_indexing",
+                name="System: Daily RAG Indexing",
+                replace_existing=True,
+            )
+            logger.info("System cron: Daily RAG indexing at %s JST", indexing_time)
+
         # Activity log rotation
         try:
             from core.config.models import ActivityLogConfig
@@ -467,6 +484,146 @@ class SchedulerMixin:
 
         _write_marker(_marker_dir(self._get_data_dir()) / "last_monthly_forgetting")
 
+    async def _run_daily_indexing(self) -> None:
+        """Run daily RAG indexing for all animas.
+
+        Incrementally indexes all memory files (knowledge, episodes,
+        procedures, skills) into each anima's per-anima vectordb.
+        Also indexes shared collections (common_knowledge, common_skills).
+        Runs at 04:00 JST, after consolidation (02:00) and weekly/monthly
+        jobs (03:00) to capture all generated/modified files.
+        """
+        logger.info("Starting system-wide daily RAG indexing")
+
+        try:
+            from core.memory.rag import MemoryIndexer
+            from core.memory.rag.store import ChromaVectorStore
+        except ImportError:
+            logger.warning("RAG dependencies not available, skipping daily indexing")
+            return
+
+        import gc
+        import json
+
+        from core.paths import (
+            get_anima_vectordb_dir,
+            get_common_knowledge_dir,
+            get_common_skills_dir,
+        )
+
+        base_dir = self._get_data_dir()
+
+        from core.memory.rag.singleton import get_embedding_model_name
+
+        current_model = get_embedding_model_name()
+        global_meta_path = base_dir / "index_meta.json"
+        if global_meta_path.is_file():
+            try:
+                meta = json.loads(global_meta_path.read_text(encoding="utf-8"))
+                previous_model = meta.get("embedding_model")
+                if previous_model and previous_model != current_model:
+                    logger.warning(
+                        "Embedding model changed: %s -> %s. "
+                        "Skipping daily indexing — run 'animaworks index --full' to rebuild.",
+                        previous_model,
+                        current_model,
+                    )
+                    return
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        loop = asyncio.get_running_loop()
+        total_chunks = 0
+        ck_dir = get_common_knowledge_dir()
+        cs_dir = get_common_skills_dir()
+
+        for anima_name, anima_dir in self._iter_consolidation_targets():
+            try:
+                vdb_dir = get_anima_vectordb_dir(anima_name)
+                vector_store = ChromaVectorStore(persist_dir=vdb_dir)
+                indexer = MemoryIndexer(vector_store, anima_name, anima_dir)
+
+                memory_types = [
+                    ("knowledge", anima_dir / "knowledge"),
+                    ("episodes", anima_dir / "episodes"),
+                    ("procedures", anima_dir / "procedures"),
+                    ("skills", anima_dir / "skills"),
+                ]
+
+                for memory_type, memory_dir in memory_types:
+                    if not memory_dir.is_dir():
+                        continue
+                    chunks = await loop.run_in_executor(
+                        None,
+                        indexer.index_directory,
+                        memory_dir,
+                        memory_type,
+                    )
+                    total_chunks += chunks
+
+                conv_file = anima_dir / "state" / "conversation.json"
+                if conv_file.is_file():
+                    chunks = await loop.run_in_executor(
+                        None,
+                        indexer.index_conversation_summary,
+                        anima_dir / "state",
+                        anima_name,
+                    )
+                    total_chunks += chunks
+
+                if ck_dir.is_dir():
+                    shared_indexer = MemoryIndexer(
+                        vector_store,
+                        anima_name="shared",
+                        anima_dir=base_dir,
+                        collection_prefix="shared",
+                    )
+                    chunks = await loop.run_in_executor(
+                        None,
+                        shared_indexer.index_directory,
+                        ck_dir,
+                        "common_knowledge",
+                    )
+                    total_chunks += chunks
+
+                if cs_dir.is_dir():
+                    shared_indexer = MemoryIndexer(
+                        vector_store,
+                        anima_name="shared",
+                        anima_dir=base_dir,
+                        collection_prefix="shared",
+                    )
+                    chunks = await loop.run_in_executor(
+                        None,
+                        shared_indexer.index_directory,
+                        cs_dir,
+                        "common_skills",
+                    )
+                    total_chunks += chunks
+
+                logger.info("Daily indexing for %s complete", anima_name)
+
+                del indexer, vector_store
+                gc.collect()
+
+            except Exception:
+                logger.exception("Daily indexing failed for anima=%s", anima_name)
+
+        logger.info(
+            "System-wide daily RAG indexing complete: %d chunks indexed",
+            total_chunks,
+        )
+
+        try:
+            await self._broadcast_event(
+                "system.rag_indexing",
+                {"total_chunks": total_chunks},
+            )
+        except Exception:
+            pass
+
+        _write_marker(_marker_dir(self._get_data_dir()) / "last_daily_indexing")
+
     async def _run_activity_log_rotation(self) -> None:
         """Run activity log rotation for all animas."""
         logger.info("Starting system-wide activity log rotation")
@@ -619,6 +776,16 @@ class SchedulerMixin:
                     last,
                 )
                 await self._run_monthly_forgetting()
+
+        indexing_enabled = getattr(consolidation_cfg, "indexing_enabled", True) if consolidation_cfg else True
+        if indexing_enabled:
+            last = _read_marker(mdir / "last_daily_indexing")
+            if last is None or (now - last) > timedelta(hours=36):
+                logger.info(
+                    "Catch-up: daily indexing missed (last=%s), running now",
+                    last,
+                )
+                await self._run_daily_indexing()
 
         # Housekeeping catch-up
         last = _read_marker(mdir / "last_housekeeping")

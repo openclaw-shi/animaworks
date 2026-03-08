@@ -652,7 +652,15 @@ class LifecycleManager:
             logger.warning("RAG dependencies not available, skipping daily indexing")
             return
 
-        from core.paths import get_common_skills_dir, get_data_dir
+        import gc
+        import json
+
+        from core.paths import (
+            get_anima_vectordb_dir,
+            get_common_knowledge_dir,
+            get_common_skills_dir,
+            get_data_dir,
+        )
 
         base_dir = get_data_dir()
         animas_dir = base_dir / "animas"
@@ -660,9 +668,6 @@ class LifecycleManager:
         if not animas_dir.is_dir():
             logger.warning("Animas directory not found, skipping daily indexing")
             return
-
-        # Check for embedding model change
-        import json
 
         from core.memory.rag.singleton import get_embedding_model_name
 
@@ -685,16 +690,17 @@ class LifecycleManager:
                 pass
 
         loop = asyncio.get_running_loop()
-        vector_store = ChromaVectorStore()
         total_chunks = 0
+        ck_dir = get_common_knowledge_dir()
 
-        # Index each anima
         for anima_name, _anima in self.animas.items():
             anima_dir = animas_dir / anima_name
             if not anima_dir.is_dir():
                 continue
 
             try:
+                vdb_dir = get_anima_vectordb_dir(anima_name)
+                vector_store = ChromaVectorStore(persist_dir=vdb_dir)
                 indexer = MemoryIndexer(vector_store, anima_name, anima_dir)
                 memory_types = [
                     ("knowledge", anima_dir / "knowledge"),
@@ -714,45 +720,62 @@ class LifecycleManager:
                     )
                     total_chunks += chunks
 
+                if ck_dir.is_dir():
+                    shared_indexer = MemoryIndexer(
+                        vector_store,
+                        anima_name="shared",
+                        anima_dir=base_dir,
+                        collection_prefix="shared",
+                    )
+                    chunks = await loop.run_in_executor(
+                        None,
+                        shared_indexer.index_directory,
+                        ck_dir,
+                        "common_knowledge",
+                    )
+                    total_chunks += chunks
+
+                common_skills_dir = get_common_skills_dir()
+                if common_skills_dir.is_dir():
+                    shared_indexer = MemoryIndexer(
+                        vector_store,
+                        anima_name="shared",
+                        anima_dir=base_dir,
+                        collection_prefix="shared",
+                    )
+                    chunks = await loop.run_in_executor(
+                        None,
+                        shared_indexer.index_directory,
+                        common_skills_dir,
+                        "common_skills",
+                    )
+                    total_chunks += chunks
+
                 logger.info("Daily indexing for %s complete", anima_name)
+
+                del indexer, vector_store
+                gc.collect()
 
             except Exception:
                 logger.exception("Daily indexing failed for anima=%s", anima_name)
 
-        # Index shared user memories
         shared_users_dir = base_dir / "shared" / "users"
         if shared_users_dir.is_dir():
             try:
-                indexer = MemoryIndexer(vector_store, "shared", shared_users_dir.parent)
-                chunks = await loop.run_in_executor(
-                    None,
-                    indexer.index_directory,
-                    shared_users_dir,
-                    "shared_users",
-                )
-                total_chunks += chunks
+                for anima_name, _anima in self.animas.items():
+                    vdb_dir = get_anima_vectordb_dir(anima_name)
+                    vs = ChromaVectorStore(persist_dir=vdb_dir)
+                    su_indexer = MemoryIndexer(vs, "shared", shared_users_dir.parent)
+                    chunks = await loop.run_in_executor(
+                        None,
+                        su_indexer.index_directory,
+                        shared_users_dir,
+                        "shared_users",
+                    )
+                    total_chunks += chunks
+                    del su_indexer, vs
             except Exception:
                 logger.exception("Daily indexing failed for shared_users")
-
-        # Index shared common_skills
-        common_skills_dir = get_common_skills_dir()
-        if common_skills_dir.is_dir():
-            try:
-                shared_indexer = MemoryIndexer(
-                    vector_store,
-                    "shared",
-                    base_dir,
-                    collection_prefix="shared",
-                )
-                chunks = await loop.run_in_executor(
-                    None,
-                    shared_indexer.index_directory,
-                    common_skills_dir,
-                    "common_skills",
-                )
-                total_chunks += chunks
-            except Exception:
-                logger.exception("Daily indexing failed for common_skills")
 
         logger.info(
             "System-wide daily RAG indexing complete: %d chunks indexed",
