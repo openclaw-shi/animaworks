@@ -3,6 +3,94 @@
 // All functions are DOM-independent (return HTML strings) except bindToolCallHandlers.
 import { t } from "../i18n.js";
 
+// ── TextAnimator ──────────────────────────────────────
+// Buffers incoming text deltas and drips them at a constant rate
+// via requestAnimationFrame to smooth out bursty API token delivery.
+
+const _DEFAULT_CHAR_INTERVAL_MS = 8;
+const _CATCHUP_THRESHOLD_FAST = 200;
+const _CATCHUP_THRESHOLD_MED = 100;
+
+export class TextAnimator {
+  /**
+   * @param {object} opts
+   * @param {number}  [opts.charIntervalMs=8] - Base ms per character
+   * @param {function(string, string): void} opts.onUpdate - (displayText, fullBuffer) called on each animation step
+   */
+  constructor({ charIntervalMs = _DEFAULT_CHAR_INTERVAL_MS, onUpdate } = {}) {
+    this._buffer = "";
+    this._displayLen = 0;
+    this._charInterval = charIntervalMs;
+    this._onUpdate = onUpdate;
+    this._rafId = null;
+    this._lastStepTime = 0;
+    this._running = false;
+  }
+
+  start() {
+    this._buffer = "";
+    this._displayLen = 0;
+    this._running = true;
+    this._lastStepTime = performance.now();
+    this._scheduleTick();
+  }
+
+  push(delta) {
+    if (delta) this._buffer += delta;
+  }
+
+  flush() {
+    this._displayLen = this._buffer.length;
+    this._running = false;
+    this._cancelTick();
+    if (this._onUpdate) this._onUpdate(this._buffer, this._buffer);
+  }
+
+  stop() {
+    this._running = false;
+    this._cancelTick();
+  }
+
+  get displayText() { return this._buffer.slice(0, this._displayLen); }
+  get isAnimating() { return this._displayLen < this._buffer.length; }
+
+  _scheduleTick() {
+    if (this._rafId != null) return;
+    this._rafId = requestAnimationFrame((now) => {
+      this._rafId = null;
+      this._step(now);
+    });
+  }
+
+  _cancelTick() {
+    if (this._rafId != null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+  }
+
+  _step(now) {
+    const pending = this._buffer.length - this._displayLen;
+    if (pending > 0) {
+      const elapsed = now - this._lastStepTime;
+      let interval = this._charInterval;
+      if (pending > _CATCHUP_THRESHOLD_FAST) interval = this._charInterval / 4;
+      else if (pending > _CATCHUP_THRESHOLD_MED) interval = this._charInterval / 2;
+
+      const charsToAdd = Math.max(1, Math.floor(elapsed / Math.max(interval, 1)));
+      const prev = this._displayLen;
+      this._displayLen = Math.min(this._displayLen + charsToAdd, this._buffer.length);
+      this._lastStepTime = now;
+      if (this._displayLen !== prev && this._onUpdate) {
+        this._onUpdate(this.displayText, this._buffer);
+      }
+    }
+    if (this._running || this._displayLen < this._buffer.length) {
+      this._scheduleTick();
+    }
+  }
+}
+
 const DEFAULT_TOOL_RESULT_TRUNCATE = 500;
 
 // ── Bubble Action Helpers ──────────────────────
@@ -357,14 +445,17 @@ export function updateStreamingZone(bubble, msg, opts, zone = "all") {
   }
 
   // Fast path: append-only textContent update (no innerHTML replacement)
-  if (zone === "text" && msg.streaming && msg.text && msg._mdCache) {
-    const c = msg._mdCache;
-    const now = performance.now();
-    if ((now - c.t < _MD_RERENDER_MS) && (msg.text.length - c.len < _MD_RERENDER_CHARS)) {
-      const tailEl = el.querySelector(".streaming-tail");
-      if (tailEl) {
-        tailEl.textContent = msg.text.slice(c.len);
-        return;
+  if (zone === "text" && msg.streaming && msg._mdCache) {
+    const visibleText = msg._displayText || msg.text;
+    if (visibleText) {
+      const c = msg._mdCache;
+      const now = performance.now();
+      if ((now - c.t < _MD_RERENDER_MS) && (visibleText.length - c.len < _MD_RERENDER_CHARS)) {
+        const tailEl = el.querySelector(".streaming-tail");
+        if (tailEl) {
+          tailEl.textContent = visibleText.slice(c.len);
+          return;
+        }
       }
     }
   }
@@ -392,10 +483,11 @@ function _renderTextZoneContent(msg, opts) {
     const doneLabel = labels.heartbeatRelayDone || t("chat.heartbeat_relay_done");
     return `<div class="heartbeat-relay-indicator"><span class="tool-spinner"></span>${doneLabel}</div>`;
   }
-  if (msg.text) {
-    let html = renderMarkdown(msg.text, opts.animaName);
+  const visibleText = msg._displayText || msg.text;
+  if (visibleText) {
+    let html = renderMarkdown(visibleText, opts.animaName);
     if (msg.streaming) {
-      msg._mdCache = { html, len: msg.text.length, t: performance.now() };
+      msg._mdCache = { html, len: visibleText.length, t: performance.now() };
       html += '<span class="streaming-tail"></span>';
     } else {
       delete msg._mdCache;

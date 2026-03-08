@@ -4,6 +4,7 @@ import {
   scheduleSaveChatUiState, CONSTANTS,
 } from "./ctx.js";
 import { getDescendants } from "../../shared/chat/org-utils.js";
+import { TextAnimator } from "../../shared/chat/render-utils.js";
 
 const SEND_BTN_ICONS = {
   send: `<svg class="chat-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 19V5M5 12l7-7 7 7" /></svg>`,
@@ -235,6 +236,7 @@ export function createStreamingController(ctx) {
     const isVisible = () => state.selectedAnima === name;
 
     const finalizeStreamError = (streamingMsg, errorMsg, recoveredText = "") => {
+      if (_textAnimator) _textAnimator.flush();
       const recovered = recoveredText || "";
       if (recovered && recovered.length > (streamingMsg.text || "").length) {
         streamingMsg.text = recovered;
@@ -245,6 +247,7 @@ export function createStreamingController(ctx) {
       } else if (!streamingMsg.text.includes(errorMsg)) {
         streamingMsg.text += `\n${errLine}`;
       }
+      delete streamingMsg._displayText;
       streamingMsg.streaming = false;
       streamingMsg.activeTool = null;
       if (isVisible()) ctx.controllers.renderer.renderChat();
@@ -293,6 +296,7 @@ export function createStreamingController(ctx) {
     // Use let + onStreamCreated to avoid TDZ: the const destructuring from
     // await would not be initialized when SSE callbacks fire during streaming.
     let streamingMsg = null;
+    let _textAnimator = null;
 
     const _SUB_ACTIVITY_TYPES = new Set([
       "tool_start", "tool_detail", "tool_end",
@@ -322,12 +326,24 @@ export function createStreamingController(ctx) {
       images,
       displayImages,
       callbacks: {
-        onStreamCreated: msg => { streamingMsg = msg; renderFull(); updateSendButton(); },
+        onStreamCreated: msg => {
+          streamingMsg = msg;
+          _textAnimator = new TextAnimator({
+            onUpdate: (displayText) => {
+              if (!streamingMsg) return;
+              streamingMsg._displayText = displayText;
+              _scheduleRender(streamingMsg, "text");
+            },
+          });
+          _textAnimator.start();
+          renderFull();
+          updateSendButton();
+        },
         onTextDelta: text => {
           if (!streamingMsg?.streaming) return;
           streamingMsg.afterHeartbeatRelay = false;
           streamingMsg.text += text;
-          _scheduleRender(streamingMsg, "text");
+          if (_textAnimator) _textAnimator.push(text);
         },
         onToolStart: (toolName, detail) => {
           if (!streamingMsg?.streaming) return;
@@ -414,9 +430,11 @@ export function createStreamingController(ctx) {
           finalizeStreamError(streamingMsg, errorMsg);
         },
         onDone: ({ summary, images: doneImages }) => {
+          if (_textAnimator) _textAnimator.flush();
           if (!streamingMsg) return;
           const text = summary || streamingMsg.text;
           streamingMsg.text = text || t("chat.empty_response");
+          delete streamingMsg._displayText;
           streamingMsg.images = doneImages || [];
           streamingMsg.streaming = false;
           streamingMsg.activeTool = null;
@@ -434,13 +452,16 @@ export function createStreamingController(ctx) {
           }
         },
         onAbort: () => {
+          if (_textAnimator) _textAnimator.flush();
           if (!streamingMsg) return;
+          delete streamingMsg._displayText;
           streamingMsg.streaming = false; streamingMsg.activeTool = null;
           if (!streamingMsg.text) streamingMsg.text = t("chat.interrupted");
           if (isVisible()) ctx.controllers.renderer.renderChat();
         },
       },
       onFinally: () => {
+        if (_textAnimator) { _textAnimator.stop(); _textAnimator = null; }
         document.removeEventListener("anima-tool-activity", _onSubordinateActivity);
         if (_subThrottleTimer) { clearTimeout(_subThrottleTimer); _subThrottleTimer = null; }
         for (const t of _toolDetailTimers.values()) clearTimeout(t);
@@ -448,6 +469,7 @@ export function createStreamingController(ctx) {
         try {
           if (streamingMsg && streamingMsg.streaming) {
             streamingMsg.streaming = false;
+            delete streamingMsg._displayText;
             if (!streamingMsg.text) {
               streamingMsg.text = streamingMsg.afterHeartbeatRelay ? t("chat.receive_failed") : t("chat.empty_response");
             }
@@ -511,20 +533,43 @@ export function createStreamingController(ctx) {
     };
 
     let streamingMsg = null;
+    let _resumeAnimator = null;
 
     await mgr.resumeStream(animaName, tid, {
       callbacks: {
-        onStreamCreated: msg => { streamingMsg = msg; ctx.controllers.renderer.renderChat(smartScroll()); updateSendButton(); },
-        onTextDelta: text => { if (streamingMsg?.streaming) { streamingMsg.text += text; _scheduleRenderR(streamingMsg, "text"); } },
+        onStreamCreated: msg => {
+          streamingMsg = msg;
+          const resumeBase = msg.text || "";
+          _resumeAnimator = new TextAnimator({
+            onUpdate: (displayText) => {
+              if (!streamingMsg) return;
+              streamingMsg._displayText = resumeBase + displayText;
+              _scheduleRenderR(streamingMsg, "text");
+            },
+          });
+          _resumeAnimator.start();
+          ctx.controllers.renderer.renderChat(smartScroll());
+          updateSendButton();
+        },
+        onTextDelta: text => {
+          if (!streamingMsg?.streaming) return;
+          streamingMsg.text += text;
+          if (_resumeAnimator) _resumeAnimator.push(text);
+        },
         onToolStart: toolName => { if (streamingMsg?.streaming) { streamingMsg.activeTool = toolName; renderBubbleR(streamingMsg, "tools"); } },
         onToolEnd: () => { if (streamingMsg?.streaming) { streamingMsg.activeTool = null; renderBubbleR(streamingMsg, "tools"); } },
         onThinkingStart: () => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = ""; streamingMsg.thinking = true; renderBubbleR(streamingMsg, "thinking"); } },
         onThinkingDelta: text => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + text; _scheduleRenderR(streamingMsg, "thinking"); } },
         onThinkingEnd: () => { if (streamingMsg?.streaming) { streamingMsg.thinking = false; renderBubbleR(streamingMsg, "thinking"); } },
-        onError: ({ message: errorMsg }) => { if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${errorMsg}`; streamingMsg.streaming = false; if (state.selectedAnima === animaName) ctx.controllers.renderer.renderChat(smartScroll()); } },
+        onError: ({ message: errorMsg }) => {
+          if (_resumeAnimator) _resumeAnimator.flush();
+          if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${errorMsg}`; delete streamingMsg._displayText; streamingMsg.streaming = false; if (state.selectedAnima === animaName) ctx.controllers.renderer.renderChat(smartScroll()); }
+        },
         onDone: ({ summary, images }) => {
+          if (_resumeAnimator) _resumeAnimator.flush();
           if (streamingMsg) {
             streamingMsg.text = summary || streamingMsg.text || t("chat.empty_response");
+            delete streamingMsg._displayText;
             streamingMsg.images = images || [];
             streamingMsg.streaming = false; streamingMsg.activeTool = null;
             if (state.selectedAnima === animaName) ctx.controllers.renderer.renderChat(smartScroll());
@@ -533,9 +578,11 @@ export function createStreamingController(ctx) {
         },
       },
       onFinally: () => {
+        if (_resumeAnimator) { _resumeAnimator.stop(); _resumeAnimator = null; }
         try {
           if (streamingMsg?.streaming) {
             streamingMsg.streaming = false;
+            delete streamingMsg._displayText;
             if (!streamingMsg.text) streamingMsg.text = t("chat.empty_response");
             if (state.selectedAnima === animaName) ctx.controllers.renderer.renderChat(smartScroll());
           }

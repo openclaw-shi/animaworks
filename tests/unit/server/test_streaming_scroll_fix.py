@@ -48,10 +48,11 @@ class TestAppJsScrollFix:
         assert "_convRafPending" in streaming_source
 
     def test_text_delta_uses_throttled_update(self, streaming_source: str):
-        """onTextDelta callback should call scheduleStreamingUpdate, not updateStreamingBubble directly."""
+        """onTextDelta callback should push to TextAnimator which calls scheduleStreamingUpdate."""
         idx = streaming_source.index("onTextDelta")
         context = streaming_source[idx:idx + 400]
-        assert "scheduleStreamingUpdate" in context
+        assert "_textAnimator" in context or "scheduleStreamingUpdate" in context
+        assert "scheduleStreamingUpdate" in streaming_source
 
     def test_render_conv_messages_renders_chat(self, history_source: str):
         """renderConvMessages should render chat messages into the DOM."""
@@ -97,10 +98,11 @@ class TestWorkspaceAppJsScrollFix:
         assert "_convRafPending" in streaming_source
 
     def test_text_delta_uses_throttled_update(self, streaming_source: str):
-        """onTextDelta handler should call scheduleStreamingUpdate."""
+        """onTextDelta handler should push to TextAnimator which calls scheduleStreamingUpdate."""
         idx = streaming_source.index("onTextDelta")
         context = streaming_source[idx:idx + 400]
-        assert "scheduleStreamingUpdate" in context
+        assert "_textAnimator" in context or "scheduleStreamingUpdate" in context
+        assert "scheduleStreamingUpdate" in streaming_source
 
     def test_render_conv_messages_scrolls(self, history_source: str):
         """renderConvMessages should scroll messages container."""

@@ -10,7 +10,7 @@ import { getDescendants } from "../../shared/chat/org-utils.js";
 import { setExpression, setTalking } from "./live2d.js";
 import { createLogger } from "../../shared/logger.js";
 import { renderConvMessages, renderOpts } from "./chat-history.js";
-import { renderStreamingBubbleInner, updateStreamingZone } from "../../shared/chat/render-utils.js";
+import { renderStreamingBubbleInner, updateStreamingZone, TextAnimator } from "../../shared/chat/render-utils.js";
 import { renderWsThreadTabs } from "./chat-thread.js";
 import { wsSaveDraft, wsClearDraft, isMobileView } from "./chat-mobile.js";
 import { ChatSessionManager } from "../../shared/chat/session-manager.js";
@@ -223,16 +223,30 @@ async function _sendConversation(text, overrideImages = null) {
   };
   document.addEventListener("anima-tool-activity", _onSubordinateActivity);
 
+  let _textAnimator = null;
+
   const { success, error } = await mgr.sendChat(anima, thread, text, {
     images,
     displayImages,
     callbacks: {
-      onStreamCreated: (msg) => { streamingMsg = msg; renderConvMessages(); },
+      onStreamCreated: (msg) => {
+        streamingMsg = msg;
+        _textAnimator = new TextAnimator({
+          onUpdate: (displayText) => {
+            if (!streamingMsg) return;
+            streamingMsg._displayText = displayText;
+            scheduleStreamingUpdate(streamingMsg, "text");
+          },
+        });
+        _textAnimator.start();
+        renderConvMessages();
+      },
       onTextDelta: (d) => {
         if (!streamingMsg?.streaming) return;
         streamingMsg.afterHeartbeatRelay = false;
         if (!talkingStarted) { setTalking(true); setExpression("neutral"); talkingStarted = true; }
-        streamingMsg.text += d; scheduleStreamingUpdate(streamingMsg, "text");
+        streamingMsg.text += d;
+        if (_textAnimator) _textAnimator.push(d);
       },
       onCompressionStart: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = true; updateStreamingBubble(streamingMsg, "text"); } },
       onCompressionEnd: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = false; updateStreamingBubble(streamingMsg, "text"); } },
@@ -246,25 +260,32 @@ async function _sendConversation(text, overrideImages = null) {
       onHeartbeatRelay: ({ text: t }) => { if (streamingMsg?.streaming) { streamingMsg.heartbeatText = (streamingMsg.heartbeatText || "") + t; scheduleStreamingUpdate(streamingMsg, "text"); } },
       onHeartbeatRelayDone: () => { if (streamingMsg?.streaming) { streamingMsg.heartbeatRelay = false; streamingMsg.heartbeatText = ""; streamingMsg.afterHeartbeatRelay = true; scheduleStreamingUpdate(streamingMsg, "text"); } },
       onDone: ({ summary, emotion, images: di }) => {
+        if (_textAnimator) _textAnimator.flush();
         if (streamingMsg) {
-          if (summary) { streamingMsg.text = summary; updateStreamingBubble(streamingMsg); }
+          if (summary) { streamingMsg.text = summary; }
+          delete streamingMsg._displayText;
           streamingMsg.images = di || [];
           streamingMsg.streaming = false; streamingMsg.activeTool = null;
+          updateStreamingBubble(streamingMsg);
         }
         setExpression(emotion); setTimeout(() => setExpression("neutral"), 3000);
       },
       onError: ({ message: m }) => {
+        if (_textAnimator) _textAnimator.flush();
         setExpression("troubled");
-        if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${m}`; updateStreamingBubble(streamingMsg); }
+        if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${m}`; delete streamingMsg._displayText; updateStreamingBubble(streamingMsg); }
       },
       onAbort: () => {
+        if (_textAnimator) _textAnimator.flush();
         if (streamingMsg) {
+          delete streamingMsg._displayText;
           streamingMsg.streaming = false; streamingMsg.activeTool = null;
           if (!streamingMsg.text) streamingMsg.text = t("chat.interrupted");
         }
       },
     },
     onFinally: () => {
+      if (_textAnimator) { _textAnimator.stop(); _textAnimator = null; }
       document.removeEventListener("anima-tool-activity", _onSubordinateActivity);
       if (_wsSubThrottleTimer) { clearTimeout(_wsSubThrottleTimer); _wsSubThrottleTimer = null; }
       for (const t of _wsToolDetailTimers.values()) clearTimeout(t);
@@ -311,11 +332,28 @@ export async function resumeConversationStream(animaName) {
   wsUpdateSendButton(true);
 
   let streamingMsg = null;
+  let _resumeAnimator = null;
 
   const { success } = await mgr.resumeStream(animaName, threadId, {
     callbacks: {
-      onStreamCreated: (msg) => { streamingMsg = msg; renderConvMessages(); },
-      onTextDelta: (d) => { if (streamingMsg?.streaming) { streamingMsg.text += d; scheduleStreamingUpdate(streamingMsg, "text"); } },
+      onStreamCreated: (msg) => {
+        streamingMsg = msg;
+        const resumeBase = msg.text || "";
+        _resumeAnimator = new TextAnimator({
+          onUpdate: (displayText) => {
+            if (!streamingMsg) return;
+            streamingMsg._displayText = resumeBase + displayText;
+            scheduleStreamingUpdate(streamingMsg, "text");
+          },
+        });
+        _resumeAnimator.start();
+        renderConvMessages();
+      },
+      onTextDelta: (d) => {
+        if (!streamingMsg?.streaming) return;
+        streamingMsg.text += d;
+        if (_resumeAnimator) _resumeAnimator.push(d);
+      },
       onCompressionStart: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = true; updateStreamingBubble(streamingMsg, "text"); } },
       onCompressionEnd: () => { if (streamingMsg?.streaming) { streamingMsg.compressing = false; updateStreamingBubble(streamingMsg, "text"); } },
       onToolStart: (n) => { if (streamingMsg?.streaming) { streamingMsg.activeTool = n; setExpression("thinking"); updateStreamingBubble(streamingMsg, "tools"); } },
@@ -324,25 +362,30 @@ export async function resumeConversationStream(animaName) {
       onThinkingDelta: (t) => { if (streamingMsg?.streaming) { streamingMsg.thinkingText = (streamingMsg.thinkingText || "") + t; scheduleStreamingUpdate(streamingMsg, "thinking"); } },
       onThinkingEnd: () => { if (streamingMsg?.streaming) { streamingMsg.thinking = false; updateStreamingBubble(streamingMsg, "thinking"); } },
       onDone: ({ summary, emotion, images: di }) => {
+        if (_resumeAnimator) _resumeAnimator.flush();
         if (streamingMsg) {
           if (summary) streamingMsg.text = summary;
+          delete streamingMsg._displayText;
           streamingMsg.images = di || [];
           streamingMsg.streaming = false; streamingMsg.activeTool = null;
         }
         setExpression(emotion); setTimeout(() => setExpression("neutral"), 3000);
       },
       onError: ({ message: m }) => {
-        if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${m}`; streamingMsg.streaming = false; }
+        if (_resumeAnimator) _resumeAnimator.flush();
+        if (streamingMsg) { streamingMsg.text += `\n${t("chat.error_prefix")} ${m}`; delete streamingMsg._displayText; streamingMsg.streaming = false; }
         setExpression("troubled");
       },
     },
     onFinally: () => {
+      if (_resumeAnimator) { _resumeAnimator.stop(); _resumeAnimator = null; }
       try {
         setTalking(false);
         if (streamingMsg?.streaming) {
           streamingMsg.streaming = false;
           if (!streamingMsg.text) streamingMsg.text = t("chat.empty_response");
         }
+        delete streamingMsg?._displayText;
         renderConvMessages();
         renderWsThreadTabs();
         wsUpdateSendButton(false); dom.convInput?.focus();
