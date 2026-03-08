@@ -395,6 +395,9 @@ class PrimingEngine:
 
             anima_name = self.anima_dir.name
             vector_store = get_vector_store(anima_name)
+            if vector_store is None:
+                logger.debug("RAG vector store unavailable, retriever disabled")
+                return None
             indexer = MemoryIndexer(vector_store, anima_name, self.anima_dir)
             self._retriever = MemoryRetriever(
                 vector_store,

@@ -86,6 +86,9 @@ class RAGMemorySearch:
 
             anima_name = self._anima_dir.name
             vector_store = get_vector_store(anima_name)
+            if vector_store is None:
+                logger.debug("RAG vector store unavailable, indexer disabled")
+                return
             self._indexer = MemoryIndexer(vector_store, anima_name, self._anima_dir)
             logger.debug("RAG indexer initialized for anima=%s", anima_name)
 

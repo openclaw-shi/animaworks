@@ -687,6 +687,9 @@ class ProceduralDistiller:
             from core.memory.rag.singleton import get_vector_store
 
             vector_store = get_vector_store(self.anima_name)
+            if vector_store is None:
+                logger.debug("RAG vector store unavailable, skipping duplicate check")
+                return None
             indexer = MemoryIndexer(
                 vector_store,
                 self.anima_name,

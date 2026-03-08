@@ -512,6 +512,9 @@ class ForgettingEngine:
             from core.memory.rag.store import Document
 
             store = get_vector_store(self.anima_name)
+            if store is None:
+                logger.debug("RAG vector store unavailable, skipping merged chunk indexing")
+                return
             indexer = MemoryIndexer(store, self.anima_name, self.anima_dir)
 
             # Generate new ID
