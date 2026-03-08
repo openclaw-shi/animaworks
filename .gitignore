@@ -82,7 +82,7 @@ experiments/
 # Private-only scripts
 scripts/coverage_checker.py
 scripts/file_size_checker.py
-scripts/publish.sh
+# scripts/publish.sh  # now public (no longer private-only)
 scripts/worktree_manager.py
 scripts/capture_org_chart.py
 scripts/inspect_org_chart.py
