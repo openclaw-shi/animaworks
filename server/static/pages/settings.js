@@ -4,6 +4,7 @@ import { applyTheme, applyDisplayMode, getDisplayMode } from "../modules/app.js"
 
 const _LS_ACTIVITY  = "aw-activity-level";
 const _LS_SCHEDULE  = "aw-activity-schedule";
+const _LS_ENTER_SEND = "aw-enter-to-send";
 
 const THEMES = [
   { id: "default",   label: "Default",   colors: ["#374151", "#f5f5f5", "#fff"] },
@@ -107,6 +108,15 @@ export function render(container) {
         `).join("")}
       </div>
     </section>
+
+    <section class="settings-section">
+      <h3 class="settings-section-title">${t("settings.input.title")}</h3>
+      <p class="settings-section-desc">${t("settings.input.desc")}</p>
+      <label class="settings-checkbox-label">
+        <input type="checkbox" id="enterToSendToggle" ${_isEnterToSend() ? "checked" : ""} />
+        <span>${t("settings.input.enter_to_send")}</span>
+      </label>
+    </section>
   `;
 
   if (window.lucide) lucide.createIcons();
@@ -116,6 +126,10 @@ export function render(container) {
   });
   container.querySelectorAll(".settings-theme-card").forEach(btn => {
     btn.addEventListener("click", () => _onThemeChange(btn.dataset.theme, container));
+  });
+
+  container.querySelector("#enterToSendToggle")?.addEventListener("change", (e) => {
+    try { localStorage.setItem(_LS_ENTER_SEND, e.target.checked ? "true" : "false"); } catch { /* */ }
   });
 
   // Activity Level
@@ -419,6 +433,12 @@ async function _clearNightMode(container) {
       _cacheActivityState(curLevel, prevSchedule);
     }
   }
+}
+
+// ── Enter-to-Send ───────────────────────────
+
+function _isEnterToSend() {
+  try { return localStorage.getItem(_LS_ENTER_SEND) === "true"; } catch { return false; }
 }
 
 // ── localStorage Cache ─────────────────────

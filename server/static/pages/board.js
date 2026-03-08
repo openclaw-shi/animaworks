@@ -149,9 +149,12 @@ function _bindEvents() {
     _submitMessage();
   });
 
-  // Textarea: Enter (without shift) sends
+  // Textarea: Enter sends, Ctrl/Cmd+Enter always sends
   _addListener("boardInput", "keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      _submitMessage();
+    } else if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       _submitMessage();
     }

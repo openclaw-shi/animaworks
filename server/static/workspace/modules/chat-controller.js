@@ -167,7 +167,10 @@ export function initChatController(dom) {
     if (e.key === "Enter" && e.altKey) { e.preventDefault(); addToQueue(); }
     else if (e.key === "Enter") {
       if (isMobileView()) { if (!e.shiftKey) { e.preventDefault(); submitConversation(); } }
-      else { if (e.ctrlKey || e.metaKey) { e.preventDefault(); submitConversation(); } }
+      else if (e.ctrlKey || e.metaKey) { e.preventDefault(); submitConversation(); }
+      else if (!e.shiftKey && localStorage.getItem("aw-enter-to-send") === "true") {
+        e.preventDefault(); submitConversation();
+      }
     }
   });
 

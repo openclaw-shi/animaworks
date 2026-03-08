@@ -103,6 +103,9 @@ export function createEventsController(ctx) {
     addListener("chatPageInput", "keydown", e => {
       if (e.key === "Enter" && e.altKey) { e.preventDefault(); ctx.controllers.streaming.addToQueue(); }
       else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ctx.controllers.streaming.submitChat(); }
+      else if (e.key === "Enter" && !e.shiftKey && localStorage.getItem("aw-enter-to-send") === "true") {
+        e.preventDefault(); ctx.controllers.streaming.submitChat();
+      }
     });
 
     // Queue / pending
