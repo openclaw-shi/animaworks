@@ -8,7 +8,6 @@ import base64
 import json
 import logging
 import re
-import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -451,7 +450,6 @@ async def _run_producer(
     import time as _time
 
     _start = _time.monotonic()
-    _last_text_delta_at: float | None = None
 
     try:
         await emit_direct(ws_manager, "anima.status", {"name": name, "status": "thinking"})
@@ -536,41 +534,11 @@ async def _run_producer(
                     result = _chunk_to_event(chunk_data)
                     if result:
                         evt_name, evt_payload = result
-                        if evt_name == "text_delta":
-                            now = time.time()
-                            delta_len = len(evt_payload.get("text", ""))
-                            since_last = (
-                                "first" if _last_text_delta_at is None else f"{(now - _last_text_delta_at) * 1000:.1f}"
-                            )
-                            _last_text_delta_at = now
-                            logger.info(
-                                "[CHUNK-DEBUG-BE-PRODUCER] stream=%s ipc_chunk=%d seq_next=%d "
-                                "ts=%.6f since_last_ms=%s delta_len=%d",
-                                stream.response_id,
-                                ipc_chunk_count,
-                                stream.current_seq + 1,
-                                now,
-                                since_last,
-                                delta_len,
-                            )
                         stream.add_event(evt_name, evt_payload)
                         if evt_name == "done":
                             stream_done = True
                 except json.JSONDecodeError:
                     # Raw text chunk fallback
-                    now = time.time()
-                    since_last = "first" if _last_text_delta_at is None else f"{(now - _last_text_delta_at) * 1000:.1f}"
-                    _last_text_delta_at = now
-                    logger.info(
-                        "[CHUNK-DEBUG-BE-PRODUCER] stream=%s ipc_chunk=%d seq_next=%d "
-                        "ts=%.6f since_last_ms=%s delta_len=%d raw_fallback=1",
-                        stream.response_id,
-                        ipc_chunk_count,
-                        stream.current_seq + 1,
-                        now,
-                        since_last,
-                        len(ipc_response.chunk or ""),
-                    )
                     stream.add_event("text_delta", {"text": ipc_response.chunk})
                 continue
 
@@ -719,7 +687,6 @@ async def _sse_tail(
     for efficient event notification instead of busy polling.
     """
     seq = -1
-    last_text_delta_sent_at: float | None = None
     logger.info("[SSE-TAIL] start stream=%s", stream.response_id)
 
     while True:
@@ -736,22 +703,6 @@ async def _sse_tail(
         events = stream.events_after(seq)
         if events:
             for event in events:
-                if event.event == "text_delta":
-                    now = time.time()
-                    delta_len = len(event.payload.get("text", ""))
-                    since_last = (
-                        "first" if last_text_delta_sent_at is None else f"{(now - last_text_delta_sent_at) * 1000:.1f}"
-                    )
-                    last_text_delta_sent_at = now
-                    logger.info(
-                        "[CHUNK-DEBUG-BE-SSE] stream=%s seq=%d event_id=%s ts=%.6f since_last_ms=%s delta_len=%d",
-                        stream.response_id,
-                        event.seq,
-                        event.event_id,
-                        now,
-                        since_last,
-                        delta_len,
-                    )
                 yield format_sse_with_id(event.event, event.payload, event.event_id)
                 seq = event.seq
             # Yield control so ASGI server can flush chunks to the client

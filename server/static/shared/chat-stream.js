@@ -135,7 +135,6 @@ async function _processStream(res, callbacks, setResponseId, setLastEventId, sig
   let chunkCount = 0;
   let sseEventCount = 0;
   const streamStart = performance.now();
-  let lastTextDeltaAt = null;
 
   logger.debug("[SSE-FE] _processStream: reader opened");
 
@@ -171,16 +170,6 @@ async function _processStream(res, callbacks, setResponseId, setLastEventId, sig
             break;
 
           case "text_delta":
-            {
-              const now = performance.now();
-              const sinceLast = lastTextDeltaAt == null ? -1 : now - lastTextDeltaAt;
-              lastTextDeltaAt = now;
-              logger.info(
-                `[CHUNK-DEBUG-FE] responseId=${responseId || "-"} id=${id || "-"} ` +
-                `perf_ms=${now.toFixed(1)} since_last_ms=${sinceLast < 0 ? "first" : sinceLast.toFixed(1)} ` +
-                `delta_len=${(data.text || "").length}`,
-              );
-            }
             callbacks.onTextDelta?.(data.text || "");
             break;
 
