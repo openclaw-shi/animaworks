@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -482,12 +483,15 @@ class TestMergedTimeline:
 
     def test_merged_timeline_chronological_order(self, tmp_path):
         """Events from multiple animas are sorted by timestamp."""
+        from core.time_utils import now_jst
+
         dir_a = _setup_subordinate(tmp_path, "alice", supervisor="boss")
         dir_b = _setup_subordinate(tmp_path, "bob", supervisor="boss")
 
-        ts_early = "2026-03-07T01:00:00+09:00"
-        ts_mid = "2026-03-07T02:00:00+09:00"
-        ts_late = "2026-03-07T03:00:00+09:00"
+        base = now_jst()
+        ts_early = (base - timedelta(hours=3)).isoformat()
+        ts_mid = (base - timedelta(hours=2)).isoformat()
+        ts_late = (base - timedelta(hours=1)).isoformat()
 
         _write_activity(dir_a, [
             {"type": "heartbeat_end", "summary": "Alice HB", "ts": ts_early},

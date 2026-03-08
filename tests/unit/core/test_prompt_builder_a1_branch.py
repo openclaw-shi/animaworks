@@ -211,23 +211,7 @@ class TestSTemplateContent:
         content = (TEMPLATES_DIR / "ja" / "prompts" / "messaging_s.md").read_text(encoding="utf-8")
         assert "bash send" not in content
 
-    def test_communication_rules_s_contains_mcp_send_message(self) -> None:
-        """communication_rules_s.md must reference the MCP tool name mcp__aw__send_message."""
+    def test_communication_rules_s_has_routing_rules(self) -> None:
+        """communication_rules_s.md must contain routing rules (MCP refs moved to messaging_s)."""
         content = (TEMPLATES_DIR / "ja" / "prompts" / "communication_rules_s.md").read_text(encoding="utf-8")
-        assert "mcp__aw__send_message" in content
-
-    def test_communication_rules_s_no_bare_send_message(self) -> None:
-        """communication_rules_s.md must NOT contain bare 'send_message' without 'mcp__aw__' prefix.
-
-        Every occurrence of 'send_message' in the S template should be
-        prefixed with 'mcp__aw__', indicating the MCP tool is used
-        rather than a generic tool_use call.
-        """
-        content = (TEMPLATES_DIR / "ja" / "prompts" / "communication_rules_s.md").read_text(encoding="utf-8")
-        # Find all occurrences of 'send_message' and verify each is prefixed
-        # with 'mcp__aw__'. We use a negative lookbehind to find bare instances.
-        bare_matches = re.findall(r"(?<!mcp__aw__)send_message", content)
-        assert bare_matches == [], (
-            f"Found bare 'send_message' without 'mcp__aw__' prefix: "
-            f"{len(bare_matches)} occurrence(s)"
-        )
+        assert "経路ルール" in content

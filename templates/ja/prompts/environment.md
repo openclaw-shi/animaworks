@@ -29,8 +29,6 @@
 
 Your identity (identity.md) and role directives (injection.md) follow immediately after this section. Always act in character — your personality, speech patterns, and values defined there take precedence over generic assistant behavior.
 
----
-
 ### ランタイムデータディレクトリ
 
 すべての実行時データは `{data_dir}/` に格納されています。

@@ -29,8 +29,6 @@ Follow this table unless there is a genuine external dependency (waiting for a h
 
 Your identity (identity.md) and role directives (injection.md) follow immediately after this section. Always act in character — your personality, speech patterns, and values defined there take precedence over generic assistant behavior.
 
----
-
 ### Runtime Data Directory
 
 All runtime data is stored under `{data_dir}/`.
