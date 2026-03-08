@@ -304,6 +304,184 @@ class TestSlackSocketModeManagerHandlers:
         mock_messenger_cls.assert_not_called()
 
 
+class TestUnhandledEventSuppression:
+    """Tests for Bolt 404 suppression via error handler."""
+
+    @patch("server.slack_socket.get_data_dir")
+    @patch("server.slack_socket.Messenger")
+    @patch("server.slack_socket.AsyncSocketModeHandler")
+    @patch("server.slack_socket.AsyncApp")
+    @patch("server.slack_socket.get_credential")
+    @patch("server.slack_socket.load_config")
+    async def test_error_handler_registered_on_shared_app(
+        self,
+        mock_config,
+        mock_cred,
+        mock_app_cls,
+        mock_handler_cls,
+        mock_messenger_cls,
+        mock_get_data_dir,
+        tmp_path,
+    ):
+        """Error handler is registered on the shared AsyncApp."""
+        from server.slack_socket import SlackSocketModeManager
+
+        slack_cfg = MagicMock(enabled=True, mode="socket", anima_mapping={})
+        mock_config.return_value = MagicMock(
+            external_messaging=MagicMock(slack=slack_cfg),
+        )
+        mock_cred.return_value = "fake_token"
+        mock_get_data_dir.return_value = tmp_path
+
+        mock_async_app = MagicMock()
+        captured_error_handler = []
+        mock_async_app.error = lambda fn: captured_error_handler.append(fn) or fn
+        mock_async_app.event = lambda et: (lambda fn: fn)
+        mock_app_cls.return_value = mock_async_app
+        mock_handler_cls.return_value = AsyncMock()
+
+        mgr = SlackSocketModeManager()
+        with patch.object(type(mgr), "_discover_per_anima_bots", return_value=[]):
+            await mgr.start()
+
+        assert len(captured_error_handler) == 1
+
+    @patch("server.slack_socket.get_data_dir")
+    @patch("server.slack_socket.Messenger")
+    @patch("server.slack_socket.AsyncSocketModeHandler")
+    @patch("server.slack_socket.AsyncApp")
+    @patch("server.slack_socket.get_credential")
+    @patch("server.slack_socket.load_config")
+    async def test_raise_error_for_unhandled_request_flag(
+        self,
+        mock_config,
+        mock_cred,
+        mock_app_cls,
+        mock_handler_cls,
+        mock_messenger_cls,
+        mock_get_data_dir,
+        tmp_path,
+    ):
+        """AsyncApp is created with raise_error_for_unhandled_request=True."""
+        from server.slack_socket import SlackSocketModeManager
+
+        slack_cfg = MagicMock(enabled=True, mode="socket", anima_mapping={})
+        mock_config.return_value = MagicMock(
+            external_messaging=MagicMock(slack=slack_cfg),
+        )
+        mock_cred.return_value = "fake_token"
+        mock_get_data_dir.return_value = tmp_path
+        mock_app_cls.return_value = MagicMock()
+        mock_handler_cls.return_value = AsyncMock()
+
+        mgr = SlackSocketModeManager()
+        with patch.object(type(mgr), "_discover_per_anima_bots", return_value=[]):
+            await mgr.start()
+
+        mock_app_cls.assert_called_with(
+            token="fake_token",
+            raise_error_for_unhandled_request=True,
+        )
+
+    async def test_error_handler_returns_200_for_unhandled(self):
+        """BoltUnhandledRequestError is caught and returns 200."""
+        from slack_bolt.error import BoltUnhandledRequestError
+        from slack_bolt.response import BoltResponse
+
+        from server.slack_socket import SlackSocketModeManager
+
+        app = MagicMock()
+        captured_handler = []
+        app.error = lambda fn: captured_handler.append(fn) or fn
+
+        SlackSocketModeManager._register_error_handler(app)
+        assert len(captured_handler) == 1
+        handler = captured_handler[0]
+
+        error = BoltUnhandledRequestError(request=MagicMock(), current_response=None)
+
+        result = await handler(
+            error=error,
+            body={"event": {"type": "reaction_added"}},
+        )
+
+        assert isinstance(result, BoltResponse)
+        assert result.status == 200
+
+    async def test_error_handler_re_raises_other_errors(self):
+        """Non-BoltUnhandledRequestError errors are re-raised."""
+        from server.slack_socket import SlackSocketModeManager
+
+        app = MagicMock()
+        captured_handler = []
+        app.error = lambda fn: captured_handler.append(fn) or fn
+
+        SlackSocketModeManager._register_error_handler(app)
+        handler = captured_handler[0]
+
+        with pytest.raises(ValueError, match="something broke"):
+            await handler(error=ValueError("something broke"), body={})
+
+    @patch("server.slack_socket.get_data_dir")
+    @patch("server.slack_socket.Messenger")
+    @patch("server.slack_socket.AsyncSocketModeHandler")
+    @patch("server.slack_socket.AsyncApp")
+    @patch("server.slack_socket.get_credential")
+    @patch("server.slack_socket.load_config")
+    async def test_message_handler_still_works_with_error_handler(
+        self,
+        mock_config,
+        mock_cred,
+        mock_app_cls,
+        mock_handler_cls,
+        mock_messenger_cls,
+        mock_get_data_dir,
+        tmp_path,
+    ):
+        """Normal message events are still routed correctly."""
+        from server.slack_socket import SlackSocketModeManager
+
+        anima_mapping = {"C_TEST": "sakura"}
+        slack_cfg = MagicMock(enabled=True, mode="socket", anima_mapping=anima_mapping)
+        mock_config.return_value = MagicMock(
+            external_messaging=MagicMock(slack=slack_cfg),
+        )
+        mock_cred.return_value = "fake_token"
+        mock_get_data_dir.return_value = tmp_path
+
+        captured_handlers: dict[str, list] = {}
+        mock_async_app = MagicMock()
+
+        def _capture_event(event_type):
+            def decorator(func):
+                captured_handlers.setdefault(event_type, []).append(func)
+                return func
+            return decorator
+
+        mock_async_app.event = _capture_event
+        mock_app_cls.return_value = mock_async_app
+        mock_handler_cls.return_value = AsyncMock()
+
+        mock_messenger = MagicMock()
+        mock_messenger_cls.return_value = mock_messenger
+
+        mgr = SlackSocketModeManager()
+        await mgr.start()
+
+        assert "message" in captured_handlers
+        handler_fn = captured_handlers["message"][0]
+
+        event = {
+            "channel": "C_TEST",
+            "user": "U_USER",
+            "text": "Hello",
+            "ts": "9999.9999",
+        }
+        await handler_fn(event=event, say=AsyncMock())
+
+        mock_messenger.receive_external.assert_called_once()
+
+
 class TestExternalMessagingChannelConfigMode:
     """Tests for the mode field on ExternalMessagingChannelConfig."""
 

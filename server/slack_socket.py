@@ -18,6 +18,8 @@ from typing import Any
 
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
+from slack_bolt.error import BoltUnhandledRequestError
+from slack_bolt.response import BoltResponse
 
 from core.config.models import load_config
 from core.messenger import Messenger
@@ -132,7 +134,8 @@ class SlackSocketModeManager:
         try:
             shared_bot = get_credential("slack", "slack_socket", env_var="SLACK_BOT_TOKEN")
             shared_app_token = get_credential("slack_app", "slack_socket", env_var="SLACK_APP_TOKEN")
-            app = AsyncApp(token=shared_bot)
+            app = AsyncApp(token=shared_bot, raise_error_for_unhandled_request=True)
+            self._register_error_handler(app)
             shared_bot_uid = await _resolve_bot_user_id(app)
             self._bot_user_ids["__shared__"] = shared_bot_uid
             self._register_shared_handler(app, shared_bot_uid)
@@ -211,7 +214,8 @@ class SlackSocketModeManager:
             return False
 
         try:
-            app = AsyncApp(token=bot_token)
+            app = AsyncApp(token=bot_token, raise_error_for_unhandled_request=True)
+            self._register_error_handler(app)
             bot_uid = await _resolve_bot_user_id(app)
             self._bot_user_ids[anima_name] = bot_uid
             self._register_per_anima_handler(app, anima_name, bot_uid)
@@ -482,6 +486,20 @@ class SlackSocketModeManager:
                 channel_id,
                 anima_name_resolved,
             )
+
+    @staticmethod
+    def _register_error_handler(app: AsyncApp) -> None:
+        """Suppress Bolt 404 for Slack events we intentionally don't handle."""
+
+        @app.error
+        async def _handle_bolt_error(error, body) -> BoltResponse | None:  # noqa: ARG001
+            if isinstance(error, BoltUnhandledRequestError):
+                logger.debug(
+                    "Ignoring unhandled Slack event: %s",
+                    (body or {}).get("event", {}).get("type", "unknown"),
+                )
+                return BoltResponse(status=200, body="")
+            raise error
 
     async def stop(self) -> None:
         """Disconnect all Socket Mode handlers gracefully."""
