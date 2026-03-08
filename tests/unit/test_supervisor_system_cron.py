@@ -48,6 +48,8 @@ class TestSupervisorSchedulerInit:
             daily_time="02:00",
             weekly_enabled=True,
             weekly_time="sun:03:00",
+            indexing_enabled=True,
+            indexing_time="04:00",
         )
         mock_load = MagicMock(return_value=mock_cfg)
 
@@ -76,6 +78,8 @@ class TestSupervisorSchedulerInit:
         mock_cfg.consolidation = MagicMock(
             daily_enabled=False,
             weekly_enabled=False,
+            indexing_enabled=True,
+            indexing_time="04:00",
         )
         mock_load = MagicMock(return_value=mock_cfg)
 
@@ -130,3 +134,58 @@ class TestSupervisorSchedulerInit:
         assert sup.is_scheduler_running() is True
         await sup.shutdown_all()
         assert sup.is_scheduler_running() is False
+
+    @pytest.mark.asyncio
+    async def test_daily_indexing_cron_registered(self, tmp_path):
+        sup = self._make_supervisor(tmp_path)
+
+        mock_cfg = MagicMock()
+        mock_cfg.consolidation = MagicMock(
+            daily_enabled=True,
+            daily_time="02:00",
+            weekly_enabled=True,
+            weekly_time="sun:03:00",
+            indexing_enabled=True,
+            indexing_time="04:00",
+        )
+        mock_load = MagicMock(return_value=mock_cfg)
+
+        with patch.dict(
+            "sys.modules",
+            {"core.config": MagicMock(load_config=mock_load)},
+        ):
+            sup._start_system_scheduler()
+
+        job_ids = [j.id for j in sup.scheduler.get_jobs()]
+        assert "system_daily_indexing" in job_ids
+
+        idx_job = next(j for j in sup.scheduler.get_jobs() if j.id == "system_daily_indexing")
+        assert "hour='4'" in str(idx_job.trigger) and "minute='0'" in str(idx_job.trigger)
+
+        sup.scheduler.shutdown(wait=False)
+
+    @pytest.mark.asyncio
+    async def test_daily_indexing_cron_disabled(self, tmp_path):
+        sup = self._make_supervisor(tmp_path)
+
+        mock_cfg = MagicMock()
+        mock_cfg.consolidation = MagicMock(
+            daily_enabled=True,
+            daily_time="02:00",
+            weekly_enabled=True,
+            weekly_time="sun:03:00",
+            indexing_enabled=False,
+            indexing_time="04:00",
+        )
+        mock_load = MagicMock(return_value=mock_cfg)
+
+        with patch.dict(
+            "sys.modules",
+            {"core.config": MagicMock(load_config=mock_load)},
+        ):
+            sup._start_system_scheduler()
+
+        job_ids = {j.id for j in sup.scheduler.get_jobs()}
+        assert "system_daily_indexing" not in job_ids
+
+        sup.scheduler.shutdown(wait=False)

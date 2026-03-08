@@ -6,10 +6,13 @@
 Verifies that missed daily/weekly/monthly jobs are detected on startup
 and that marker files are read/written correctly.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -20,12 +23,10 @@ from core.supervisor._mgr_scheduler import (
     _write_marker,
 )
 
-
 # ── Marker helpers ──────────────────────────────────────────────────
 
 
 class TestMarkerHelpers:
-
     def test_write_and_read_marker(self, tmp_path: Path) -> None:
         marker = tmp_path / "test_marker"
         ts = datetime(2026, 3, 4, 2, 0, tzinfo=_JST)
@@ -101,3 +102,69 @@ class TestCatchupDetection:
         last = _read_marker(marker)
         assert last is not None
         assert (datetime.now(_JST) - last) <= timedelta(days=35)
+
+
+# ── Catch-up execution ──────────────────────────────────────────────
+
+
+def _make_supervisor(tmp_path: Path):
+    from core.supervisor.manager import ProcessSupervisor
+
+    animas_dir = tmp_path / "animas"
+    animas_dir.mkdir(parents=True, exist_ok=True)
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return ProcessSupervisor(
+        animas_dir=animas_dir,
+        shared_dir=shared_dir,
+        run_dir=run_dir,
+    )
+
+
+def _create_anima_dir(animas_dir: Path, name: str, *, enabled: bool = True) -> None:
+    d = animas_dir / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "identity.md").write_text(f"# {name}", encoding="utf-8")
+    (d / "status.json").write_text(json.dumps({"enabled": enabled}), encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_catchup_daily_indexing_when_missed(tmp_path: Path) -> None:
+    sup = _make_supervisor(tmp_path)
+    _create_anima_dir(sup.animas_dir, "sakura")
+
+    mdir = _marker_dir(sup._get_data_dir())
+    _write_marker(mdir / "last_daily_consolidation", datetime.now(_JST) - timedelta(hours=1))
+    _write_marker(mdir / "last_weekly_integration", datetime.now(_JST) - timedelta(days=1))
+    _write_marker(mdir / "last_monthly_forgetting", datetime.now(_JST) - timedelta(days=1))
+    _write_marker(mdir / "last_housekeeping", datetime.now(_JST) - timedelta(hours=1))
+    _write_marker(mdir / "last_daily_indexing", datetime.now(_JST) - timedelta(hours=40))
+
+    with (
+        patch.object(sup, "_run_daily_indexing", new_callable=AsyncMock) as mock_indexing,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+        patch(
+            "core.config.load_config",
+            return_value=type(
+                "Cfg",
+                (),
+                {
+                    "consolidation": type(
+                        "CC",
+                        (),
+                        {
+                            "daily_enabled": True,
+                            "weekly_enabled": True,
+                            "monthly_enabled": True,
+                            "indexing_enabled": True,
+                        },
+                    )()
+                },
+            )(),
+        ),
+    ):
+        await sup._catchup_missed_jobs()
+
+    mock_indexing.assert_called_once()
