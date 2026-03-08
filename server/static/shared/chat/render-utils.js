@@ -30,6 +30,7 @@ export class TextAnimator {
     this._onUpdate = onUpdate;
     this._rafId = null;
     this._lastStepTime = 0;
+    this._remainder = 0;
     this._running = false;
     this._pushHistory = [];
   }
@@ -39,6 +40,7 @@ export class TextAnimator {
     this._displayLen = 0;
     this._running = true;
     this._lastStepTime = performance.now();
+    this._remainder = 0;
     this._pushHistory = [];
     this._charInterval = this._baseInterval;
     this._scheduleTick();
@@ -78,7 +80,7 @@ export class TextAnimator {
     const span = h[h.length - 1].t - h[0].t;
     if (span <= 0) return;
     let totalChars = 0;
-    for (let i = 1; i < h.length; i++) totalChars += h[i].len;
+    for (let i = 0; i < h.length; i++) totalChars += h[i].len;
     const incomingMsPerChar = span / totalChars;
     this._charInterval = Math.max(
       _MIN_CHAR_INTERVAL_MS,
@@ -105,18 +107,22 @@ export class TextAnimator {
     const pending = this._buffer.length - this._displayLen;
     if (pending > 0) {
       const elapsed = now - this._lastStepTime;
+      this._lastStepTime = now;
       let interval = this._charInterval;
       if (pending > _CATCHUP_THRESHOLD_FAST) interval = this._charInterval / 4;
       else if (pending > _CATCHUP_THRESHOLD_MED) interval = this._charInterval / 2;
 
-      const charsToAdd = Math.max(1, Math.floor(elapsed / Math.max(interval, 1)));
-      const prev = this._displayLen;
-      this._displayLen = Math.min(this._displayLen + charsToAdd, this._buffer.length);
-      if (this._displayLen !== prev && this._onUpdate) {
-        this._onUpdate(this.displayText, this._buffer);
+      this._remainder += elapsed;
+      const charsToAdd = Math.floor(this._remainder / Math.max(interval, 1));
+      if (charsToAdd > 0) {
+        this._remainder -= charsToAdd * interval;
+        const prev = this._displayLen;
+        this._displayLen = Math.min(this._displayLen + charsToAdd, this._buffer.length);
+        if (this._displayLen !== prev && this._onUpdate) {
+          this._onUpdate(this.displayText, this._buffer);
+        }
       }
     }
-    this._lastStepTime = now;
     if (this._running || this._displayLen < this._buffer.length) {
       this._scheduleTick();
     }
