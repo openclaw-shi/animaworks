@@ -211,6 +211,12 @@ with open(cfg_path, 'w') as f:
     echo "API key injected into config."
 fi
 
+# ── Clean stale PID file ──────────────────────────────────
+# In Docker, PID 1 always exists (it's the entrypoint itself), so a
+# leftover server.pid from a previous container run would trick the
+# "already running" check.  Remove it unconditionally before starting.
+rm -f "${DATA_DIR}/server.pid"
+
 # ── Start server ──────────────────────────────────────────
 echo "Starting AnimaWorks server on port 18501..."
 exec animaworks start --host 0.0.0.0 --port 18501 --foreground
