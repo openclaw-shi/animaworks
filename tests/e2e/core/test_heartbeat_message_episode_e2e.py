@@ -5,11 +5,11 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from core.time_utils import today_local
 
 from core.messenger import Messenger
 from core.memory.manager import MemoryManager
@@ -64,7 +64,7 @@ class TestInboxMessageEpisodeE2E:
 
         # Activity log records message_received (primary record of inbox processing)
         activity_dir = alice_dir / "activity_log"
-        today_file = activity_dir / f"{date.today().isoformat()}.jsonl"
+        today_file = activity_dir / f"{today_local().isoformat()}.jsonl"
         assert today_file.exists()
         lines = [l for l in today_file.read_text(encoding="utf-8").splitlines() if l.strip()]
         assert len(lines) >= 1
@@ -124,7 +124,7 @@ class TestInboxMessageEpisodeE2E:
             await dp.process_inbox_message()
 
             # Activity log records message_received
-            activity_file = alice_dir / "activity_log" / f"{date.today().isoformat()}.jsonl"
+            activity_file = alice_dir / "activity_log" / f"{today_local().isoformat()}.jsonl"
             assert activity_file.exists()
             lines = [l for l in activity_file.read_text(encoding="utf-8").splitlines() if l.strip()]
             msg_entries = [e for e in (json.loads(l) for l in lines) if e.get("type") == "message_received"]
@@ -152,7 +152,7 @@ class TestInboxMessageEpisodeE2E:
         )
         inbox_dir = shared_dir / "inbox" / "alice"
         inbox_dir.mkdir(parents=True, exist_ok=True)
-        ack_file = inbox_dir / f"ack_{date.today().isoformat()}.json"
+        ack_file = inbox_dir / f"ack_{today_local().isoformat()}.json"
         ack_file.write_text(ack_msg.model_dump_json(), encoding="utf-8")
 
         with patch("core.anima.AgentCore") as MockAgent, \
@@ -182,7 +182,7 @@ class TestInboxMessageEpisodeE2E:
 
             await dp.process_inbox_message()
 
-        activity_file = alice_dir / "activity_log" / f"{date.today().isoformat()}.jsonl"
+        activity_file = alice_dir / "activity_log" / f"{today_local().isoformat()}.jsonl"
         assert activity_file.exists()
         lines = [l for l in activity_file.read_text(encoding="utf-8").splitlines() if l.strip()]
         msg_entries = [e for e in (json.loads(l) for l in lines) if e.get("type") == "message_received"]
@@ -235,7 +235,7 @@ class TestInboxMessageEpisodeE2E:
 
             await dp.process_inbox_message()
 
-        activity_file = alice_dir / "activity_log" / f"{date.today().isoformat()}.jsonl"
+        activity_file = alice_dir / "activity_log" / f"{today_local().isoformat()}.jsonl"
         assert activity_file.exists()
         lines = [l for l in activity_file.read_text(encoding="utf-8").splitlines() if l.strip()]
         msg_entries = [e for e in (json.loads(l) for l in lines) if e.get("type") == "message_received"]

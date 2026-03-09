@@ -10,11 +10,11 @@ and Fix 6 (heartbeat history from activity log).
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from core.time_utils import today_local
 
 from core.memory.activity import ActivityEntry, ActivityLogger
 
@@ -56,7 +56,7 @@ async def test_from_to_fields_in_priming_pipeline(anima_dir: Path, tmp_path: Pat
     al.log("message_received", from_person="taro", content="テスト受信")
 
     # Verify JSONL on disk
-    today = date.today().isoformat()
+    today = today_local().isoformat()
     path = anima_dir / "activity_log" / f"{today}.jsonl"
     lines = path.read_text(encoding="utf-8").strip().splitlines()
     for line in lines:
@@ -164,7 +164,7 @@ def test_heartbeat_history_from_activity_log(anima_dir: Path) -> None:
         "action": "checked",
         "summary": "LEGACY_SHOULD_NOT_APPEAR",
     })
-    (legacy_dir / f"{date.today().isoformat()}.jsonl").write_text(
+    (legacy_dir / f"{today_local().isoformat()}.jsonl").write_text(
         legacy_entry + "\n", encoding="utf-8",
     )
 

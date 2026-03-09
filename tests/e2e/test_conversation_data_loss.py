@@ -17,11 +17,11 @@ Changes under test:
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from core.time_utils import today_local
 
 from core.schemas import CycleResult, ModelConfig
 from core.tooling.handler import active_session_type
@@ -42,7 +42,7 @@ def _read_conversation(anima_dir: Path) -> list[dict]:
 
 def _read_transcript(anima_dir: Path) -> list[dict]:
     """Load today's JSONL transcript entries."""
-    transcript_path = anima_dir / "transcripts" / f"{date.today().isoformat()}.jsonl"
+    transcript_path = anima_dir / "transcripts" / f"{today_local().isoformat()}.jsonl"
     if not transcript_path.exists():
         return []
     entries = []

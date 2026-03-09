@@ -9,8 +9,7 @@ Post-call: episode recording and knowledge extraction.
 
 from __future__ import annotations
 
-from datetime import date
-from core.time_utils import now_jst
+from core.time_utils import now_jst, today_local
 
 import pytest
 
@@ -62,7 +61,7 @@ class TestModeBMock:
         agent.memory.append_episode(episode)
 
         # Check episode file was written
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         episode_path = agent.anima_dir / "episodes" / f"{today}.md"
         assert episode_path.exists()
         content = episode_path.read_text(encoding="utf-8")
@@ -147,7 +146,7 @@ class TestModeBLive:
         assert result.summary
         assert result.action == "responded"
         # Episode should be recorded
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         episode_path = agent.anima_dir / "episodes" / f"{today}.md"
         assert episode_path.exists()
 

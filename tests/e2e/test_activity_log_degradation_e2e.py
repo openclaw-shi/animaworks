@@ -23,8 +23,8 @@ References:
 
 import json
 import logging
-from datetime import date, datetime, timedelta
-from core.time_utils import now_jst
+from datetime import datetime, timedelta
+from core.time_utils import now_jst, today_local
 from pathlib import Path
 from unittest.mock import patch
 
@@ -195,7 +195,7 @@ class TestMessengerSendCreatesMessageSent:
         messenger.send("recipient", "hello from sender")
 
         # 1. Check activity log has message_sent entry
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         activity_log_path = sender_anima_dir / "activity_log" / f"{today}.jsonl"
         assert activity_log_path.exists(), "Activity log file should be created"
 
@@ -240,7 +240,7 @@ class TestDmReceivedFullContentInActivityLog:
         )
 
         # Read back the raw JSONL
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         log_path = anima_dir / "activity_log" / f"{today}.jsonl"
         assert log_path.exists()
 
@@ -337,7 +337,7 @@ class TestReadDmHistoryExcludesMessageTypes:
         (anima_dir / "activity_log").mkdir(parents=True)
 
         now = now_jst()
-        today = date.today().isoformat()
+        today = today_local().isoformat()
 
         # Write mixed activity log entries involving "peer-anima"
         # DM entries (message_sent, message_received with from_type=anima)
@@ -416,7 +416,7 @@ class TestReadDmHistory30DayRange:
         (anima_dir / "activity_log").mkdir(parents=True)
 
         # Write message_sent and message_received entries dated 10 days ago
-        old_date = date.today() - timedelta(days=10)
+        old_date = today_local() - timedelta(days=10)
         old_date_str = old_date.isoformat()
         old_ts = datetime.combine(old_date, datetime.min.time().replace(hour=14))
 

@@ -9,11 +9,12 @@ fallback path works when no activity_log entries exist.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from core.time_utils import today_local
 
 from core.memory.activity import ActivityLogger
 from core.memory.priming import PrimingEngine, PrimingResult, format_priming_section
@@ -160,7 +161,7 @@ async def test_activity_log_replaces_episodes(
     common_skills.mkdir(exist_ok=True)
 
     # --- Part 1: Write an old episode AND activity_log entries ---
-    today = date.today()
+    today = today_local()
     episode_file = anima_dir / "episodes" / f"{today.isoformat()}.md"
     episode_file.write_text(
         f"# {today} 行動ログ\n\n## 09:00 — OLD_EPISODE_MARKER\n\n",

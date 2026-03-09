@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from core.time_utils import today_local
 from httpx import ASGITransport, AsyncClient
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ class TestDMHistoryNoDuplicates:
         data_dir, shared_dir, animas_dir = _setup_data_dir(tmp_path)
         _make_anima_dir(animas_dir, "alice")
         _make_anima_dir(animas_dir, "bob")
-        date_str = date.today().isoformat()
+        date_str = today_local().isoformat()
 
         msg_text = "Hello Bob, how are you?"
         ts_sender = "2026-02-25T10:00:00.839520"
@@ -170,7 +170,7 @@ class TestDMPairsExcludesGarbage:
         data_dir, shared_dir, animas_dir = _setup_data_dir(tmp_path)
         _make_anima_dir(animas_dir, "alice")
         _make_anima_dir(animas_dir, "bob")
-        date_str = date.today().isoformat()
+        date_str = today_local().isoformat()
 
         # Valid pair: alice sends to bob
         # Garbage: .animaworks-sumire in from field (alice's log has message_received)
@@ -271,7 +271,7 @@ class TestDMHistoryMergeWithoutDuplication:
         data_dir, shared_dir, animas_dir = _setup_data_dir(tmp_path)
         _make_anima_dir(animas_dir, "alice")
         _make_anima_dir(animas_dir, "bob")
-        date_str = date.today().isoformat()
+        date_str = today_local().isoformat()
 
         shared_ts = "2026-02-25T10:00:00"
         shared_content = "Shared message in both sources"
@@ -336,7 +336,7 @@ class TestLegacyDmSentAlias:
         data_dir, shared_dir, animas_dir = _setup_data_dir(tmp_path)
         _make_anima_dir(animas_dir, "alice")
         _make_anima_dir(animas_dir, "bob")
-        date_str = date.today().isoformat()
+        date_str = today_local().isoformat()
 
         msg_text = "Legacy dm_sent still works"
         _write_activity_log(

@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
+
+from core.time_utils import today_local
 from unittest.mock import patch
 
 import pytest
@@ -88,8 +90,8 @@ class TestRotateAllPromptLogs:
         log_dir = anima_dir / "prompt_logs"
         log_dir.mkdir(parents=True)
 
-        old_date = (date.today() - timedelta(days=5)).isoformat()
-        today = date.today().isoformat()
+        old_date = (today_local() - timedelta(days=5)).isoformat()
+        today = today_local().isoformat()
         (log_dir / f"{old_date}.jsonl").write_text("{}\n")
         (log_dir / f"{today}.jsonl").write_text("{}\n")
 
@@ -119,7 +121,7 @@ class TestRotateAllPromptLogs:
         anima_dir = tmp_path / "charlie"
         log_dir = anima_dir / "prompt_logs"
         log_dir.mkdir(parents=True)
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         (log_dir / f"{today}.jsonl").write_text("{}\n")
 
         result = rotate_all_prompt_logs(tmp_path, retention_days=3)
@@ -128,7 +130,7 @@ class TestRotateAllPromptLogs:
     def test_multiple_animas(self, tmp_path: Path):
         from core._agent_prompt_log import rotate_all_prompt_logs
 
-        old_date = (date.today() - timedelta(days=10)).isoformat()
+        old_date = (today_local() - timedelta(days=10)).isoformat()
 
         for name in ("a1", "a2"):
             d = tmp_path / name / "prompt_logs"
@@ -259,8 +261,8 @@ class TestCleanupCronLogs:
         cron_dir = tmp_path / "alice" / "state" / "cron_logs"
         cron_dir.mkdir(parents=True)
 
-        old_date = (date.today() - timedelta(days=40)).isoformat()
-        today = date.today().isoformat()
+        old_date = (today_local() - timedelta(days=40)).isoformat()
+        today = today_local().isoformat()
         (cron_dir / f"{old_date}.jsonl").write_text("{}\n")
         (cron_dir / f"{today}.jsonl").write_text("{}\n")
 
@@ -367,13 +369,13 @@ class TestRunHousekeeping:
         # Set up prompt_logs
         alice_logs = animas_dir / "alice" / "prompt_logs"
         alice_logs.mkdir(parents=True)
-        old_date = (date.today() - timedelta(days=5)).isoformat()
+        old_date = (today_local() - timedelta(days=5)).isoformat()
         (alice_logs / f"{old_date}.jsonl").write_text("{}\n")
 
         # Set up cron_logs
         cron_dir = animas_dir / "alice" / "state" / "cron_logs"
         cron_dir.mkdir(parents=True)
-        old_cron = (date.today() - timedelta(days=40)).isoformat()
+        old_cron = (today_local() - timedelta(days=40)).isoformat()
         (cron_dir / f"{old_cron}.jsonl").write_text("{}\n")
 
         # Set up shortterm

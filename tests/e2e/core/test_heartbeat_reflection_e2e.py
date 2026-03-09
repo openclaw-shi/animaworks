@@ -5,11 +5,12 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from core.time_utils import today_local
 
 from core.memory.activity import ActivityLogger
 from core.tooling.handler import active_session_type
@@ -164,7 +165,7 @@ class TestHeartbeatReflectionE2E:
             await dp.run_heartbeat()
 
         # Verify episode file contains the [REFLECTION] block
-        episode_file = alice_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_file = alice_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_file.exists(), "Episode file should be created"
         episode_content = episode_file.read_text(encoding="utf-8")
         assert "[REFLECTION]" in episode_content
@@ -173,7 +174,7 @@ class TestHeartbeatReflectionE2E:
 
         # Verify activity log contains heartbeat_reflection event
         activity_dir = alice_dir / "activity_log"
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         log_file = activity_dir / f"{today}.jsonl"
         assert log_file.exists(), "Activity log file should exist"
         log_content = log_file.read_text(encoding="utf-8")
@@ -228,14 +229,14 @@ class TestHeartbeatReflectionE2E:
             await dp.run_heartbeat()
 
         # Episode should exist but should NOT contain [REFLECTION] tags
-        episode_file = alice_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_file = alice_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_file.exists()
         episode_content = episode_file.read_text(encoding="utf-8")
         assert "[REFLECTION]" not in episode_content
 
         # Activity log should NOT contain heartbeat_reflection event
         activity_dir = alice_dir / "activity_log"
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         log_file = activity_dir / f"{today}.jsonl"
         if log_file.exists():
             log_content = log_file.read_text(encoding="utf-8")
@@ -285,7 +286,7 @@ class TestHeartbeatReflectionE2E:
             await dp.run_heartbeat()
 
         # Episode should exist with heartbeat content
-        episode_file = alice_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_file = alice_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_file.exists()
         episode_content = episode_file.read_text(encoding="utf-8")
         assert "ハートビート活動" in episode_content
@@ -293,7 +294,7 @@ class TestHeartbeatReflectionE2E:
 
         # Activity log should NOT have heartbeat_reflection event
         activity_dir = alice_dir / "activity_log"
-        today = date.today().isoformat()
+        today = today_local().isoformat()
         log_file = activity_dir / f"{today}.jsonl"
         if log_file.exists():
             log_content = log_file.read_text(encoding="utf-8")

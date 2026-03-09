@@ -14,7 +14,7 @@ Install with: pip install 'animaworks[rag]'
 import asyncio
 import os
 from datetime import datetime, timedelta
-from core.time_utils import now_jst
+from core.time_utils import now_jst, today_local
 from pathlib import Path
 
 import pytest
@@ -477,8 +477,7 @@ def test_e2e_priming_integration(anima_dir, vector_store, indexer):
     )
 
     # Create today's episode file
-    from datetime import date
-    today = date.today()
+        today = today_local()
     (episodes_dir / f"{today.isoformat()}.md").write_text(
         f"# {today.isoformat()} 行動ログ\n\n"
         "## 09:00 — 朝会\n\nプロジェクトAlphaの進捗確認。フロントエンド80%完了。\n\n"

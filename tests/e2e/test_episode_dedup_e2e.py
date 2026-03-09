@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 import pytest
+from core.time_utils import today_local
 
 
 # ── Fire-and-forget removal verification ─────────────────────
@@ -92,8 +93,7 @@ class TestDifferentialFinalizationE2E:
         from tests.helpers.mocks import make_litellm_response, patch_litellm
         from core.memory.conversation import ConversationMemory, ConversationTurn
         from core.schemas import ModelConfig
-        from datetime import date
-
+        
         anima_dir = create_anima_dir(data_dir, "e2e-dedup")
         model_config = ModelConfig(
             model="claude-sonnet-4-6",
@@ -138,7 +138,7 @@ class TestDifferentialFinalizationE2E:
         assert result is True
 
         # Verify episode was written
-        episode_path = anima_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_path = anima_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_path.exists()
         episode_content = episode_path.read_text(encoding="utf-8")
         assert "サーバー障害修正とデプロイタスク" in episode_content

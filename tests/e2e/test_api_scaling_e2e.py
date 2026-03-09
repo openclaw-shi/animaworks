@@ -12,7 +12,7 @@ Validates the four CRITICAL fixes through the real FastAPI app stack:
 from __future__ import annotations
 
 import json
-from core.time_utils import now_jst
+from core.time_utils import now_jst, today_local
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -271,7 +271,7 @@ class TestActivityEndpointE2E:
         animas_dir = tmp_path / "animas"
         anima_dir = _create_anima_on_disk(animas_dir, "alice")
 
-        # Write activity_log data (use local time to match ActivityLogger's date.today())
+        # Write activity_log data (use local time to match ActivityLogger's today_local())
         now = now_jst()
         log_dir = anima_dir / "activity_log"
         log_dir.mkdir(parents=True, exist_ok=True)

@@ -22,6 +22,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from core.time_utils import today_local
 
 from core.schemas import CycleResult
 from core.tooling.handler import active_session_type
@@ -228,8 +229,7 @@ class TestInboxProcessing:
 
             await dp.process_inbox_message()
 
-        from datetime import date
-        episode_file = alice_dir / "episodes" / f"{date.today().isoformat()}.md"
+                episode_file = alice_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_file.exists()
         content = episode_file.read_text(encoding="utf-8")
         assert "episode_senderからのメッセージ受信" in content

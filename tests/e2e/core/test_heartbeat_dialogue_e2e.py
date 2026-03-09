@@ -13,8 +13,8 @@ Tests cross-context flows WITHOUT mocking file-system operations:
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
-from core.time_utils import now_jst
+from datetime import datetime
+from core.time_utils import now_jst, today_local
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -183,7 +183,7 @@ class TestCrossContextFlow:
                 "duration_ms": 100 + i,
             }, ensure_ascii=False)
             entries.append(entry)
-        (history_dir / f"{date.today().isoformat()}.jsonl").write_text(
+        (history_dir / f"{today_local().isoformat()}.jsonl").write_text(
             "\n".join(entries) + "\n", encoding="utf-8",
         )
 
@@ -235,7 +235,7 @@ class TestCrossContextFlow:
             mm.append_episode(episode_entry)
 
         # Verify episode was written
-        episode_file = anima_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_file = anima_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_file.exists()
         content = episode_file.read_text(encoding="utf-8")
         assert "ハートビート活動" in content
@@ -259,7 +259,7 @@ class TestCrossContextFlow:
         if result.summary and "HEARTBEAT_OK" not in result.summary:
             mm.append_episode("should not appear")
 
-        episode_file = anima_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_file = anima_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert not episode_file.exists()
 
     def test_conversation_json_written_and_read_back(self, anima_dir):
@@ -327,7 +327,7 @@ class TestCrossContextFlow:
             "summary": result.summary,
             "duration_ms": result.duration_ms,
         }, ensure_ascii=False)
-        (history_dir / f"{date.today().isoformat()}.jsonl").write_text(
+        (history_dir / f"{today_local().isoformat()}.jsonl").write_text(
             entry + "\n", encoding="utf-8",
         )
 
@@ -360,7 +360,7 @@ class TestCrossContextFlow:
             )
             mm.append_episode(episode_entry)
 
-        episode_file = anima_dir / "episodes" / f"{date.today().isoformat()}.md"
+        episode_file = anima_dir / "episodes" / f"{today_local().isoformat()}.md"
         assert episode_file.exists()
         content = episode_file.read_text(encoding="utf-8")
         assert "batch job" in content.lower()
