@@ -255,7 +255,7 @@ def _resolve_outbound_icon(anima_name: str) -> str:
 def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: str = "") -> str:
     """Send a DM via Slack API."""
     from core.tools._base import _lookup_shared_credentials, _lookup_vault_credential
-    from core.tools.slack import SlackClient
+    from core.tools.slack import SlackClient, md_to_slack_mrkdwn
 
     token = None
     if anima_name:
@@ -266,6 +266,7 @@ def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: st
 
     prefix = f"[{sender_name}] " if sender_name and not token else ""
     text = f"{prefix}{content}"
+    text = md_to_slack_mrkdwn(text)
 
     username = anima_name or sender_name or ""
     icon_url = _resolve_outbound_icon(anima_name)
@@ -296,10 +297,11 @@ def _send_via_slack(user_id: str, content: str, sender_name: str, anima_name: st
 def _send_via_chatwork(room_id: str, content: str, sender_name: str) -> str:
     """Send a message via Chatwork API."""
     from core.tools._base import get_credential
-    from core.tools.chatwork import ChatworkClient
+    from core.tools.chatwork import ChatworkClient, md_to_chatwork
 
     prefix = f"[{sender_name}] " if sender_name else ""
     body = f"{prefix}{content}"
+    body = md_to_chatwork(body)
 
     write_token = get_credential("chatwork_write", "chatwork", env_var="CHATWORK_API_TOKEN_WRITE")
     client = ChatworkClient(api_token=write_token)

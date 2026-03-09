@@ -48,6 +48,9 @@ class ChatworkChannel(NotificationChannel):
         if not room_id.isdigit():
             return "chatwork: ERROR - room_id must be numeric"
 
+        from core.tools.chatwork import md_to_chatwork
+
+        body = md_to_chatwork(body)
         prefix = f"[{priority.upper()}] " if priority in ("high", "urgent") else ""
         sender = f" (from {anima_name})" if anima_name else ""
         message = f"[info][title]{prefix}{subject}{sender}[/title]{body}[/info]"[:28000]
