@@ -296,10 +296,25 @@ class TestValidateKey:
         app = _make_test_app()
         transport = ASGITransport(app=app)
 
+        with patch("server.routes.setup._validate_github_token", new_callable=AsyncMock) as mock_val:
+            mock_val.return_value = {"valid": True, "message": "GitHub token is valid"}
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/validate-key",
+                    json={"provider": "copilot", "api_key": "ghu_xxx"},
+                )
+
+        data = resp.json()
+        assert data["valid"] is True
+
+    async def test_image_provider_key_validation(self):
+        app = _make_test_app()
+        transport = ASGITransport(app=app)
+
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/setup/validate-key",
-                json={"provider": "copilot", "api_key": "ghu_xxx"},
+                json={"provider": "fal", "api_key": "fal_xxx"},
             )
 
         data = resp.json()

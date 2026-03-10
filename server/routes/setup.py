@@ -154,7 +154,14 @@ def create_setup_router() -> APIRouter:
         elif provider == "google":
             return await _validate_google_key(api_key)
         elif provider == "copilot":
-            return {"valid": bool(api_key), "message": "Token accepted" if api_key else "Token is required"}
+            return await _validate_github_token(api_key)
+        elif provider in ("fal", "fal_key", "novelai", "novelai_token", "meshy", "meshy_api_key"):
+            # Image generation credentials are provider-specific and optional in setup.
+            # Accept non-empty values to avoid blocking setup wizard progression.
+            return {
+                "valid": bool(api_key),
+                "message": "API key is set" if api_key else "API key is required",
+            }
         elif provider == "ollama":
             return {"valid": True, "message": "Ollama does not require an API key"}
         else:
@@ -413,6 +420,31 @@ async def _validate_google_key(api_key: str) -> dict[str, Any]:
             return {"valid": True, "message": "API key is valid"}
         if resp.status_code in (400, 401, 403):
             return {"valid": False, "message": "Invalid API key"}
+        return {"valid": False, "message": f"Unexpected status: {resp.status_code}"}
+    except Exception as exc:
+        return {"valid": False, "message": f"Connection error: {exc}"}
+
+
+async def _validate_github_token(api_key: str) -> dict[str, Any]:
+    """Validate a GitHub token (used for Copilot setup) via GitHub API."""
+    if not api_key:
+        return {"valid": False, "message": "Token is required"}
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        if resp.status_code == 200:
+            return {"valid": True, "message": "GitHub token is valid"}
+        if resp.status_code in (401, 403):
+            return {"valid": False, "message": "Invalid GitHub token"}
         return {"valid": False, "message": f"Unexpected status: {resp.status_code}"}
     except Exception as exc:
         return {"valid": False, "message": f"Connection error: {exc}"}
