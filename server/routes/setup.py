@@ -34,6 +34,12 @@ AVAILABLE_PROVIDERS = [
         "env_key": "OPENAI_API_KEY",
     },
     {
+        "id": "copilot",
+        "name": "GitHub Copilot",
+        "models": ["copilot/gpt-5", "copilot/gpt-4.1"],
+        "env_key": "GITHUB_TOKEN",
+    },
+    {
         "id": "google",
         "name": "Google",
         "models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro"],
@@ -93,6 +99,8 @@ class SetupCompleteRequest(BaseModel):
     anima: AnimaSetup | None = None
     user: UserSetup | None = None
     image_style: str = "realistic"
+    model: str = ""
+    execution_mode: str = ""
 
 
 # ── Router factory ─────────────────────────────────────────
@@ -145,6 +153,8 @@ def create_setup_router() -> APIRouter:
             return await _validate_openai_key(api_key)
         elif provider == "google":
             return await _validate_google_key(api_key)
+        elif provider == "copilot":
+            return {"valid": bool(api_key), "message": "Token accepted" if api_key else "Token is required"}
         elif provider == "ollama":
             return {"valid": True, "message": "Ollama does not require an API key"}
         else:
@@ -195,6 +205,8 @@ def create_setup_router() -> APIRouter:
                 supervisor = read_anima_supervisor(anima_dir) if anima_dir.exists() else None
                 config.animas[anima_name] = AnimaModelConfig(
                     supervisor=supervisor,
+                    model=body.model or None,
+                    execution_mode=body.execution_mode or None,
                 )
                 logger.info("Created anima '%s' during setup", anima_name)
             except FileExistsError:

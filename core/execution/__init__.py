@@ -30,6 +30,12 @@ try:
 except ImportError:  # pragma: no cover
     CodexSDKExecutor = None  # type: ignore[assignment,misc]
 
+# CopilotSDKExecutor requires github_copilot_sdk (optional dependency).
+try:
+    from core.execution.copilot_sdk import CopilotSDKExecutor
+except ImportError:  # pragma: no cover
+    CopilotSDKExecutor = None  # type: ignore[assignment,misc]
+
 from core.execution.anthropic_fallback import AnthropicFallbackExecutor
 from core.execution.assisted import AssistedExecutor
 from core.execution.base import BaseExecutor, ExecutionResult
@@ -40,6 +46,7 @@ __all__ = [
     "AnthropicFallbackExecutor",
     "AssistedExecutor",
     "BaseExecutor",
+    "CopilotSDKExecutor",
     "CodexSDKExecutor",
     "ExecutionResult",
     "LiteLLMExecutor",

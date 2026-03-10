@@ -745,6 +745,8 @@ DEFAULT_MODEL_MODE_PATTERNS: dict[str, str] = {
     "claude-*": "S",
     # ── C: Codex SDK (Codex CLI wrapper) ─────────────────
     "codex/*": "C",
+    # ── P: Copilot SDK ────────────────────────────────────────
+    "copilot/*": "P",
     # ── A: Cloud API providers (LiteLLM + tool_use) ──────
     "openai/*": "A",
     "azure/*": "A",
@@ -802,6 +804,8 @@ KNOWN_MODELS: list[dict[str, str]] = [
     {"name": "claude-opus-4-1-20250805", "mode": "S", "note": "旧Opus"},
     {"name": "claude-sonnet-4-5-20250929", "mode": "S", "note": "旧Sonnet"},
     {"name": "claude-sonnet-4-20250514", "mode": "S", "note": "旧Sonnet4"},
+    # ── Copilot (Mode P) ─────────────────────────────────────────────────────
+    {"name": "copilot/gpt-5", "mode": "P", "note": "GitHub Copilot SDK"},
     # ── OpenAI (Mode A) ──────────────────────────────────────────────────────
     {"name": "openai/gpt-4.1", "mode": "A", "note": "最新・コーディング強"},
     {"name": "openai/gpt-4.1-mini", "mode": "A", "note": "高速・低コスト"},
@@ -1018,17 +1022,17 @@ def load_model_config(anima_dir: Path) -> ModelConfig:
 
 
 def _normalise_mode(raw: str) -> str:
-    """Normalise a mode value to S/A/B, applying legacy mapping if needed.
+    """Normalise a mode value to S/A/B/C/P, applying legacy mapping if needed.
 
     Accepts legacy values (``"A1"``, ``"A2"``, ``"autonomous"``, etc.) and
-    canonical values (``"S"``, ``"A"``, ``"B"``).  Returns uppercase S/A/B.
+    canonical values (``"S"``, ``"A"``, ``"B"``).  Returns uppercase S/A/B/C/P.
     """
     lower = raw.strip().lower()
     mapped = _LEGACY_MODE_MAP.get(lower)
     if mapped:
         return mapped
     upper = raw.strip().upper()
-    if upper in ("S", "A", "B", "C"):
+    if upper in ("S", "A", "B", "C", "P"):
         return upper
     # Unrecognised — return as-is (upper) for forward compat
     logger.warning("Unrecognised execution mode '%s'; passing through as '%s'", raw, upper)
@@ -1087,8 +1091,8 @@ def resolve_execution_mode(
             When set, takes highest priority.
 
     Returns:
-        One of ``"S"`` (SDK), ``"C"`` (Codex), ``"A"`` (Autonomous),
-        or ``"B"`` (Basic).
+        One of ``"S"`` (SDK), ``"C"`` (Codex), ``"P"`` (Copilot),
+        ``"A"`` (Autonomous), or ``"B"`` (Basic).
     """
     # 1. Per-anima explicit override
     if explicit_override:

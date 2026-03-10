@@ -128,6 +128,25 @@ class TestModeCFallback:
         assert kwargs["model_config"].model == "anthropic/claude-sonnet-4-6"
 
 
+
+
+class TestModePFallback:
+    def test_mode_p_fallback_remaps_model_when_sdk_missing(self, tmp_path):
+        agent = _make_agent(
+            tmp_path,
+            model="copilot/gpt-5",
+            resolved_mode="P",
+        )
+
+        sentinel_executor = MagicMock(name="litellm_executor")
+        with patch("core.execution.copilot_sdk.is_copilot_sdk_available", return_value=False),              patch("core.execution.LiteLLMExecutor", return_value=sentinel_executor) as mock_litellm:
+            created = agent._create_executor()
+
+        assert created is sentinel_executor
+        kwargs = mock_litellm.call_args.kwargs
+        assert kwargs["model_config"].model == "openai/gpt-5"
+
+
 # ── Callbacks / reply tracking ────────────────────────────
 
 

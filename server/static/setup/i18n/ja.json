@@ -96,5 +96,8 @@
   "error.network": "ネットワークエラーが発生しました",
   "error.validation": "入力内容を確認してください",
   "error.provider_required": "LLMプロバイダーを選択してください",
-  "error.apikey_required": "APIキーを入力してください"
+  "error.apikey_required": "APIキーを入力してください",
+  "env.provider.copilot": "GitHub Copilot",
+  "env.provider.copilot.desc": "GitHub Copilot SDK互換モデルを使用",
+  "confirm.mode": "実行モード"
 }
