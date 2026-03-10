@@ -552,6 +552,7 @@ class TestResolveExecutionModeWildcard:
         assert resolve_execution_mode(config, "any-model", "S") == "S"
         assert resolve_execution_mode(config, "any-model", "A") == "A"
         assert resolve_execution_mode(config, "any-model", "B") == "B"
+        assert resolve_execution_mode(config, "any-model", "P") == "P"
 
     def test_claude_wildcard_s(self):
         config = AnimaWorksConfig()
@@ -567,6 +568,11 @@ class TestResolveExecutionModeWildcard:
         assert resolve_execution_mode(config, "zai/zai-model") == "A"
         assert resolve_execution_mode(config, "minimax/some-model") == "A"
         assert resolve_execution_mode(config, "moonshot/kimi") == "A"
+
+
+    def test_copilot_models_p(self):
+        config = AnimaWorksConfig()
+        assert resolve_execution_mode(config, "copilot/gpt-5") == "P"
 
     def test_ollama_a_models(self):
         config = AnimaWorksConfig()

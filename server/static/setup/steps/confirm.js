@@ -21,6 +21,8 @@ export function populateConfirm(data) {
   const userName = data.userinfo?.username || "-";
   const userDisplayName = data.userinfo?.display_name || "";
   const provider = data.environment?.provider || "-";
+  const model = data.environment?.model || "-";
+  const executionMode = data.environment?.execution_mode || "-";
   const imageStyle = data.environment?.image_style || "realistic";
   const leaderName = data.leader?.name || "-";
   const imageKeys = data.environment?.image_keys || {};
@@ -77,6 +79,14 @@ export function populateConfirm(data) {
           <span class="confirm-value">${t(`env.provider.${provider}`) || provider}</span>
         </div>
         <div class="confirm-row">
+          <span class="confirm-key">${t("confirm.model")}</span>
+          <span class="confirm-value">${model}</span>
+        </div>
+        <div class="confirm-row">
+          <span class="confirm-key">${t("confirm.mode")}</span>
+          <span class="confirm-value">${executionMode}</span>
+        </div>
+        <div class="confirm-row">
           <span class="confirm-key">${t("confirm.imagestyle")}</span>
           <span class="confirm-value">${t(`env.imagestyle.${imageStyle}`)}</span>
         </div>
@@ -112,6 +122,8 @@ export async function completeSetup(data) {
     credentials: {},
     anima: { name: data.leader?.name },
     image_style: data.environment?.image_style || "realistic",
+    model: data.environment?.model || undefined,
+    execution_mode: data.environment?.execution_mode || undefined,
     user: data.userinfo ? {
       username: data.userinfo.username,
       display_name: data.userinfo.display_name || "",

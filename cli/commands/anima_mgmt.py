@@ -249,7 +249,7 @@ def cmd_anima_info(args: argparse.Namespace) -> None:
     except Exception:
         mode = explicit_mode or "?"
 
-    _MODE_LABELS = {"S": "S (SDK)", "C": "C (Codex)", "A": "A (Autonomous)", "B": "B (Basic)"}
+    _MODE_LABELS = {"S": "S (SDK)", "C": "C (Codex)", "P": "P (Copilot)", "A": "A (Autonomous)", "B": "B (Basic)"}
 
     print(f"Anima:            {name}")
     print(f"Enabled:          {data.get('enabled', '?')}")
