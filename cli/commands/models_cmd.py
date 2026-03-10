@@ -10,6 +10,7 @@ import sys
 _MODE_LABELS: dict[str, str] = {
     "S": "S (SDK)",
     "C": "C (Codex)",
+    "P": "P (Copilot)",
     "A": "A (Autonomous)",
     "B": "B (Basic)",
 }

@@ -96,5 +96,8 @@
   "error.network": "A network error occurred",
   "error.validation": "Please check your input",
   "error.provider_required": "Please select an LLM provider",
-  "error.apikey_required": "Please enter an API key"
+  "error.apikey_required": "Please enter an API key",
+  "env.provider.copilot": "GitHub Copilot",
+  "env.provider.copilot.desc": "Use GitHub Copilot SDK compatible models",
+  "confirm.mode": "Execution Mode"
 }

@@ -95,6 +95,14 @@ class TestModeRouting:
         )
         assert agent._resolve_execution_mode() == "c"
 
+    def test_copilot_model_routes_to_p(self, make_agent_core):
+        """Copilot-prefixed model → Mode P."""
+        agent = make_agent_core(
+            name="copilot-p",
+            model="copilot/gpt-5",
+        )
+        assert agent._resolve_execution_mode() == "p"
+
     def test_codex_explicit_a_override(self, make_agent_core):
         """Codex model + explicit execution_mode='A' → Mode A (override wins)."""
         agent = make_agent_core(

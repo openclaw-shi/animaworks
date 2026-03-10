@@ -25,11 +25,12 @@ let imageKeyStatus = {
 };
 
 const PROVIDERS = [
-  { id: "claude_code", keyRequired: false },
-  { id: "anthropic", keyRequired: true, keyEnv: "ANTHROPIC_API_KEY" },
-  { id: "openai", keyRequired: true, keyEnv: "OPENAI_API_KEY" },
-  { id: "google", keyRequired: true, keyEnv: "GOOGLE_API_KEY" },
-  { id: "ollama", keyRequired: false },
+  { id: "claude_code", keyRequired: false, model: "claude-sonnet-4-6", execution_mode: "S" },
+  { id: "anthropic", keyRequired: true, keyEnv: "ANTHROPIC_API_KEY", model: "claude-sonnet-4-6", execution_mode: "S" },
+  { id: "openai", keyRequired: true, keyEnv: "OPENAI_API_KEY", model: "openai/gpt-4.1", execution_mode: "A" },
+  { id: "copilot", keyRequired: true, keyEnv: "GITHUB_TOKEN", model: "copilot/gpt-5", execution_mode: "P" },
+  { id: "google", keyRequired: true, keyEnv: "GOOGLE_API_KEY", model: "google/gemini-2.5-flash", execution_mode: "A" },
+  { id: "ollama", keyRequired: false, model: "ollama/gemma3:27b", execution_mode: "B" },
 ];
 
 export function initEnvironmentStep(el) {
@@ -354,7 +355,7 @@ export function validateEnvironment() {
   const errorEl = container.querySelector("#envError");
 
   if (!selectedProvider) {
-    errorEl.innerHTML = `<div class="error-message">${t("error.apikey_required")}</div>`;
+    errorEl.innerHTML = `<div class="error-message">${t("error.provider_required")}</div>`;
     return false;
   }
 
@@ -369,8 +370,11 @@ export function validateEnvironment() {
 }
 
 export function getEnvironmentData() {
+  const provider = PROVIDERS.find((p) => p.id === selectedProvider);
   return {
     provider: selectedProvider,
+    model: provider?.model,
+    execution_mode: provider?.execution_mode,
     api_key: apiKey || undefined,
     ollama_url: selectedProvider === "ollama" ? ollamaUrl : undefined,
     image_style: selectedImageStyle,

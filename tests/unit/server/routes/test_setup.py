@@ -292,6 +292,19 @@ class TestValidateKey:
         data = resp.json()
         assert data["valid"] is True
 
+    async def test_copilot_token_validation(self):
+        app = _make_test_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/setup/validate-key",
+                json={"provider": "copilot", "api_key": "ghu_xxx"},
+            )
+
+        data = resp.json()
+        assert data["valid"] is True
+
     async def test_ollama_no_key_needed(self):
         app = _make_test_app()
         transport = ASGITransport(app=app)
@@ -380,6 +393,41 @@ class TestCompleteSetup:
 
         assert resp.status_code == 200
         assert "anthropic" in mock_config.credentials
+
+    async def test_complete_with_anima_model_and_mode(self, tmp_path: Path):
+        mock_config = MagicMock()
+        mock_config.locale = "ja"
+        mock_config.credentials = {}
+        mock_config.animas = {}
+
+        anima_dir = tmp_path / "animas" / "alice"
+        anima_dir.mkdir(parents=True)
+
+        app = _make_test_app()
+        transport = ASGITransport(app=app)
+
+        with (
+            patch("core.config.load_config", return_value=mock_config),
+            patch("core.config.save_config"),
+            patch("core.config.invalidate_cache"),
+            patch("core.paths.get_animas_dir", return_value=tmp_path / "animas"),
+            patch("core.anima_factory.create_blank", return_value=anima_dir),
+        ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/setup/complete",
+                    json={
+                        "locale": "ja",
+                        "credentials": {},
+                        "anima": {"name": "alice"},
+                        "model": "copilot/gpt-5",
+                        "execution_mode": "P",
+                    },
+                )
+
+        assert resp.status_code == 200
+        assert mock_config.animas["alice"].model == "copilot/gpt-5"
+        assert mock_config.animas["alice"].execution_mode == "P"
 
     async def test_complete_with_blank_anima(self, tmp_path: Path):
         mock_config = MagicMock()

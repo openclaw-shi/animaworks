@@ -178,6 +178,11 @@ async def _compact_mode_c(anima: DigitalAnima, thread_id: str) -> bool:
     return True
 
 
+async def _compact_mode_p(anima: DigitalAnima, thread_id: str) -> bool:
+    """Mode P: currently same compaction strategy as Mode C."""
+    return await _compact_mode_c(anima, thread_id)
+
+
 # ── Public API ────────────────────────────────────────────────
 
 
@@ -210,6 +215,8 @@ async def run_idle_compaction(anima: DigitalAnima, thread_id: str) -> None:
             await _compact_mode_a(anima, thread_id)
         elif mode == "c":
             await _compact_mode_c(anima, thread_id)
+        elif mode == "p":
+            await _compact_mode_p(anima, thread_id)
         elif mode == "b":
             await _compact_mode_b(anima, thread_id)
         else:

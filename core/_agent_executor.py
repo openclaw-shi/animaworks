@@ -165,6 +165,48 @@ class ExecutorFactoryMixin:
                     interrupt_event=self._interrupt_event,
                 )
 
+
+        if mode == "p":
+            try:
+                from core.execution.copilot_sdk import (
+                    CopilotSDKExecutor,
+                    is_copilot_sdk_available,
+                )
+
+                if not is_copilot_sdk_available():
+                    raise ImportError("github_copilot_sdk not installed")
+                return CopilotSDKExecutor(
+                    model_config=self.model_config,
+                    anima_dir=self.anima_dir,
+                    tool_registry=self._tool_registry,
+                    personal_tools=self._personal_tools,
+                    interrupt_event=self._interrupt_event,
+                )
+            except ImportError:
+                logger.warning(
+                    "CopilotSDKExecutor unavailable (github-copilot-sdk not installed), falling back to LiteLLM (Mode A)"
+                )
+                fallback_model_config = self.model_config.model_copy(deep=True)
+                fallback_model: str | None = fallback_model_config.fallback_model
+                if not fallback_model and fallback_model_config.model.startswith("copilot/"):
+                    bare = fallback_model_config.model.split("/", 1)[1]
+                    fallback_model = f"openai/{bare}"
+                if fallback_model:
+                    fallback_model_config.model = fallback_model
+                    logger.warning(
+                        "Mode P fallback remapped model: %s -> %s",
+                        self.model_config.model,
+                        fallback_model_config.model,
+                    )
+                return LiteLLMExecutor(
+                    model_config=fallback_model_config,
+                    anima_dir=self.anima_dir,
+                    tool_handler=self._tool_handler,
+                    tool_registry=self._tool_registry,
+                    memory=self.memory,
+                    personal_tools=self._personal_tools,
+                    interrupt_event=self._interrupt_event,
+                )
         if mode == "a":
             return LiteLLMExecutor(
                 model_config=self.model_config,
